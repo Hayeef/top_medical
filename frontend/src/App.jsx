@@ -43,6 +43,7 @@ export default function App() {
   const [suppliers, setSuppliers] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [doctors, setDoctors] = useState([]);
+  const [staffList, setStaffList] = useState([]);
   const [profile, setProfile] = useState(null);
 
   // Modal dialog states
@@ -68,6 +69,7 @@ export default function App() {
         suppsData,
         custsData,
         docsData,
+        staffData,
         profData
       ] = await Promise.allSettled([
         analyticsAPI.getSummary(),
@@ -79,6 +81,7 @@ export default function App() {
         inventoryAPI.getSuppliers(),
         billingAPI.getCustomers(),
         billingAPI.getDoctors(),
+        billingAPI.getStaff(),
         billingAPI.getProfile(),
       ]);
 
@@ -92,6 +95,7 @@ export default function App() {
       if (suppsData.status === 'fulfilled') setSuppliers(suppsData.value?.results || suppsData.value || []);
       if (custsData.status === 'fulfilled') setCustomers(custsData.value?.results || custsData.value || []);
       if (docsData.status === 'fulfilled') setDoctors(docsData.value?.results || docsData.value || []);
+      if (staffData.status === 'fulfilled') setStaffList(staffData.value?.results || staffData.value || []);
       if (profData.status === 'fulfilled') setProfile(profData.value);
     } catch (err) {
       console.error('Initial data loading failed:', err);
@@ -208,6 +212,7 @@ export default function App() {
               profile={profile}
               customers={customers}
               doctors={doctors}
+              staffList={staffList}
               onOpenAddCustomer={() => setIsAddCustomerOpen(true)}
               onOpenAddDoctor={() => setIsAddDoctorOpen(true)}
               onInvoiceCreated={handleInvoiceCreated}

@@ -79,6 +79,11 @@ export const billingAPI = {
   createDoctor: (data) => request('/billing/doctors/', { method: 'POST', body: JSON.stringify(data) }),
   updateDoctor: (id, data) => request(`/billing/doctors/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
 
+  // Staff & Charge Codes
+  getStaff: () => request('/billing/staff/'),
+  createStaff: (data) => request('/billing/staff/', { method: 'POST', body: JSON.stringify(data) }),
+  updateStaff: (id, data) => request(`/billing/staff/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
+
   // Pharmacy Profile
   getProfile: () => request('/billing/profile/'),
   updateProfile: (data) => request('/billing/profile/', { method: 'POST', body: JSON.stringify(data) }),

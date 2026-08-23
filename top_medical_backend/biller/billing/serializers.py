@@ -1,13 +1,21 @@
 from rest_framework import serializers
 from django.db import transaction
 from decimal import Decimal
-from .models import PharmacyProfile, Doctor, Customer, Invoice, InvoiceItem
+from .models import PharmacyProfile, StaffMember, Doctor, Customer, Invoice, InvoiceItem
 from inventory.models import Medicine, Batch, StockMovement
 
 class PharmacyProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = PharmacyProfile
         fields = '__all__'
+
+
+class StaffMemberSerializer(serializers.ModelSerializer):
+    invoices_count = serializers.IntegerField(source='invoices.count', read_only=True)
+
+    class Meta:
+        model = StaffMember
+        fields = ['id', 'name', 'charge_code', 'role', 'phone', 'is_active', 'invoices_count', 'created_at']
 
 
 class DoctorSerializer(serializers.ModelSerializer):
@@ -39,7 +47,7 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
         model = InvoiceItem
         fields = [
             'id', 'medicine', 'batch', 'medicine_name', 'batch_number', 
-            'expiry_date', 'hsn_code', 'is_loose', 'quantity', 'pack_size', 
+            'expiry_date', 'hsn_code', 'staff_code', 'staff_name', 'is_loose', 'quantity', 'pack_size', 
             'unit_mrp', 'unit_selling_price', 'discount_percent', 
             'gst_rate', 'tax_amount', 'total_amount'
         ]
@@ -61,12 +69,13 @@ class InvoiceSerializer(serializers.ModelSerializer):
     items_data = InvoiceItemCreateSerializer(many=True, write_only=True, required=False)
     customer_details = CustomerSerializer(source='customer', read_only=True)
     doctor_details = DoctorSerializer(source='doctor', read_only=True)
+    staff_details = StaffMemberSerializer(source='staff', read_only=True)
 
     class Meta:
         model = Invoice
         fields = [
-            'id', 'invoice_number', 'customer', 'customer_details', 
-            'customer_name', 'customer_phone', 'customer_address', 
+            'id', 'invoice_number', 'staff', 'staff_details', 'staff_code', 'staff_name',
+            'customer', 'customer_details', 'customer_name', 'customer_phone', 'customer_address', 
             'doctor', 'doctor_details', 'doctor_name', 'prescription_number', 
             'payment_method', 'payment_status', 'subtotal', 'discount_type', 
             'discount_value', 'discount_amount', 'tax_amount', 'cgst_amount', 
@@ -90,11 +99,22 @@ class InvoiceSerializer(serializers.ModelSerializer):
                 validated_data['customer_name'] = customer.name
             if not validated_data.get('customer_phone'):
                 validated_data['customer_phone'] = customer.phone
+        elif not validated_data.get('customer_name'):
+            validated_data['customer_name'] = "Walk-in Customer"
 
         # If doctor is selected, sync doctor name
         doctor = validated_data.get('doctor')
         if doctor and not validated_data.get('doctor_name'):
             validated_data['doctor_name'] = doctor.name
+
+        # If staff is selected, sync staff name & code
+        staff = validated_data.get('staff')
+        if staff:
+            validated_data['staff_code'] = staff.charge_code
+            validated_data['staff_name'] = staff.name
+
+        staff_code = validated_data.get('staff_code', 'SC-101')
+        staff_name = validated_data.get('staff_name', 'Staff 1')
 
         invoice = Invoice.objects.create(**validated_data)
 
@@ -146,7 +166,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
                 quantity_packs=-stock_packs_deducted,
                 quantity_loose=-stock_loose_deducted,
                 reference_id=invoice.invoice_number,
-                notes=f"Sold to {invoice.customer_name} via {invoice.invoice_number}"
+                notes=f"Sold by [{staff_code}] {staff_name} to {invoice.customer_name} via {invoice.invoice_number}"
             )
 
             # Calculate item line totals
@@ -160,6 +180,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
                 invoice=invoice,
                 medicine=batch.medicine,
                 batch=batch,
+                staff_code=staff_code,
+                staff_name=staff_name,
                 medicine_name=batch.medicine.name,
                 batch_number=batch.batch_number,
                 expiry_date=batch.expiry_date,

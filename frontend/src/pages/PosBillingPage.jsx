@@ -18,7 +18,9 @@ import {
   Clock, 
   Sparkles,
   ArrowRight,
-  UserPlus
+  UserPlus,
+  BadgeCheck,
+  UserCheck
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { inventoryAPI, billingAPI } from '../api';
@@ -27,6 +29,7 @@ export default function PosBillingPage({
   profile, 
   customers, 
   doctors, 
+  staffList = [],
   onOpenAddCustomer, 
   onOpenAddDoctor, 
   onInvoiceCreated,
@@ -35,12 +38,19 @@ export default function PosBillingPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [cart, setCart] = useState([]);
   
-  // Customer & Doctor
+  // Staff Charge Code State (Default to first staff member or SC-101)
+  const defaultStaff = staffList[0] || { charge_code: 'SC-101', name: 'Ahmed (Staff 1)' };
+  const [selectedStaffCode, setSelectedStaffCode] = useState(defaultStaff.charge_code);
+  const [selectedStaffName, setSelectedStaffName] = useState(defaultStaff.name);
+
+  // Customer & Doctor (Optional Direct Typing or Select)
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
-  const [walkinName, setWalkinName] = useState('Walk-in Customer');
-  const [walkinPhone, setWalkinPhone] = useState('');
+  const [doctorName, setDoctorName] = useState('');
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [prescriptionNo, setPrescriptionNo] = useState('');
   const [doctorNotes, setDoctorNotes] = useState('');
@@ -58,29 +68,65 @@ export default function PosBillingPage({
   const searchInputRef = useRef(null);
   const currency = profile?.currency_symbol || '₹';
 
-  // Instant POS Search with debounce
+  // Sync staff default if staffList loads after initial render
+  useEffect(() => {
+    if (staffList.length > 0 && !staffList.find(s => s.charge_code === selectedStaffCode)) {
+      setSelectedStaffCode(staffList[0].charge_code);
+      setSelectedStaffName(staffList[0].name);
+    }
+  }, [staffList]);
+
+  // Instant Alphabet Search: query immediately as soon as 1 alphabet is typed
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
+      setSelectedIndex(0);
       return;
     }
 
-    const timer = setTimeout(async () => {
-      setIsSearching(true);
-      try {
-        const results = await inventoryAPI.searchPOS(searchQuery);
-        setSearchResults(results || []);
-      } catch (err) {
-        console.error('POS Search error:', err);
-      } finally {
-        setIsSearching(false);
-      }
-    }, 200);
+    let isMounted = true;
+    setIsSearching(true);
 
-    return () => clearTimeout(timer);
+    inventoryAPI.searchPOS(searchQuery.trim())
+      .then(results => {
+        if (isMounted) {
+          setSearchResults(results || []);
+          setSelectedIndex(0);
+        }
+      })
+      .catch(err => {
+        console.error('POS live search error:', err);
+      })
+      .finally(() => {
+        if (isMounted) setIsSearching(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [searchQuery]);
 
-  // Keyboard shortcut listener (F4 to focus search, F8 to checkout)
+  // Keyboard navigation inside search results (Arrow Down/Up + Enter to Add)
+  const handleSearchKeyDown = (e) => {
+    if (searchResults.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex(prev => (prev + 1) % searchResults.length);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex(prev => (prev - 1 + searchResults.length) % searchResults.length);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (searchResults[selectedIndex]) {
+          addToCart(searchResults[selectedIndex]);
+        }
+      } else if (e.key === 'Escape') {
+        setSearchResults([]);
+      }
+    }
+  };
+
+  // Global Keyboard shortcut listener (F4 to focus search, F8 to checkout)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'F4') {
@@ -95,7 +141,7 @@ export default function PosBillingPage({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cart, isSubmitting, discountType, discountValue, paymentMethod, cashTendered, selectedCustomerId, walkinName, walkinPhone, selectedDoctorId]);
+  }, [cart, isSubmitting, discountType, discountValue, paymentMethod, cashTendered, selectedStaffCode, selectedStaffName, customerName, customerPhone, doctorName]);
 
   // Add medicine to cart (Auto selects best FEFO batch)
   const addToCart = (medicine) => {
@@ -133,6 +179,7 @@ export default function PosBillingPage({
 
     setSearchQuery('');
     setSearchResults([]);
+    searchInputRef.current?.focus();
   };
 
   const handleBatchChange = (index, batchId) => {
@@ -181,6 +228,11 @@ export default function PosBillingPage({
     setCart([]);
     setDiscountValue(0);
     setCashTendered('');
+    setCustomerName('');
+    setCustomerPhone('');
+    setDoctorName('');
+    setPrescriptionNo('');
+    setDoctorNotes('');
     setCheckoutError(null);
   };
 
@@ -222,12 +274,18 @@ export default function PosBillingPage({
       const selectedCust = customers?.find(c => c.id === parseInt(selectedCustomerId));
       const selectedDoc = doctors?.find(d => d.id === parseInt(selectedDoctorId));
 
+      const finalCustName = customerName.trim() || (selectedCust ? selectedCust.name : 'Walk-in Customer');
+      const finalCustPhone = customerPhone.trim() || (selectedCust ? selectedCust.phone : '');
+      const finalDocName = doctorName.trim() || (selectedDoc ? selectedDoc.name : 'Self / OTC');
+
       const payload = {
+        staff_code: selectedStaffCode || 'SC-101',
+        staff_name: selectedStaffName || 'Staff 1',
         customer: selectedCust ? selectedCust.id : null,
-        customer_name: selectedCust ? selectedCust.name : (walkinName || 'Walk-in Customer'),
-        customer_phone: selectedCust ? selectedCust.phone : (walkinPhone || ''),
+        customer_name: finalCustName,
+        customer_phone: finalCustPhone,
         doctor: selectedDoc ? selectedDoc.id : null,
-        doctor_name: selectedDoc ? selectedDoc.name : '',
+        doctor_name: finalDocName,
         prescription_number: prescriptionNo,
         payment_method: paymentMethod,
         payment_status: paymentMethod === 'CREDIT' ? 'DUE' : 'PAID',
@@ -275,11 +333,61 @@ export default function PosBillingPage({
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '20px', padding: '24px', minHeight: 'calc(100vh - 70px)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 390px', gap: '20px', padding: '24px', minHeight: 'calc(100vh - 70px)' }}>
       {/* LEFT AREA: Medicine Search & Active Cart Table */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         
-        {/* Search Bar with live FEFO lookup */}
+        {/* Top Staff Charge Code Quick Selector Bar */}
+        <div className="glass-panel" style={{ padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', background: '#ffffff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <BadgeCheck size={18} color="#0284c7" />
+            <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase' }}>
+              Billing Staff Charge Code:
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {(staffList.length > 0 ? staffList : [
+              { charge_code: 'SC-101', name: 'Ahmed (Staff 1)' },
+              { charge_code: 'SC-102', name: 'Fatima (Staff 2)' },
+              { charge_code: 'SC-103', name: 'Bilal (Staff 3)' },
+            ]).map((staff) => {
+              const active = selectedStaffCode === staff.charge_code;
+              return (
+                <button
+                  key={staff.charge_code}
+                  type="button"
+                  onClick={() => {
+                    setSelectedStaffCode(staff.charge_code);
+                    setSelectedStaffName(staff.name);
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    border: active ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                    background: active ? '#f0f9ff' : '#ffffff',
+                    color: active ? '#0284c7' : '#475569',
+                    fontSize: '12px',
+                    fontWeight: active ? 800 : 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    boxShadow: active ? '0 2px 6px rgba(2, 132, 199, 0.15)' : 'none'
+                  }}
+                >
+                  <span className="mono" style={{ background: active ? '#0284c7' : '#e2e8f0', color: active ? '#ffffff' : '#475569', padding: '1px 5px', borderRadius: '4px', fontSize: '10.5px' }}>
+                    {staff.charge_code}
+                  </span>
+                  <span>{staff.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Instant Search Bar with Live Recommendation Dropdown */}
         <div className="glass-panel" style={{ padding: '16px', position: 'relative' }}>
           <div style={{ position: 'relative' }}>
             <Search size={18} color="#0284c7" style={{ position: 'absolute', left: '14px', top: '13px' }} />
@@ -288,9 +396,10 @@ export default function PosBillingPage({
               type="text"
               className="input-field"
               style={{ paddingLeft: '42px', height: '44px', fontSize: '14px', background: '#f8fafc', borderColor: '#cbd5e1' }}
-              placeholder="Search by Drug Name, Salt Composition, Barcode, or Rack (F4)..."
+              placeholder="Type any alphabet to auto-recommend tablets (e.g., 'a', 'd', 'p', 'b', 'c', 'g', 'm')..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
               autoFocus
             />
             {isSearching && (
@@ -310,23 +419,26 @@ export default function PosBillingPage({
               background: '#ffffff',
               border: '1px solid #cbd5e1',
               borderRadius: '12px',
-              boxShadow: '0 12px 30px rgba(15, 23, 42, 0.12)',
+              boxShadow: '0 15px 35px rgba(15, 23, 42, 0.15)',
               zIndex: 100,
-              maxHeight: '340px',
+              maxHeight: '350px',
               overflowY: 'auto',
               padding: '8px'
             }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', padding: '6px 10px', textTransform: 'uppercase' }}>
-                Medicines in Stock ({searchResults.length} matches)
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Recommended Tablets & Medicines ({searchResults.length} matches)</span>
+                <span>Use ↑ ↓ keys & press Enter</span>
               </div>
-              {searchResults.map((med) => {
+              {searchResults.map((med, idx) => {
                 const totalStock = med.batches?.reduce((acc, b) => acc + (b.is_expired ? 0 : b.pack_quantity), 0) || 0;
                 const nextBatch = med.batches?.find(b => !b.is_expired && b.pack_quantity > 0);
+                const isHighlighted = idx === selectedIndex;
                 
                 return (
                   <div
                     key={med.id}
                     onClick={() => addToCart(med)}
+                    onMouseEnter={() => setSelectedIndex(idx)}
                     style={{
                       padding: '10px 12px',
                       borderRadius: '8px',
@@ -335,19 +447,19 @@ export default function PosBillingPage({
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       borderBottom: '1px solid #f1f5f9',
-                      transition: 'background 0.15s ease'
+                      background: isHighlighted ? '#f0f9ff' : 'transparent',
+                      borderLeft: isHighlighted ? '3px solid #0284c7' : '3px solid transparent',
+                      transition: 'background 0.1s ease'
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#f0f9ff'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                   >
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontWeight: 700, fontSize: '14px', color: '#0f172a' }}>{med.name}</span>
+                        <span style={{ fontWeight: 800, fontSize: '14px', color: '#0f172a' }}>{med.name}</span>
                         <span className="badge badge-cyan">{med.dosage_form}</span>
-                        {med.requires_prescription && <span className="badge badge-rose">Rx Required</span>}
+                        {med.requires_prescription && <span className="badge badge-rose">Rx</span>}
                       </div>
                       <div style={{ fontSize: '12px', color: '#475569', marginTop: '2px' }}>
-                        {med.generic_name || 'Standard Formulation'} • <em>{med.manufacturer}</em>
+                        {med.generic_name || 'Standard Composition'} • <em>{med.manufacturer}</em>
                       </div>
                       <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', display: 'flex', gap: '10px' }}>
                         {med.rack_location && <span><MapPin size={11} style={{ display: 'inline' }} /> {med.rack_location}</span>}
@@ -356,7 +468,7 @@ export default function PosBillingPage({
                     </div>
 
                     <div style={{ textAlign: 'right' }}>
-                      <div className="mono" style={{ fontSize: '14px', fontWeight: 800, color: '#059669' }}>
+                      <div className="mono" style={{ fontSize: '14.5px', fontWeight: 800, color: '#059669' }}>
                         {currency}{nextBatch ? nextBatch.selling_price : '-'}
                         <span style={{ fontSize: '10px', color: '#64748b' }}>/pack</span>
                       </div>
@@ -385,7 +497,8 @@ export default function PosBillingPage({
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <ShoppingCart size={18} color="#0284c7" />
-              <span style={{ fontWeight: 700, fontSize: '14px', color: '#0f172a' }}>Dispensing Cart ({cart.length} items)</span>
+              <span style={{ fontWeight: 800, fontSize: '14px', color: '#0f172a' }}>Dispensing Cart ({cart.length} items)</span>
+              <span className="badge badge-gray mono" style={{ marginLeft: '4px' }}>Billed by: {selectedStaffCode}</span>
             </div>
             {cart.length > 0 && (
               <button onClick={clearCart} className="btn btn-secondary btn-sm" style={{ color: '#e11d48', borderColor: '#fecdd3' }}>
@@ -401,7 +514,7 @@ export default function PosBillingPage({
                 <ShoppingCart size={48} strokeWidth={1} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
                 <h4 style={{ fontSize: '15px', fontWeight: 600, color: '#475569' }}>Cart is Empty</h4>
                 <p style={{ fontSize: '12.5px', marginTop: '4px', color: '#64748b' }}>
-                  Search medicines above or press <kbd style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: '4px', color: '#0284c7', fontWeight: 700 }}>F4</kbd> to add items to this bill.
+                  Start typing any alphabet above (e.g. <strong>A</strong>, <strong>D</strong>, <strong>P</strong>) to add medicines.
                 </p>
               </div>
             ) : (
@@ -546,86 +659,82 @@ export default function PosBillingPage({
         </div>
       </div>
 
-      {/* RIGHT AREA: Customer / Doctor Selection & Checkout Summary */}
+      {/* RIGHT AREA: Optional Customer & Doctor Typing + Checkout Summary */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         
-        {/* Customer & Doctor Card */}
-        <div className="glass-panel" style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: '#0284c7', textTransform: 'uppercase' }}>
-              Patient / Customer
-            </div>
-            <button onClick={onOpenAddCustomer} className="btn btn-secondary btn-sm" style={{ padding: '2px 8px', fontSize: '11px' }}>
-              <UserPlus size={12} /> New
-            </button>
-          </div>
-
+        {/* Optional Patient & Doctor Direct Inputs Card */}
+        <div className="glass-panel" style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          
+          {/* Patient Details (Optional) */}
           <div>
-            <select
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase' }}>
+                Patient / Customer Name <span style={{ fontWeight: 400, color: '#64748b', textTransform: 'none' }}>(Optional)</span>
+              </label>
+              {customers?.length > 0 && (
+                <button 
+                  onClick={onOpenAddCustomer} 
+                  className="btn btn-secondary btn-sm" 
+                  style={{ padding: '1px 6px', fontSize: '10.5px' }}
+                >
+                  <UserPlus size={11} /> Save Record
+                </button>
+              )}
+            </div>
+            
+            <input
+              type="text"
               className="input-field"
-              style={{ fontSize: '12.5px', marginBottom: '8px' }}
-              value={selectedCustomerId}
-              onChange={(e) => {
-                setSelectedCustomerId(e.target.value);
-                const cust = customers?.find(c => c.id === parseInt(e.target.value));
-                if (cust) {
-                  setWalkinName(cust.name);
-                  setWalkinPhone(cust.phone);
-                  if (cust.preferred_doctor) setSelectedDoctorId(cust.preferred_doctor);
-                }
-              }}
-            >
-              <option value="">-- Walk-in Patient (Quick Bill) --</option>
-              {customers?.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.phone}) {parseFloat(c.credit_balance) > 0 ? `[Due: ₹${c.credit_balance}]` : ''}
-                </option>
-              ))}
-            </select>
+              style={{ fontSize: '13px', height: '36px', marginBottom: '6px' }}
+              placeholder="Walk-in Customer (or type patient name)..."
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+            />
 
-            {!selectedCustomerId && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '8px' }}>
-                <input
-                  type="text"
-                  className="input-field"
-                  style={{ fontSize: '12px', height: '32px' }}
-                  placeholder="Patient Name"
-                  value={walkinName}
-                  onChange={(e) => setWalkinName(e.target.value)}
-                />
-                <input
-                  type="tel"
-                  className="input-field mono"
-                  style={{ fontSize: '12px', height: '32px' }}
-                  placeholder="Phone No"
-                  value={walkinPhone}
-                  onChange={(e) => setWalkinPhone(e.target.value)}
-                />
-              </div>
-            )}
+            <input
+              type="tel"
+              className="input-field mono"
+              style={{ fontSize: '12px', height: '32px' }}
+              placeholder="Mobile Number (Optional)..."
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+            />
           </div>
 
-          {/* Doctor selector */}
-          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '10px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <label style={{ fontSize: '11.5px', fontWeight: 600, color: '#475569' }}>
-                Prescribing Doctor
+          {/* Prescribing Doctor Details (Optional) */}
+          <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase' }}>
+                Prescribing Doctor <span style={{ fontWeight: 400, color: '#64748b', textTransform: 'none' }}>(Optional)</span>
               </label>
-              <button onClick={onOpenAddDoctor} className="btn btn-secondary btn-sm" style={{ padding: '1px 6px', fontSize: '10px' }}>
-                + Doctor
-              </button>
+              {doctors?.length > 0 && (
+                <button 
+                  onClick={onOpenAddDoctor} 
+                  className="btn btn-secondary btn-sm" 
+                  style={{ padding: '1px 6px', fontSize: '10.5px' }}
+                >
+                  + Add Doctor
+                </button>
+              )}
             </div>
-            <select
+
+            <input
+              type="text"
               className="input-field"
-              style={{ fontSize: '12.5px' }}
-              value={selectedDoctorId}
-              onChange={(e) => setSelectedDoctorId(e.target.value)}
-            >
-              <option value="">-- OTC / Self Medication --</option>
-              {doctors?.map(d => (
-                <option key={d.id} value={d.id}>{d.name} ({d.specialization})</option>
-              ))}
-            </select>
+              style={{ fontSize: '13px', height: '36px', marginBottom: '6px' }}
+              placeholder="Self / OTC (or type Dr. Name)..."
+              value={doctorName}
+              onChange={(e) => setDoctorName(e.target.value)}
+            />
+
+            <input
+              type="text"
+              className="input-field mono"
+              style={{ fontSize: '12px', height: '32px' }}
+              placeholder="Rx / Prescription # (Optional)..."
+              value={prescriptionNo}
+              onChange={(e) => setPrescriptionNo(e.target.value)}
+            />
           </div>
         </div>
 

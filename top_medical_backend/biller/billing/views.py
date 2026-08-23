@@ -8,9 +8,9 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from datetime import datetime, date
 from decimal import Decimal
-from .models import PharmacyProfile, Doctor, Customer, Invoice, InvoiceItem
+from .models import PharmacyProfile, StaffMember, Doctor, Customer, Invoice, InvoiceItem
 from .serializers import (
-    PharmacyProfileSerializer, DoctorSerializer, CustomerSerializer,
+    PharmacyProfileSerializer, StaffMemberSerializer, DoctorSerializer, CustomerSerializer,
     InvoiceSerializer, InvoiceItemSerializer
 )
 from inventory.models import Batch, StockMovement
@@ -71,6 +71,13 @@ class PharmacyProfileViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
 
+class StaffMemberViewSet(viewsets.ModelViewSet):
+    queryset = StaffMember.objects.all()
+    serializer_class = StaffMemberSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'charge_code', 'role', 'phone']
+
+
 class DoctorViewSet(viewsets.ModelViewSet):
     queryset = Doctor.objects.all()
     serializer_class = DoctorSerializer
@@ -86,17 +93,18 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
 
 class InvoiceViewSet(viewsets.ModelViewSet):
-    queryset = Invoice.objects.all().select_related('customer', 'doctor').prefetch_related('items')
+    queryset = Invoice.objects.all().select_related('customer', 'doctor', 'staff').prefetch_related('items')
     serializer_class = InvoiceSerializer
     filter_backends = [filters.SearchFilter]
-    search_fields = ['invoice_number', 'customer_name', 'customer_phone', 'doctor_name']
+    search_fields = ['invoice_number', 'customer_name', 'customer_phone', 'doctor_name', 'staff_name', 'staff_code']
 
     def get_queryset(self):
-        qs = Invoice.objects.all().select_related('customer', 'doctor').prefetch_related('items')
+        qs = Invoice.objects.all().select_related('customer', 'doctor', 'staff').prefetch_related('items')
         start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
         status_param = self.request.query_params.get('status')
         payment_method = self.request.query_params.get('payment_method')
+        staff_code = self.request.query_params.get('staff_code')
 
         if start_date:
             qs = qs.filter(created_at__date__gte=start_date)
@@ -106,6 +114,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             qs = qs.filter(payment_status=status_param)
         if payment_method:
             qs = qs.filter(payment_method=payment_method)
+        if staff_code:
+            qs = qs.filter(staff_code=staff_code)
 
         return qs
 

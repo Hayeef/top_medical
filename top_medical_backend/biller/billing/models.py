@@ -31,6 +31,21 @@ class PharmacyProfile(models.Model):
         return obj
 
 
+class StaffMember(models.Model):
+    name = models.CharField(max_length=150)
+    charge_code = models.CharField(max_length=50, unique=True, db_index=True, help_text="Unique charge code e.g. SC-101")
+    role = models.CharField(max_length=100, default="Pharmacist / Cashier")
+    phone = models.CharField(max_length=30, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['charge_code']
+
+    def __str__(self):
+        return f"[{self.charge_code}] {self.name}"
+
+
 class Doctor(models.Model):
     name = models.CharField(max_length=150)
     specialization = models.CharField(max_length=100, blank=True, null=True, default="General Physician")
@@ -82,8 +97,14 @@ class Invoice(models.Model):
     ]
 
     invoice_number = models.CharField(max_length=64, unique=True, db_index=True)
+    
+    # Staff / Dispenser tracking
+    staff = models.ForeignKey(StaffMember, on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
+    staff_code = models.CharField(max_length=50, blank=True, null=True, db_index=True, help_text="Staff charge code")
+    staff_name = models.CharField(max_length=150, blank=True, null=True, default="Staff 1")
+    
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
-    customer_name = models.CharField(max_length=150, default="Walk-in Customer")
+    customer_name = models.CharField(max_length=150, default="Walk-in Customer", blank=True)
     customer_phone = models.CharField(max_length=50, blank=True, null=True)
     customer_address = models.CharField(max_length=255, blank=True, null=True)
     
@@ -139,6 +160,9 @@ class InvoiceItem(models.Model):
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='items')
     medicine = models.ForeignKey(Medicine, on_delete=models.PROTECT, related_name='sale_items')
     batch = models.ForeignKey(Batch, on_delete=models.PROTECT, related_name='sale_items')
+    
+    staff_code = models.CharField(max_length=50, blank=True, null=True)
+    staff_name = models.CharField(max_length=150, blank=True, null=True)
     
     medicine_name = models.CharField(max_length=255)
     batch_number = models.CharField(max_length=100)

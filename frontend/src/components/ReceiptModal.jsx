@@ -124,11 +124,14 @@ export default function ReceiptModal({ invoice, profile, onClose }) {
                   <span>{new Date(invoice.created_at).toLocaleDateString()}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-                  <span><strong>Customer:</strong> {invoice.customer_name}</span>
+                  <span><strong>Customer:</strong> {invoice.customer_name || 'Walk-in Customer'}</span>
                   <span>{new Date(invoice.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
-                {invoice.customer_phone && <div><strong>Phone:</strong> {invoice.customer_phone}</div>}
-                {invoice.doctor_name && <div><strong>Doctor:</strong> {invoice.doctor_name}</div>}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                  <span><strong>Billed By:</strong> [{invoice.staff_code || 'SC-101'}] {invoice.staff_name || 'Staff 1'}</span>
+                  {invoice.customer_phone && <span>Ph: {invoice.customer_phone}</span>}
+                </div>
+                {invoice.doctor_name && <div style={{ marginTop: '2px' }}><strong>Doctor:</strong> {invoice.doctor_name}</div>}
               </div>
 
               {/* Items Table */}
@@ -263,6 +266,9 @@ export default function ReceiptModal({ invoice, profile, onClose }) {
                   </div>
                   <div style={{ fontSize: '11px', color: '#475569', marginTop: '4px' }}>
                     Payment: <strong>{invoice.payment_method}</strong> ({invoice.payment_status})
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#0369a1', marginTop: '3px', fontWeight: 600 }}>
+                    Billed By: [{invoice.staff_code || 'SC-101'}] {invoice.staff_name || 'Staff 1'}
                   </div>
                 </div>
               </div>

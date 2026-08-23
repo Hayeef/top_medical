@@ -75,6 +75,20 @@ export const inventoryAPI = {
     body: JSON.stringify(data),
   }),
 
+  // Excel Bulk Inventory Upload
+  uploadExcel: async (formData) => {
+    const url = `${API_BASE_URL}/inventory/medicines/bulk_upload_excel/`;
+    const res = await fetch(url, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to upload Excel file' }));
+      throw new Error(err.error || err.detail || 'Excel bulk upload failed.');
+    }
+    return await res.json();
+  },
+
   // Stock Movements / Logs
   getStockMovements: () => request('/inventory/stock-movements/'),
 };

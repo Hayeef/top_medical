@@ -10,7 +10,8 @@ import {
   Camera,
   LogOut,
   Shield,
-  UserCheck
+  UserCheck,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export default function Header({ 
@@ -22,7 +23,8 @@ export default function Header({
   onLogout,
   onOpenAddMedicine, 
   onOpenAddBatch,
-  onOpenScanBill 
+  onOpenScanBill,
+  onOpenExcelUpload
 }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [theme, setTheme] = useState(localStorage.getItem('tm_theme') || 'light');
@@ -129,6 +131,18 @@ export default function Header({
           </div>
         )}
 
+        {/* Admin Excel Bulk Upload */}
+        {isAdmin && (
+          <button
+            onClick={onOpenExcelUpload}
+            className="btn btn-secondary btn-sm"
+            title="Bulk Import Inventory from Excel (.xlsx, .xls, .csv)"
+          >
+            <FileSpreadsheet size={14} color="#059669" />
+            <span>Excel Upload</span>
+          </button>
+        )}
+
         {/* Admin Quick Bill Scanner */}
         {isAdmin && (
           <button
@@ -137,7 +151,7 @@ export default function Header({
             title="Scan Wholesale Supplier Invoice with Camera or Upload"
           >
             <Camera size={14} />
-            <span>Scan Bill (AI Inward)</span>
+            <span>Scan Bill</span>
           </button>
         )}
 

@@ -8,6 +8,7 @@ import StockAdjustModal from './components/StockAdjustModal';
 import CustomerModal from './components/CustomerModal';
 import DoctorModal from './components/DoctorModal';
 import ScanSupplierBillModal from './components/ScanSupplierBillModal';
+import ExcelBulkUploadModal from './components/ExcelBulkUploadModal';
 
 import LoginPage from './pages/LoginPage';
 import PosBillingPage from './pages/PosBillingPage';
@@ -51,6 +52,7 @@ export default function App() {
   const [isAddMedicineOpen, setIsAddMedicineOpen] = useState(false);
   const [isAddBatchOpen, setIsAddBatchOpen] = useState(false);
   const [isScanBillOpen, setIsScanBillOpen] = useState(false);
+  const [isExcelUploadOpen, setIsExcelUploadOpen] = useState(false);
   const [batchPrefillMedId, setBatchPrefillMedId] = useState(null);
   const [isStockAdjustOpen, setIsStockAdjustOpen] = useState(false);
   const [batchToAdjust, setBatchToAdjust] = useState(null);
@@ -209,6 +211,7 @@ export default function App() {
           onOpenAddMedicine={() => setIsAddMedicineOpen(true)}
           onOpenAddBatch={() => handleOpenAddBatch(null)}
           onOpenScanBill={() => setIsScanBillOpen(true)}
+          onOpenExcelUpload={() => setIsExcelUploadOpen(true)}
         />
 
         <main style={{ flex: 1, overflowY: 'auto' }}>
@@ -250,6 +253,7 @@ export default function App() {
               onOpenAddBatch={handleOpenAddBatch}
               onOpenStockAdjust={handleOpenStockAdjust}
               onOpenScanBill={() => setIsScanBillOpen(true)}
+              onOpenExcelUpload={() => setIsExcelUploadOpen(true)}
             />
           )}
 
@@ -291,6 +295,13 @@ export default function App() {
       </div>
 
       {/* MODALS */}
+      {isExcelUploadOpen && (
+        <ExcelBulkUploadModal
+          onClose={() => setIsExcelUploadOpen(false)}
+          onStockInwarded={loadInitialData}
+        />
+      )}
+
       {isScanBillOpen && (
         <ScanSupplierBillModal
           onClose={() => setIsScanBillOpen(false)}

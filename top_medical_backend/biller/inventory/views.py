@@ -70,20 +70,221 @@ class MedicineViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(medicines, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
-    def low_stock(self, request):
-        """Returns medicines that are at or below their reorder threshold."""
-        today = date.today()
-        medicines = Medicine.objects.filter(is_active=True).prefetch_related('batches')
-        low_stock_list = []
-        for med in medicines:
-            stock = sum(b.pack_quantity for b in med.batches.filter(pack_quantity__gt=0, expiry_date__gt=today))
-            if stock <= med.min_stock_alert:
-                serializer = MedicineSerializer(med)
-                data = serializer.data
-                data['current_stock'] = stock
-                low_stock_list.append(data)
         return Response(low_stock_list)
+
+    @action(detail=False, methods=['post'])
+    @transaction.atomic
+    def bulk_upload_excel(self, request):
+        """
+        Bulk Upload Inventory from Excel (.xlsx, .xls) or CSV spreadsheet.
+        Creates/updates medicines, inward batches, and records stock movements.
+        """
+        uploaded_file = request.FILES.get('excel_file') or request.FILES.get('file')
+        if not uploaded_file:
+            # Check if JSON items sent directly from frontend parser
+            items_payload = request.data.get('items')
+            if items_payload and isinstance(items_payload, list):
+                return self._process_bulk_items(items_payload, source_name="Direct Excel Table")
+            return Response({"error": "No Excel or CSV file provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+        file_name = uploaded_file.name.lower()
+        items_to_process = []
+
+        try:
+            if file_name.endswith('.xlsx') or file_name.endswith('.xls'):
+                import openpyxl
+                wb = openpyxl.load_workbook(uploaded_file, data_only=True)
+                sheet = wb.active
+                headers = []
+                for row_idx, row in enumerate(sheet.iter_rows(values_only=True)):
+                    if row_idx == 0:
+                        headers = [str(cell).strip().lower() if cell is not None else '' for cell in row]
+                        continue
+                    if not any(row):
+                        continue
+                    row_dict = {}
+                    for col_idx, val in enumerate(row):
+                        if col_idx < len(headers) and headers[col_idx]:
+                            row_dict[headers[col_idx]] = val
+                    items_to_process.append(self._normalize_excel_row(row_dict))
+            else:
+                import csv
+                import io
+                decoded_file = uploaded_file.read().decode('utf-8-sig', errors='replace')
+                reader = csv.DictReader(io.StringIO(decoded_file))
+                for row in reader:
+                    normalized_row = {k.strip().lower(): v for k, v in row.items() if k}
+                    items_to_process.append(self._normalize_excel_row(normalized_row))
+        except Exception as err:
+            return Response({"error": f"Failed to parse Excel file: {str(err)}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not items_to_process:
+            return Response({"error": "No valid medicine rows found in the uploaded file."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return self._process_bulk_items(items_to_process, source_name=uploaded_file.name)
+
+    def _normalize_excel_row(self, d):
+        def get_val(*keys, default=''):
+            for k in keys:
+                for actual_k, v in d.items():
+                    if k in actual_k:
+                        return v if v is not None else default
+            return default
+
+        name = str(get_val('medicine', 'drug', 'name', 'product')).strip()
+        generic = str(get_val('generic', 'composition', 'salt')).strip()
+        category = str(get_val('category', 'dept', default='General')).strip()
+        form = str(get_val('form', 'type', 'dosage', default='Tablet')).strip()
+        mfg = str(get_val('manufacturer', 'company', 'mfg', 'brand', default='Pharma Co')).strip()
+        hsn = str(get_val('hsn', default='3004')).strip()
+        batch_no = str(get_val('batch', default=f"EX-{date.today().strftime('%y%m')}1")).strip()
+        
+        # Expiry date parsing
+        raw_exp = get_val('expiry', 'exp', default='')
+        if isinstance(raw_exp, datetime) or isinstance(raw_exp, date):
+            exp_date_str = raw_exp.strftime('%Y-%m-%d')
+        elif raw_exp:
+            exp_str = str(raw_exp).strip()
+            if '/' in exp_str:
+                parts = exp_str.split('/')
+                if len(parts) == 2:  # MM/YY
+                    exp_date_str = f"20{parts[1]}-{parts[0].zfill(2)}-28"
+                elif len(parts) == 3:  # DD/MM/YYYY
+                    exp_date_str = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+                else:
+                    exp_date_str = (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
+            elif '-' in exp_str and len(exp_str) == 10:
+                exp_date_str = exp_str
+            else:
+                exp_date_str = (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
+        else:
+            exp_date_str = (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
+
+        try: pack_sz = int(get_val('size', 'pack_size', default=10))
+        except: pack_sz = 10
+        
+        try: pack_qty = int(get_val('quantity', 'qty', 'stock', 'packs', default=10))
+        except: pack_qty = 10
+
+        try: purchase_pr = float(get_val('purchase', 'cost', 'rate', default=50.0))
+        except: purchase_pr = 50.0
+
+        try: mrp_pr = float(get_val('mrp', default=purchase_pr * 1.4))
+        except: mrp_pr = purchase_pr * 1.4
+
+        try: selling_pr = float(get_val('selling', 'sell', 'sp', default=mrp_pr * 0.9))
+        except: selling_pr = mrp_pr * 0.9
+
+        try: gst_val = float(get_val('gst', 'tax', default=12.0))
+        except: gst_val = 12.0
+
+        rack = str(get_val('rack', 'shelf', 'location', default='Rack A-1')).strip()
+        rx_val = str(get_val('prescription', 'rx', default='no')).lower() in ['yes', 'true', '1', 'y']
+
+        return {
+            "medicine_name": name,
+            "generic_name": generic,
+            "category": category or 'General',
+            "dosage_form": form or 'Tablet',
+            "manufacturer": mfg or 'Pharma Co',
+            "hsn_code": hsn or '3004',
+            "batch_number": batch_no,
+            "expiry_date": exp_date_str,
+            "pack_size": pack_sz,
+            "pack_quantity": pack_qty,
+            "purchase_price": purchase_pr,
+            "mrp": mrp_pr,
+            "selling_price": selling_pr,
+            "gst_rate": gst_val,
+            "rack_location": rack,
+            "requires_prescription": rx_val
+        }
+
+    def _process_bulk_items(self, items, source_name="Excel Upload"):
+        supplier, _ = Supplier.objects.get_or_create(
+            name="Excel Bulk Inward",
+            defaults={"contact_person": "Bulk Inventory Import", "phone": "+91 98000 00000"}
+        )
+
+        inwarded_count = 0
+        new_medicines_count = 0
+        total_inward_value = Decimal('0.00')
+
+        for item in items:
+            med_name = item.get('medicine_name', '').strip()
+            if not med_name:
+                continue
+
+            category_name = item.get('category', 'General')
+            category, _ = Category.objects.get_or_create(name=category_name)
+
+            medicine, created_med = Medicine.objects.get_or_create(
+                name=med_name,
+                defaults={
+                    "generic_name": item.get('generic_name', ''),
+                    "category": category,
+                    "dosage_form": item.get('dosage_form', 'Tablet'),
+                    "manufacturer": item.get('manufacturer', 'Pharma Co'),
+                    "hsn_code": item.get('hsn_code', '3004'),
+                    "rack_location": item.get('rack_location', 'Rack A-1'),
+                    "min_stock_alert": 10,
+                    "requires_prescription": item.get('requires_prescription', False),
+                    "gst_rate": Decimal(str(item.get('gst_rate', 12.0))),
+                }
+            )
+            if created_med:
+                new_medicines_count += 1
+
+            batch_num = str(item.get('batch_number', f"B-{date.today().strftime('%y%m%d')}")).strip()
+            pack_qty = int(item.get('pack_quantity', 1))
+            pack_sz = int(item.get('pack_size', 10))
+            purchase_pr = Decimal(str(item.get('purchase_price', 50.0)))
+            mrp_pr = Decimal(str(item.get('mrp', 90.0)))
+            selling_pr = Decimal(str(item.get('selling_price', 80.0)))
+            exp_date = item.get('expiry_date') or (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
+
+            batch, created_batch = Batch.objects.get_or_create(
+                medicine=medicine,
+                batch_number=batch_num,
+                defaults={
+                    "supplier": supplier,
+                    "expiry_date": exp_date,
+                    "purchase_price": purchase_pr,
+                    "mrp": mrp_pr,
+                    "selling_price": selling_pr,
+                    "pack_size": pack_sz,
+                    "pack_quantity": pack_qty,
+                    "loose_quantity": 0,
+                }
+            )
+
+            if not created_batch:
+                batch.pack_quantity += pack_qty
+                batch.purchase_price = purchase_pr
+                batch.mrp = mrp_pr
+                batch.selling_price = selling_pr
+                batch.expiry_date = exp_date
+                batch.save()
+
+            StockMovement.objects.create(
+                batch=batch,
+                movement_type='PURCHASE',
+                quantity_packs=pack_qty,
+                quantity_loose=0,
+                reference_id=f"EXCEL-{date.today().strftime('%Y%m%d')}",
+                notes=f"Bulk Excel Inward from {source_name}"
+            )
+
+            total_inward_value += (purchase_pr * Decimal(pack_qty))
+            inwarded_count += 1
+
+        return Response({
+            "success": True,
+            "message": f"Successfully processed {inwarded_count} medicine batches from Excel ({new_medicines_count} new medicines created).",
+            "total_items_processed": inwarded_count,
+            "new_medicines_created": new_medicines_count,
+            "total_inward_value": round(total_inward_value, 2)
+        }, status=status.HTTP_201_CREATED)
 
 
 class BatchViewSet(viewsets.ModelViewSet):

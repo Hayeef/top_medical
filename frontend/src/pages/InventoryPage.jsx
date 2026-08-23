@@ -17,7 +17,8 @@ import {
   Sliders,
   CheckCircle,
   Camera,
-  ShoppingCart
+  ShoppingCart,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export default function InventoryPage({ 
@@ -29,6 +30,7 @@ export default function InventoryPage({
   onOpenAddBatch, 
   onOpenStockAdjust,
   onOpenScanBill,
+  onOpenExcelUpload,
   setActiveTab 
 }) {
   const [search, setSearch] = useState('');
@@ -105,9 +107,15 @@ export default function InventoryPage({
         {/* Action Buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {isAdmin && (
+            <button onClick={onOpenExcelUpload} className="btn btn-secondary">
+              <FileSpreadsheet size={15} color="#059669" />
+              <span>📊 Excel Bulk Import</span>
+            </button>
+          )}
+          {isAdmin && (
             <button onClick={onOpenScanBill} className="btn btn-emerald">
               <Camera size={15} />
-              <span>📸 Scan Supplier Bill</span>
+              <span>📸 Scan Bill</span>
             </button>
           )}
           {isAdmin && (

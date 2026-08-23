@@ -8,39 +8,21 @@ import {
   ShieldCheck, 
   KeyRound, 
   ArrowRight, 
-  AlertCircle,
-  Sparkles,
-  CheckCircle2,
-  Shield,
-  UserCheck,
-  ShoppingCart
+  AlertCircle
 } from 'lucide-react';
 import { authAPI } from '../api';
 
 export default function LoginPage({ onLoginSuccess }) {
-  const [roleMode, setRoleMode] = useState('ADMIN'); // 'ADMIN' or 'CASHIER'
-  const [email, setEmail] = useState('admin@topmedical.com');
+  const [identifier, setIdentifier] = useState('admin@topmedical.com');
   const [password, setPassword] = useState('AdminTopMedical11@');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const selectRole = (role) => {
-    setRoleMode(role);
-    setError(null);
-    if (role === 'ADMIN') {
-      setEmail('admin@topmedical.com');
-      setPassword('AdminTopMedical11@');
-    } else {
-      setEmail('topmedicalnatekal@gmail.com');
-      setPassword('Topmedical11@');
-    }
-  };
-
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
-    if (!email.trim() || !password) {
-      setError('Please enter your email and password');
+    if (!identifier.trim() || !password) {
+      setError('Please enter both your User ID / Email and Password.');
       return;
     }
 
@@ -48,7 +30,7 @@ export default function LoginPage({ onLoginSuccess }) {
     setError(null);
     try {
       const response = await authAPI.login({
-        email: email.trim(),
+        email: identifier.trim(),
         password: password,
       });
 
@@ -60,10 +42,16 @@ export default function LoginPage({ onLoginSuccess }) {
         setError(response?.error || 'Login failed. Please check your credentials.');
       }
     } catch (err) {
-      setError(err.message || 'Invalid email or password. Please try again.');
+      setError(err.message || 'Invalid User ID or password. Please try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const fillCredentials = (user, pass) => {
+    setIdentifier(user);
+    setPassword(pass);
+    setError(null);
   };
 
   return (
@@ -78,7 +66,7 @@ export default function LoginPage({ onLoginSuccess }) {
       position: 'relative',
       overflow: 'hidden'
     }}>
-      {/* Soft Ambient decorative glow */}
+      {/* Background ambient lighting */}
       <div style={{
         position: 'absolute',
         width: '500px',
@@ -100,11 +88,11 @@ export default function LoginPage({ onLoginSuccess }) {
         pointerEvents: 'none'
       }}></div>
 
-      {/* Main Login Card */}
+      {/* Single Unified Login Card */}
       <div style={{
         width: '100%',
-        maxWidth: '480px',
-        padding: '36px 32px',
+        maxWidth: '440px',
+        padding: '38px 34px',
         borderRadius: '24px',
         background: '#ffffff',
         border: '1px solid #e2e8f0',
@@ -114,7 +102,7 @@ export default function LoginPage({ onLoginSuccess }) {
       }}>
         
         {/* Brand Header */}
-        <div style={{ textAlign: 'center', marginBottom: '22px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '26px' }}>
           <div style={{
             width: '56px',
             height: '56px',
@@ -123,99 +111,18 @@ export default function LoginPage({ onLoginSuccess }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            margin: '0 auto 12px',
+            margin: '0 auto 14px',
             boxShadow: '0 8px 20px rgba(2, 132, 199, 0.25)'
           }}>
             <HeartPulse size={28} color="#ffffff" strokeWidth={2.5} />
           </div>
 
-          <h2 style={{ fontSize: '21px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', margin: 0 }}>
+          <h2 style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', margin: 0 }}>
             TOP MEDICAL PHARMACY
           </h2>
-          <p style={{ fontSize: '13px', color: '#64748b', marginTop: '3px' }}>
-            Point of Sale & Inventory Management Portal
+          <p style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
+            Point of Sale & Inventory Management System
           </p>
-        </div>
-
-        {/* Role Selector Tabs (Admin vs Cashier) */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '8px',
-          background: '#f8fafc',
-          padding: '4px',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          marginBottom: '20px'
-        }}>
-          <button
-            type="button"
-            onClick={() => selectRole('ADMIN')}
-            style={{
-              padding: '10px 12px',
-              borderRadius: '9px',
-              border: 'none',
-              background: roleMode === 'ADMIN' ? '#ffffff' : 'transparent',
-              color: roleMode === 'ADMIN' ? '#0284c7' : '#64748b',
-              fontWeight: roleMode === 'ADMIN' ? 800 : 600,
-              fontSize: '12.5px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              boxShadow: roleMode === 'ADMIN' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <Shield size={15} color={roleMode === 'ADMIN' ? '#0284c7' : '#64748b'} />
-            <span>Admin Access</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => selectRole('CASHIER')}
-            style={{
-              padding: '10px 12px',
-              borderRadius: '9px',
-              border: 'none',
-              background: roleMode === 'CASHIER' ? '#ffffff' : 'transparent',
-              color: roleMode === 'CASHIER' ? '#059669' : '#64748b',
-              fontWeight: roleMode === 'CASHIER' ? 800 : 600,
-              fontSize: '12.5px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              boxShadow: roleMode === 'CASHIER' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <ShoppingCart size={15} color={roleMode === 'CASHIER' ? '#059669' : '#64748b'} />
-            <span>Billing Staff</span>
-          </button>
-        </div>
-
-        {/* Role Privileges Banner */}
-        <div style={{
-          padding: '8px 12px',
-          background: roleMode === 'ADMIN' ? '#f0f9ff' : '#ecfdf5',
-          border: `1px solid ${roleMode === 'ADMIN' ? '#bae6fd' : '#a7f3d0'}`,
-          borderRadius: '8px',
-          fontSize: '11.5px',
-          color: roleMode === 'ADMIN' ? '#0369a1' : '#047857',
-          marginBottom: '18px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px'
-        }}>
-          <Sparkles size={14} />
-          <span>
-            {roleMode === 'ADMIN' 
-              ? 'Admin: Full access, Inventory, AI Supplier Bill Inward, Reports & Settings'
-              : 'Billing Staff: High-speed POS Billing, Patient Dispensing & Bill Reprinting'}
-          </span>
         </div>
 
         {/* Error Alert */}
@@ -230,7 +137,7 @@ export default function LoginPage({ onLoginSuccess }) {
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            marginBottom: '18px'
+            marginBottom: '20px'
           }}>
             <AlertCircle size={18} style={{ flexShrink: 0 }} />
             <span>{error}</span>
@@ -238,30 +145,31 @@ export default function LoginPage({ onLoginSuccess }) {
         )}
 
         {/* Login Form */}
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
           
-          {/* Email / User ID */}
+          {/* User ID / Email Input */}
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px', display: 'block' }}>
-              {roleMode === 'ADMIN' ? 'Admin Email / User ID' : 'Cashier User ID / Email'}
+            <label style={{ fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px', display: 'block' }}>
+              User ID / Email
             </label>
             <div style={{ position: 'relative' }}>
               <Mail size={17} color="#0284c7" style={{ position: 'absolute', left: '14px', top: '13px' }} />
               <input
-                type="email"
+                type="text"
                 required
                 className="input-field mono"
-                style={{ paddingLeft: '42px', height: '44px', fontSize: '13.5px', background: '#f8fafc' }}
-                placeholder={roleMode === 'ADMIN' ? 'admin@topmedical.com' : 'topmedicalnatekal@gmail.com'}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                style={{ paddingLeft: '42px', height: '44px', fontSize: '13.5px', background: '#f8fafc', borderColor: '#cbd5e1' }}
+                placeholder="Enter User ID or Email..."
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                autoFocus
               />
             </div>
           </div>
 
-          {/* Password */}
+          {/* Password Input */}
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px', display: 'block' }}>
+            <label style={{ fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px', display: 'block' }}>
               Password
             </label>
             <div style={{ position: 'relative' }}>
@@ -270,7 +178,7 @@ export default function LoginPage({ onLoginSuccess }) {
                 type={showPassword ? 'text' : 'password'}
                 required
                 className="input-field"
-                style={{ paddingLeft: '42px', paddingRight: '42px', height: '44px', fontSize: '14px', background: '#f8fafc' }}
+                style={{ paddingLeft: '42px', paddingRight: '42px', height: '44px', fontSize: '14px', background: '#f8fafc', borderColor: '#cbd5e1' }}
                 placeholder="••••••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -295,45 +203,60 @@ export default function LoginPage({ onLoginSuccess }) {
             </div>
           </div>
 
-          {/* Submit Button */}
+          {/* Single Sign In Button */}
           <button
             type="submit"
             disabled={loading}
-            className={`btn ${roleMode === 'ADMIN' ? 'btn-primary' : 'btn-emerald'} btn-lg`}
+            className="btn btn-primary btn-lg"
             style={{ width: '100%', height: '46px', marginTop: '6px', fontSize: '14.5px' }}
           >
             {loading ? (
-              <span>Authenticating...</span>
+              <span>Signing in...</span>
             ) : (
               <>
-                <span>Sign In as {roleMode === 'ADMIN' ? 'Administrator' : 'Billing Staff'}</span>
+                <span>Sign In to Pharmacy Portal</span>
                 <ArrowRight size={17} />
               </>
             )}
           </button>
         </form>
 
-        {/* Quick Credentials Info Box */}
+        {/* Quick 1-Click Credential Helpers */}
         <div style={{
-          marginTop: '20px',
+          marginTop: '22px',
           padding: '12px 14px',
           background: '#f8fafc',
-          borderRadius: '10px',
+          borderRadius: '12px',
           border: '1px solid #e2e8f0',
-          fontSize: '11.5px',
-          color: '#475569'
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '8px'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-            <span>Admin: <strong className="mono" style={{ color: '#0284c7' }}>admin@topmedical.com</strong></span>
-            <span className="mono">AdminTopMedical11@</span>
+          <div style={{ fontSize: '11px', color: '#64748b' }}>
+            <div>Auto-detects role on login</div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Cashier: <strong className="mono" style={{ color: '#059669' }}>topmedicalnatekal@gmail.com</strong></span>
-            <span className="mono">Topmedical11@</span>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              type="button"
+              onClick={() => fillCredentials('admin@topmedical.com', 'AdminTopMedical11@')}
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: '11px', padding: '4px 8px' }}
+            >
+              <KeyRound size={11} color="#0284c7" /> Fill Admin
+            </button>
+            <button
+              type="button"
+              onClick={() => fillCredentials('topmedicalnatekal@gmail.com', 'Topmedical11@')}
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: '11px', padding: '4px 8px' }}
+            >
+              <KeyRound size={11} color="#059669" /> Fill Staff
+            </button>
           </div>
         </div>
 
-        {/* Security & Compliance Footer */}
+        {/* Security Footer */}
         <div style={{
           marginTop: '20px',
           paddingTop: '14px',
@@ -341,15 +264,15 @@ export default function LoginPage({ onLoginSuccess }) {
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          gap: '16px',
+          gap: '12px',
           fontSize: '11px',
           color: '#64748b'
         }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <ShieldCheck size={13} color="#059669" /> Role-Protected Access
+            <ShieldCheck size={13} color="#059669" /> Automatic Role Authentication
           </span>
           <span>•</span>
-          <span>DL 20B/21B Authorized</span>
+          <span>DL 20B/21B</span>
         </div>
       </div>
     </div>

@@ -1,0 +1,16 @@
+# Python & Virtual Environments
+top_medical_backend/env/
+env/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.sqlite3
+
+# Node & Frontend Build
+frontend/node_modules/
+frontend/dist/
+dist/
+.vite/
+.DS_Store
+*.log

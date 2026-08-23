@@ -7,8 +7,10 @@ import {
   Moon, 
   Clock, 
   ShieldCheck, 
-  HelpCircle,
-  Sparkles
+  Camera,
+  LogOut,
+  Shield,
+  UserCheck
 } from 'lucide-react';
 
 export default function Header({ 
@@ -16,11 +18,16 @@ export default function Header({
   setActiveTab, 
   summary, 
   profile, 
+  user,
+  onLogout,
   onOpenAddMedicine, 
-  onOpenAddBatch 
+  onOpenAddBatch,
+  onOpenScanBill 
 }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [theme, setTheme] = useState(localStorage.getItem('tm_theme') || 'light');
+
+  const isAdmin = user?.is_superuser || user?.is_staff || user?.email?.includes('admin');
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -54,7 +61,7 @@ export default function Header({
   return (
     <header className="no-print" style={{
       height: '68px',
-      padding: '0 28px',
+      padding: '0 24px',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -66,86 +73,93 @@ export default function Header({
       boxShadow: '0 1px 4px rgba(0, 0, 0, 0.02)'
     }}>
       {/* Page Title & Status */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
         <div>
-          <h2 style={{ fontSize: '17px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.01em' }}>
+          <h2 style={{ fontSize: '16.5px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.01em', margin: 0 }}>
             {getPageTitle()}
           </h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11.5px', color: '#64748b' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#059669', fontWeight: 600 }}>
-              <ShieldCheck size={13} /> GST & Drug License Compliant
+              <ShieldCheck size={13} /> DL 20B: {profile?.dl_number_20b || 'KA-B1-20B-12345'}
             </span>
             <span>•</span>
             <span className="mono" style={{ color: '#94a3b8' }}>
-              DL: {profile?.dl_number_20b || 'KA-B1-20B-12345'}
+              Role: <strong style={{ color: isAdmin ? '#0284c7' : '#059669' }}>{isAdmin ? 'Admin' : 'Cashier'}</strong>
             </span>
           </div>
         </div>
       </div>
 
       {/* Right Controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        
         {/* Live Date / Time */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           gap: '6px',
-          padding: '6px 12px',
+          padding: '6px 10px',
           background: '#f8fafc',
           border: '1px solid #e2e8f0',
           borderRadius: '8px',
-          fontSize: '12px',
+          fontSize: '11.5px',
           color: '#475569'
         }}>
-          <Clock size={14} color="#0284c7" />
+          <Clock size={13} color="#0284c7" />
           <span className="mono">
-            {currentTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} | {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            {currentTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} | {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
         </div>
 
-        {/* Quick Today Revenue Widget */}
-        {summary && (
+        {/* Quick Today Revenue Widget (Admin Only) */}
+        {isAdmin && summary && (
           <div style={{
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            padding: '6px 14px',
+            padding: '6px 12px',
             background: 'linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)',
             border: '1px solid #a7f3d0',
             borderRadius: '8px',
           }}>
-            <span style={{ fontSize: '11.5px', color: '#047857', fontWeight: 600 }}>Today Sales:</span>
-            <span className="mono" style={{ fontSize: '13.5px', fontWeight: 800, color: '#059669' }}>
+            <span style={{ fontSize: '11px', color: '#047857', fontWeight: 600 }}>Today:</span>
+            <span className="mono" style={{ fontSize: '13px', fontWeight: 800, color: '#059669' }}>
               {profile?.currency_symbol || '₹'}{summary.today_revenue?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </span>
           </div>
         )}
 
-        {/* Action Buttons */}
-        <button
-          onClick={onOpenAddBatch}
-          className="btn btn-secondary btn-sm"
-          title="Add New Purchase Stock Batch (F4)"
-        >
-          <PackagePlus size={15} color="#0284c7" />
-          <span>Stock Inward</span>
-        </button>
+        {/* Admin Quick Bill Scanner */}
+        {isAdmin && (
+          <button
+            onClick={onOpenScanBill}
+            className="btn btn-emerald btn-sm"
+            title="Scan Wholesale Supplier Invoice with Camera or Upload"
+          >
+            <Camera size={14} />
+            <span>Scan Bill (AI Inward)</span>
+          </button>
+        )}
 
-        <button
-          onClick={onOpenAddMedicine}
-          className="btn btn-secondary btn-sm"
-          title="Create New Medicine (F3)"
-        >
-          <PlusCircle size={15} color="#059669" />
-          <span>+ Medicine</span>
-        </button>
+        {/* Admin Manual Stock Inward */}
+        {isAdmin && (
+          <button
+            onClick={onOpenAddBatch}
+            className="btn btn-secondary btn-sm"
+            title="Manual Purchase Stock Batch Entry (F4)"
+          >
+            <PackagePlus size={14} color="#0284c7" />
+            <span>+ Batch</span>
+          </button>
+        )}
 
+        {/* POS New Bill Button */}
         {activeTab !== 'pos' && (
           <button
             onClick={() => setActiveTab('pos')}
             className="btn btn-primary btn-sm"
           >
-            <ShoppingCart size={15} />
+            <ShoppingCart size={14} />
             <span>New Bill (F2)</span>
           </button>
         )}
@@ -154,10 +168,26 @@ export default function Header({
         <button
           onClick={toggleTheme}
           className="btn btn-secondary btn-sm"
-          style={{ width: '34px', height: '34px', padding: 0 }}
+          style={{ width: '32px', height: '32px', padding: 0 }}
           title="Toggle Light / Dark Mode"
         >
-          {theme === 'light' ? <Moon size={16} color="#475569" /> : <Sun size={16} color="#d97706" />}
+          {theme === 'light' ? <Moon size={15} color="#475569" /> : <Sun size={15} color="#d97706" />}
+        </button>
+
+        {/* Prominent Header Sign Out Button */}
+        <button
+          onClick={onLogout}
+          className="btn btn-secondary btn-sm"
+          style={{
+            borderColor: '#fecdd3',
+            color: '#e11d48',
+            background: '#fff1f2',
+            fontWeight: 700
+          }}
+          title="Sign Out of Session"
+        >
+          <LogOut size={14} />
+          <span>Sign Out</span>
         </button>
       </div>
     </header>

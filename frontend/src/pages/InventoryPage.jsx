@@ -18,15 +18,18 @@ export default function InventoryPage({
   medicines, 
   categories, 
   profile, 
+  user,
   onOpenAddMedicine, 
   onOpenAddBatch, 
-  onOpenStockAdjust 
+  onOpenStockAdjust,
+  onOpenScanBill 
 }) {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [filterRx, setFilterRx] = useState('');
   const [expandedMedId, setExpandedMedId] = useState(null);
 
+  const isAdmin = user?.is_superuser || user?.is_staff || user?.email?.includes('admin');
   const currency = profile?.currency_symbol || '₹';
 
   // Filter medicines
@@ -94,14 +97,23 @@ export default function InventoryPage({
 
         {/* Action Buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button onClick={onOpenAddBatch} className="btn btn-secondary">
-            <PackagePlus size={16} color="#06b6d4" />
-            <span>Stock Inward (F4)</span>
-          </button>
-          <button onClick={onOpenAddMedicine} className="btn btn-primary">
-            <Plus size={16} />
-            <span>+ Add Medicine (F3)</span>
-          </button>
+          {isAdmin && (
+            <button onClick={onOpenScanBill} className="btn btn-emerald">
+              <span>📸 Scan Supplier Bill</span>
+            </button>
+          )}
+          {isAdmin && (
+            <button onClick={() => onOpenAddBatch(null)} className="btn btn-secondary">
+              <PackagePlus size={16} color="#06b6d4" />
+              <span>Stock Inward (F4)</span>
+            </button>
+          )}
+          {isAdmin && (
+            <button onClick={onOpenAddMedicine} className="btn btn-primary">
+              <Plus size={16} />
+              <span>+ Add Medicine (F3)</span>
+            </button>
+          )}
         </div>
       </div>
 

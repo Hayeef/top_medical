@@ -7,6 +7,7 @@ import AddBatchModal from './components/AddBatchModal';
 import StockAdjustModal from './components/StockAdjustModal';
 import CustomerModal from './components/CustomerModal';
 import DoctorModal from './components/DoctorModal';
+import ScanSupplierBillModal from './components/ScanSupplierBillModal';
 
 import LoginPage from './pages/LoginPage';
 import PosBillingPage from './pages/PosBillingPage';
@@ -49,6 +50,7 @@ export default function App() {
   // Modal dialog states
   const [isAddMedicineOpen, setIsAddMedicineOpen] = useState(false);
   const [isAddBatchOpen, setIsAddBatchOpen] = useState(false);
+  const [isScanBillOpen, setIsScanBillOpen] = useState(false);
   const [batchPrefillMedId, setBatchPrefillMedId] = useState(null);
   const [isStockAdjustOpen, setIsStockAdjustOpen] = useState(false);
   const [batchToAdjust, setBatchToAdjust] = useState(null);
@@ -193,6 +195,7 @@ export default function App() {
         profile={profile} 
         user={authUser}
         onLogout={handleLogout}
+        onOpenScanBill={() => setIsScanBillOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -202,8 +205,11 @@ export default function App() {
           setActiveTab={setActiveTab} 
           summary={summary}
           profile={profile}
+          user={authUser}
+          onLogout={handleLogout}
           onOpenAddMedicine={() => setIsAddMedicineOpen(true)}
           onOpenAddBatch={() => handleOpenAddBatch(null)}
+          onOpenScanBill={() => setIsScanBillOpen(true)}
         />
 
         <main style={{ flex: 1, overflowY: 'auto' }}>
@@ -227,9 +233,11 @@ export default function App() {
               categoriesDist={categoriesDist}
               topSelling={topSelling}
               profile={profile}
+              user={authUser}
               setActiveTab={setActiveTab}
               onOpenAddMedicine={() => setIsAddMedicineOpen(true)}
               onOpenAddBatch={() => handleOpenAddBatch(null)}
+              onOpenScanBill={() => setIsScanBillOpen(true)}
             />
           )}
 
@@ -238,9 +246,11 @@ export default function App() {
               medicines={medicines}
               categories={categories}
               profile={profile}
+              user={authUser}
               onOpenAddMedicine={() => setIsAddMedicineOpen(true)}
               onOpenAddBatch={handleOpenAddBatch}
               onOpenStockAdjust={handleOpenStockAdjust}
+              onOpenScanBill={() => setIsScanBillOpen(true)}
             />
           )}
 
@@ -255,6 +265,7 @@ export default function App() {
           {activeTab === 'invoices' && (
             <InvoicesPage
               profile={profile}
+              user={authUser}
               onOpenReceipt={(inv) => setReceiptInvoice(inv)}
             />
           )}
@@ -281,6 +292,13 @@ export default function App() {
       </div>
 
       {/* MODALS */}
+      {isScanBillOpen && (
+        <ScanSupplierBillModal
+          onClose={() => setIsScanBillOpen(false)}
+          onStockInwarded={loadInitialData}
+        />
+      )}
+
       {receiptInvoice && (
         <ReceiptModal
           invoice={receiptInvoice}

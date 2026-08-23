@@ -57,6 +57,24 @@ export const inventoryAPI = {
   createSupplier: (data) => request('/inventory/suppliers/', { method: 'POST', body: JSON.stringify(data) }),
   updateSupplier: (id, data) => request(`/inventory/suppliers/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
 
+  // AI / OCR Supplier Bill Inward Scanner
+  scanSupplierBill: async (formData) => {
+    const url = `${API_BASE_URL}/inventory/batches/scan_supplier_bill/`;
+    const res = await fetch(url, {
+      method: 'POST',
+      body: formData, // Sending FormData directly for multipart file uploads
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to scan invoice' }));
+      throw new Error(err.detail || 'Bill scanner failed to parse file.');
+    }
+    return await res.json();
+  },
+  bulkInwardFromBill: (data) => request('/inventory/batches/bulk_inward_from_bill/', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+
   // Stock Movements / Logs
   getStockMovements: () => request('/inventory/stock-movements/'),
 };

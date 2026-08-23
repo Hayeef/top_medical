@@ -166,11 +166,10 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    if (window.confirm("Are you sure you want to sign out of Top Medical Pharmacy?")) {
-      localStorage.removeItem('tm_auth_user');
-      localStorage.removeItem('tm_auth_token');
-      setAuthUser(null);
-    }
+    localStorage.removeItem('tm_auth_user');
+    localStorage.removeItem('tm_auth_token');
+    setAuthUser(null);
+    setActiveTab('pos');
   };
 
   // If not authenticated, display Login Interface

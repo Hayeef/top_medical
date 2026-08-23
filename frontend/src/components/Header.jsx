@@ -174,20 +174,24 @@ export default function Header({
           {theme === 'light' ? <Moon size={15} color="#475569" /> : <Sun size={15} color="#d97706" />}
         </button>
 
-        {/* Prominent Header Sign Out Button */}
+        {/* Prominent Header Logout Button */}
         <button
           onClick={onLogout}
-          className="btn btn-secondary btn-sm"
+          className="btn btn-sm"
           style={{
-            borderColor: '#fecdd3',
-            color: '#e11d48',
-            background: '#fff1f2',
-            fontWeight: 700
+            borderColor: '#fca5a5',
+            color: '#dc2626',
+            background: '#fef2f2',
+            fontWeight: 800,
+            fontSize: '12px',
+            padding: '6px 12px',
+            boxShadow: '0 1px 3px rgba(220, 38, 38, 0.1)',
+            cursor: 'pointer'
           }}
-          title="Sign Out of Session"
+          title="Log out and return to login page"
         >
-          <LogOut size={14} />
-          <span>Sign Out</span>
+          <LogOut size={15} color="#dc2626" />
+          <span>Logout</span>
         </button>
       </div>
     </header>

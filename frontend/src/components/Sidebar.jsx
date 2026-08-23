@@ -223,23 +223,23 @@ export default function Sidebar({
           <button
             onClick={onLogout}
             style={{
-              background: '#ffffff',
-              border: '1px solid #fecdd3',
-              color: '#e11d48',
+              background: '#fef2f2',
+              border: '1px solid #fca5a5',
+              color: '#dc2626',
               cursor: 'pointer',
-              padding: '6px 8px',
+              padding: '6px 10px',
               borderRadius: '6px',
               display: 'flex',
               alignItems: 'center',
-              gap: '4px',
-              fontSize: '11px',
-              fontWeight: 700,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+              gap: '5px',
+              fontSize: '11.5px',
+              fontWeight: 800,
+              boxShadow: '0 1px 3px rgba(220, 38, 38, 0.08)'
             }}
-            title="Sign Out of Session"
+            title="Log out and return to login page"
           >
-            <LogOut size={13} />
-            <span>Sign Out</span>
+            <LogOut size={14} color="#dc2626" />
+            <span>Logout</span>
           </button>
         </div>
       )}

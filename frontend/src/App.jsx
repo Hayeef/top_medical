@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
+import MobileNav from './components/MobileNav';
 import ReceiptModal from './components/ReceiptModal';
 import AddMedicineModal from './components/AddMedicineModal';
 import AddBatchModal from './components/AddBatchModal';
@@ -33,6 +34,7 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('pos'); // Default to POS for ultra-fast counter billing
   const [loading, setLoading] = useState(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Data states
   const [summary, setSummary] = useState(null);
@@ -187,8 +189,8 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', width: '100vw', background: 'var(--bg-main)' }}>
-      {/* Fixed Sidebar */}
+    <div style={{ display: 'flex', minHeight: '100vh', width: '100vw', background: 'var(--bg-main)', overflowX: 'hidden' }}>
+      {/* Sidebar (Desktop sticky & Mobile Drawer) */}
       <Sidebar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
@@ -197,10 +199,13 @@ export default function App() {
         user={authUser}
         onLogout={handleLogout}
         onOpenScanBill={() => setIsScanBillOpen(true)}
+        onOpenExcelUpload={() => setIsExcelUploadOpen(true)}
+        isMobileOpen={isMobileMenuOpen}
+        onCloseMobile={() => setIsMobileMenuOpen(false)}
       />
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: '100vh', position: 'relative' }}>
         <Header 
           activeTab={activeTab} 
           setActiveTab={setActiveTab} 
@@ -212,6 +217,7 @@ export default function App() {
           onOpenAddBatch={() => handleOpenAddBatch(null)}
           onOpenScanBill={() => setIsScanBillOpen(true)}
           onOpenExcelUpload={() => setIsExcelUploadOpen(true)}
+          onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
         />
 
         <main style={{ flex: 1, overflowY: 'auto' }}>
@@ -292,6 +298,14 @@ export default function App() {
             />
           )}
         </main>
+
+        {/* Mobile Fixed Bottom Navigation Bar */}
+        <MobileNav 
+          activeTab={activeTab} 
+          setActiveTab={setActiveTab} 
+          alertCounts={summary}
+          onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+        />
       </div>
 
       {/* MODALS */}

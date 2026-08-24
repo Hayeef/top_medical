@@ -25,9 +25,14 @@
       <stop offset="50%" stop-color="#84cc16" />
       <stop offset="100%" stop-color="#bef264" />
     </linearGradient>
+
+    <filter id="tmLogoGlow" x="-10%" y="-10%" width="120%" height="120%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.15" />
+    </filter>
   </defs>
 
-  <g>
+  <!-- BLUE UPPER-LEFT ARM RIBBON -->
+  <g filter="url(#tmLogoGlow)">
     <path
       d="M 74 18 L 126 18 L 126 74 C 126 74, 115 88, 92 106 C 74 120, 56 126, 56 126 L 20 126 L 20 74 L 74 74 Z"
       fill="url(#tmBlueGrad)"
@@ -43,7 +48,8 @@
     <path d="M 118 30 C 124 58, 118 85, 84 112" stroke="#ffffff" stroke-width="1.4" stroke-opacity="0.3" fill="none" />
   </g>
 
-  <g>
+  <!-- GREEN LOWER-RIGHT ARM RIBBON -->
+  <g filter="url(#tmLogoGlow)">
     <path
       d="M 126 182 L 74 182 L 74 126 C 74 126, 85 112, 108 94 C 126 80, 144 74, 144 74 L 180 74 L 180 126 L 126 126 Z"
       fill="url(#tmGreenGrad)"

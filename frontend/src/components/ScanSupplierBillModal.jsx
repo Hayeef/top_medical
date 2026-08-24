@@ -298,7 +298,7 @@ export default function ScanSupplierBillModal({ onClose, onStockInwarded }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               
               {/* Supplier & Bill Metadata */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '12px', background: '#f8fafc', padding: '14px 18px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', background: '#f8fafc', padding: '14px 18px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                 <div>
                   <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
                     Supplier / Distributor Name

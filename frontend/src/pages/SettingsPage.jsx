@@ -6,10 +6,7 @@ import {
   FileText, 
   Save, 
   QrCode, 
-  CreditCard,
-  CheckCircle,
-  Database,
-  Printer
+  CheckCircle
 } from 'lucide-react';
 import { billingAPI } from '../api';
 
@@ -68,35 +65,35 @@ export default function SettingsPage({ profile, onProfileUpdated }) {
   };
 
   return (
-    <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '900px' }}>
+    <div className="main-page-wrapper" style={{ maxWidth: '900px', margin: '0 auto' }}>
       
       {/* Header */}
-      <div className="glass-panel" style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div>
-          <h2 style={{ fontSize: '18px', fontWeight: 700 }}>Pharmacy Configuration & Tax Compliance</h2>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-            Set up pharmacy details, Drug License numbers (DL-20B/21B), GSTIN, and POS receipt headers.
+          <h2 style={{ fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Pharmacy Settings & Compliance</h2>
+          <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+            Store details, Drug License (DL-20B/21B), GSTIN, and POS receipt config.
           </p>
         </div>
         {success && (
           <span className="badge badge-emerald" style={{ padding: '6px 12px', fontSize: '12px' }}>
-            <CheckCircle size={14} /> Settings Saved Successfully!
+            <CheckCircle size={14} /> Settings Saved!
           </span>
         )}
       </div>
 
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         
         {/* Basic Business Details */}
-        <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
-            <Building2 size={20} color="var(--primary)" />
-            <h3 style={{ fontSize: '15px', fontWeight: 700 }}>Business & Contact Profile</h3>
+        <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+            <Building2 size={18} color="#0284c7" />
+            <h3 style={{ fontSize: '14.5px', fontWeight: 800 }}>Business & Contact Profile</h3>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
                 Pharmacy Name *
               </label>
               <input
@@ -109,13 +106,13 @@ export default function SettingsPage({ profile, onProfileUpdated }) {
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
                 Tagline / Slogan
               </label>
               <input
                 type="text"
                 className="input-field"
-                placeholder="e.g. Healthcare & Trusted Medications"
+                placeholder="e.g. 24/7 Trusted Healthcare"
                 value={formData.tagline}
                 onChange={(e) => setFormData({ ...formData, tagline: e.target.value })}
               />
@@ -123,7 +120,7 @@ export default function SettingsPage({ profile, onProfileUpdated }) {
           </div>
 
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
               Full Store Address (Printed on Receipts)
             </label>
             <textarea
@@ -134,9 +131,9 @@ export default function SettingsPage({ profile, onProfileUpdated }) {
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
                 Phone Number(s)
               </label>
               <input
@@ -148,7 +145,7 @@ export default function SettingsPage({ profile, onProfileUpdated }) {
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
                 Contact Email
               </label>
               <input
@@ -160,7 +157,7 @@ export default function SettingsPage({ profile, onProfileUpdated }) {
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
                 Currency Symbol
               </label>
               <input
@@ -174,71 +171,63 @@ export default function SettingsPage({ profile, onProfileUpdated }) {
         </div>
 
         {/* Legal & Drug Compliance */}
-        <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
-            <ShieldCheck size={20} color="#10b981" />
-            <h3 style={{ fontSize: '15px', fontWeight: 700 }}>Drug Licensing & GST Compliance</h3>
+        <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+            <ShieldCheck size={18} color="#10b981" />
+            <h3 style={{ fontSize: '14.5px', fontWeight: 800 }}>Drug Licensing & GST Compliance</h3>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
-                GSTIN (Tax Identification) *
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+                Drug License No. (DL 20B) *
               </label>
               <input
                 type="text"
+                required
                 className="input-field mono"
-                value={formData.gstin}
-                onChange={(e) => setFormData({ ...formData, gstin: e.target.value })}
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
-                UPI VPA ID (For Dynamic QR Codes)
-              </label>
-              <input
-                type="text"
-                className="input-field mono"
-                placeholder="e.g. topmedical@upi"
-                value={formData.upi_id}
-                onChange={(e) => setFormData({ ...formData, upi_id: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
-                Drug License 20B (Allopathic) *
-              </label>
-              <input
-                type="text"
-                className="input-field mono"
+                placeholder="e.g. KA-B1-20B-12345"
                 value={formData.dl_number_20b}
                 onChange={(e) => setFormData({ ...formData, dl_number_20b: e.target.value })}
               />
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
-                Drug License 21B (Schedule C/C1) *
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+                Drug License No. (DL 21B)
               </label>
               <input
                 type="text"
                 className="input-field mono"
+                placeholder="e.g. KA-B1-21B-12345"
                 value={formData.dl_number_21b}
                 onChange={(e) => setFormData({ ...formData, dl_number_21b: e.target.value })}
               />
             </div>
+          </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
-                FSSAI License No (Optional)
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+                GSTIN / Tax ID
               </label>
               <input
                 type="text"
                 className="input-field mono"
+                placeholder="29AAAAA0000A1Z5"
+                value={formData.gstin}
+                onChange={(e) => setFormData({ ...formData, gstin: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+                FSSAI License (Optional)
+              </label>
+              <input
+                type="text"
+                className="input-field mono"
+                placeholder="10012345678901"
                 value={formData.fssai_number}
                 onChange={(e) => setFormData({ ...formData, fssai_number: e.target.value })}
               />
@@ -246,31 +235,52 @@ export default function SettingsPage({ profile, onProfileUpdated }) {
           </div>
         </div>
 
-        {/* Invoice Footer / Policy Note */}
-        <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
-            <Printer size={20} color="#38bdf8" />
-            <h3 style={{ fontSize: '15px', fontWeight: 700 }}>Receipt & Invoice Terms</h3>
+        {/* UPI & POS Receipt Settings */}
+        <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+            <QrCode size={18} color="#8b5cf6" />
+            <h3 style={{ fontSize: '14.5px', fontWeight: 800 }}>UPI Payments & Receipt Customization</h3>
           </div>
 
-          <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
-              Terms & Return Policy (Printed at the bottom of bills)
-            </label>
-            <textarea
-              className="input-field"
-              rows="3"
-              value={formData.invoice_footer_note}
-              onChange={(e) => setFormData({ ...formData, invoice_footer_note: e.target.value })}
-            />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+                Pharmacy UPI ID (VPA) for Counter Dynamic QR
+              </label>
+              <input
+                type="text"
+                className="input-field mono"
+                placeholder="topmedical@okhdfcbank"
+                value={formData.upi_id}
+                onChange={(e) => setFormData({ ...formData, upi_id: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+                Thermal Receipt Footer Note
+              </label>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="Thank you! Wish you a speedy recovery!"
+                value={formData.invoice_footer_note}
+                onChange={(e) => setFormData({ ...formData, invoice_footer_note: e.target.value })}
+              />
+            </div>
           </div>
         </div>
 
-        {/* Save Button */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-          <button type="submit" disabled={saving} className="btn btn-primary btn-lg">
-            <Save size={18} />
-            <span>{saving ? 'Saving Settings...' : 'Save All Changes'}</span>
+        {/* Submit Button */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+          <button
+            type="submit"
+            disabled={saving}
+            className="btn btn-primary btn-lg"
+            style={{ minWidth: '180px', width: '100%', maxWidth: '280px' }}
+          >
+            <Save size={16} />
+            <span>{saving ? 'Saving Changes...' : 'Save Configuration'}</span>
           </button>
         </div>
       </form>

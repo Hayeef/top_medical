@@ -73,9 +73,9 @@ export default function AddMedicineModal({ categories, onClose, onCreated }) {
         )}
 
         <form onSubmit={handleSubmit} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
                 Brand Name * (e.g. Augmentin 625 Duo)
               </label>
               <input
@@ -90,7 +90,7 @@ export default function AddMedicineModal({ categories, onClose, onCreated }) {
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
                 Dosage Form
               </label>
               <select
@@ -113,7 +113,7 @@ export default function AddMedicineModal({ categories, onClose, onCreated }) {
           </div>
 
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+            <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
               Generic Composition / Salt Name
             </label>
             <input
@@ -125,9 +125,9 @@ export default function AddMedicineModal({ categories, onClose, onCreated }) {
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
                 Category
               </label>
               <select
@@ -143,7 +143,7 @@ export default function AddMedicineModal({ categories, onClose, onCreated }) {
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
                 Strength / Unit
               </label>
               <input
@@ -156,7 +156,7 @@ export default function AddMedicineModal({ categories, onClose, onCreated }) {
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
                 Manufacturer / Brand
               </label>
               <input
@@ -169,9 +169,9 @@ export default function AddMedicineModal({ categories, onClose, onCreated }) {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
                 Rack / Shelf Location
               </label>
               <input
@@ -184,7 +184,7 @@ export default function AddMedicineModal({ categories, onClose, onCreated }) {
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
                 Barcode / SKU
               </label>
               <input
@@ -197,7 +197,7 @@ export default function AddMedicineModal({ categories, onClose, onCreated }) {
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
                 HSN Code
               </label>
               <input
@@ -209,7 +209,7 @@ export default function AddMedicineModal({ categories, onClose, onCreated }) {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
             <div>
               <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
                 GST Tax Rate (%)

@@ -28,12 +28,12 @@ export default function DashboardPage({
   const COLORS = ['#0284c7', '#10b981', '#6366f1', '#f59e0b', '#8b5cf6', '#ec4899'];
 
   return (
-    <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    <div className="main-page-wrapper">
       
       {/* Critical Alert Banner if expired or near expiry items exist */}
       {((summary?.expired_count || 0) > 0 || (summary?.near_expiry_count || 0) > 0 || (summary?.low_stock_count || 0) > 0) && (
         <div style={{
-          padding: '14px 20px',
+          padding: '14px 18px',
           background: 'linear-gradient(90deg, #fff1f2 0%, #fffbeb 100%)',
           border: '1px solid #fecdd3',
           borderRadius: '12px',
@@ -45,15 +45,15 @@ export default function DashboardPage({
           boxShadow: '0 2px 8px rgba(225, 29, 72, 0.04)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <ShieldAlert size={22} color="#e11d48" />
+            <ShieldAlert size={22} color="#e11d48" style={{ flexShrink: 0 }} />
             <div>
               <div style={{ fontWeight: 800, fontSize: '13.5px', color: '#9f1239' }}>
                 Pharmacy Attention Required
               </div>
               <div style={{ fontSize: '12px', color: '#475569', marginTop: '2px' }}>
-                {summary?.expired_count > 0 && <span style={{ color: '#e11d48', fontWeight: 700 }}>{summary.expired_count} Expired batches to quarantine • </span>}
-                {summary?.near_expiry_count > 0 && <span style={{ color: '#d97706', fontWeight: 700 }}>{summary.near_expiry_count} Batches expiring in &lt;90 days • </span>}
-                {summary?.low_stock_count > 0 && <span style={{ color: '#0284c7', fontWeight: 700 }}>{summary.low_stock_count} Medicines below reorder level</span>}
+                {summary?.expired_count > 0 && <span style={{ color: '#e11d48', fontWeight: 700 }}>{summary.expired_count} Expired batches • </span>}
+                {summary?.near_expiry_count > 0 && <span style={{ color: '#d97706', fontWeight: 700 }}>{summary.near_expiry_count} Expiring &lt;90d • </span>}
+                {summary?.low_stock_count > 0 && <span style={{ color: '#0284c7', fontWeight: 700 }}>{summary.low_stock_count} Low stock items</span>}
               </div>
             </div>
           </div>
@@ -68,90 +68,90 @@ export default function DashboardPage({
       )}
 
       {/* Top 4 KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '18px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
         
         {/* Today's Sales */}
-        <div className="glass-panel glass-card-interactive" style={{ padding: '20px' }}>
+        <div className="glass-panel glass-card-interactive" style={{ padding: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Today's Revenue</div>
-              <div className="mono" style={{ fontSize: '24px', fontWeight: 900, color: '#0284c7', marginTop: '6px' }}>
+              <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Today's Revenue</div>
+              <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#0284c7', marginTop: '4px' }}>
                 {currency}{summary?.today_revenue?.toLocaleString('en-IN', { minimumFractionDigits: 2 }) || '0.00'}
               </div>
-              <div style={{ fontSize: '11.5px', color: '#059669', fontWeight: 600, marginTop: '4px' }}>
+              <div style={{ fontSize: '11px', color: '#059669', fontWeight: 600, marginTop: '2px' }}>
                 {summary?.today_orders_count || 0} Bills Invoiced Today
               </div>
             </div>
-            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <TrendingUp size={22} color="#0284c7" />
+            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <TrendingUp size={20} color="#0284c7" />
             </div>
           </div>
         </div>
 
         {/* Estimated Gross Profit */}
-        <div className="glass-panel glass-card-interactive" style={{ padding: '20px' }}>
+        <div className="glass-panel glass-card-interactive" style={{ padding: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Est. Gross Margin</div>
-              <div className="mono" style={{ fontSize: '24px', fontWeight: 900, color: '#059669', marginTop: '6px' }}>
+              <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Est. Gross Margin</div>
+              <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#059669', marginTop: '4px' }}>
                 {currency}{summary?.today_profit?.toLocaleString('en-IN', { minimumFractionDigits: 2 }) || '0.00'}
               </div>
-              <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
-                Based on purchase vs selling price
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                Selling vs Purchase Price
               </div>
             </div>
-            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <DollarSign size={22} color="#059669" />
+            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <DollarSign size={20} color="#059669" />
             </div>
           </div>
         </div>
 
-        {/* Medicines in Catalog */}
-        <div className="glass-panel glass-card-interactive" style={{ padding: '20px' }}>
+        {/* Total Active Inventory Value */}
+        <div className="glass-panel glass-card-interactive" style={{ padding: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Active Catalog</div>
-              <div className="mono" style={{ fontSize: '24px', fontWeight: 900, color: '#0f172a', marginTop: '6px' }}>
-                {summary?.total_medicines || 0} Drugs
+              <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Inventory Value</div>
+              <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#6366f1', marginTop: '4px' }}>
+                {currency}{summary?.total_inventory_value?.toLocaleString('en-IN', { minimumFractionDigits: 2 }) || '0.00'}
               </div>
-              <div style={{ fontSize: '11.5px', color: summary?.low_stock_count > 0 ? '#d97706' : '#059669', fontWeight: 600, marginTop: '4px' }}>
-                {summary?.low_stock_count || 0} Low Stock Alerts
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                {summary?.total_medicines_count || 0} Registered Drug SKUs
               </div>
             </div>
-            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Pill size={22} color="#6366f1" />
+            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Pill size={20} color="#6366f1" />
             </div>
           </div>
         </div>
 
         {/* Customer Credit / Outstanding */}
-        <div className="glass-panel glass-card-interactive" style={{ padding: '20px' }}>
+        <div className="glass-panel glass-card-interactive" style={{ padding: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Unpaid Credit Dues</div>
-              <div className="mono" style={{ fontSize: '24px', fontWeight: 900, color: '#e11d48', marginTop: '6px' }}>
+              <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Credit Dues</div>
+              <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#e11d48', marginTop: '4px' }}>
                 {currency}{summary?.total_credit_due?.toLocaleString('en-IN', { minimumFractionDigits: 2 }) || '0.00'}
               </div>
-              <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
                 Pending from account patients
               </div>
             </div>
-            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Users size={22} color="#e11d48" />
+            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Users size={20} color="#e11d48" />
             </div>
           </div>
         </div>
       </div>
 
       {/* Visual Charts Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
         
         {/* Sales Trend Chart */}
-        <div className="glass-panel" style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div className="glass-panel" style={{ padding: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
             <div>
-              <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>Sales Revenue Trend (7 Days)</h3>
-              <p style={{ fontSize: '12px', color: '#64748b' }}>Daily invoiced total in {currency}</p>
+              <h3 style={{ fontSize: '14.5px', fontWeight: 800, color: '#0f172a' }}>Sales Revenue Trend (7 Days)</h3>
+              <p style={{ fontSize: '11.5px', color: '#64748b' }}>Daily invoiced total in {currency}</p>
             </div>
             <span className="badge badge-cyan">Real-time</span>
           </div>
@@ -218,7 +218,7 @@ export default function DashboardPage({
       </div>
 
       {/* Bottom Grid: Top Selling Drugs & Quick POS Actions */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
         
         {/* Top Selling Medicines */}
         <div className="glass-panel" style={{ padding: '20px' }}>

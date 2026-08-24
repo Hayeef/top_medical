@@ -4,21 +4,13 @@ import {
   Search, 
   Plus, 
   PackagePlus, 
-  AlertCircle, 
   ChevronDown, 
   ChevronRight, 
-  Calendar, 
-  Tag, 
   MapPin, 
-  Layers, 
-  Building2, 
-  ShieldAlert,
-  Edit2,
-  Sliders,
-  CheckCircle,
-  Camera,
-  ShoppingCart,
-  FileSpreadsheet
+  Sliders, 
+  ShoppingCart, 
+  FileSpreadsheet,
+  Camera
 } from 'lucide-react';
 
 export default function InventoryPage({ 
@@ -60,29 +52,28 @@ export default function InventoryPage({
   };
 
   return (
-    <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div className="main-page-wrapper">
       
       {/* Top Action & Filter Bar */}
-      <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
+      <div className="glass-panel" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         
-        {/* Search & Filters */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '300px' }}>
-          <div style={{ position: 'relative', flex: 1 }}>
+        {/* Search & Category Dropdowns */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flex: '2 1 220px' }}>
             <Search size={16} color="#0284c7" style={{ position: 'absolute', left: '12px', top: '11px' }} />
             <input
               type="text"
               className="input-field"
               style={{ paddingLeft: '36px', height: '38px', fontSize: '13px', background: '#f8fafc', borderColor: '#cbd5e1' }}
-              placeholder="Search tablet by Name, Composition, Rack Location, or Barcode..."
+              placeholder="Search tablet, composition, rack location..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              autoFocus
             />
           </div>
 
           <select
             className="input-field"
-            style={{ width: '180px', height: '38px', fontSize: '12.5px' }}
+            style={{ flex: '1 1 140px', height: '38px', fontSize: '12.5px' }}
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
           >
@@ -94,7 +85,7 @@ export default function InventoryPage({
 
           <select
             className="input-field"
-            style={{ width: '150px', height: '38px', fontSize: '12.5px' }}
+            style={{ flex: '1 1 130px', height: '38px', fontSize: '12.5px' }}
             value={filterRx}
             onChange={(e) => setFilterRx(e.target.value)}
           >
@@ -105,59 +96,62 @@ export default function InventoryPage({
         </div>
 
         {/* Action Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
           {isAdmin && (
-            <button onClick={onOpenExcelUpload} className="btn btn-secondary">
-              <FileSpreadsheet size={15} color="#059669" />
-              <span>📊 Excel Bulk Import</span>
+            <button onClick={onOpenScanBill} className="btn btn-emerald btn-sm">
+              <Camera size={14} />
+              <span>Scan Bill</span>
             </button>
           )}
           {isAdmin && (
-            <button onClick={onOpenScanBill} className="btn btn-emerald">
-              <Camera size={15} />
-              <span>📸 Scan Bill</span>
+            <button onClick={onOpenExcelUpload} className="btn btn-secondary btn-sm">
+              <FileSpreadsheet size={14} color="#059669" />
+              <span>Excel Import</span>
             </button>
           )}
           {isAdmin && (
-            <button onClick={() => onOpenAddBatch(null)} className="btn btn-secondary">
-              <PackagePlus size={15} color="#0284c7" />
-              <span>Stock Inward (F4)</span>
+            <button onClick={() => onOpenAddBatch(null)} className="btn btn-secondary btn-sm">
+              <PackagePlus size={14} color="#0284c7" />
+              <span>+ Batch (F4)</span>
             </button>
           )}
           {isAdmin && (
-            <button onClick={onOpenAddMedicine} className="btn btn-primary">
-              <Plus size={15} />
-              <span>+ Add Medicine (F3)</span>
+            <button onClick={onOpenAddMedicine} className="btn btn-primary btn-sm">
+              <Plus size={14} />
+              <span>+ Medicine (F3)</span>
             </button>
           )}
           {!isAdmin && setActiveTab && (
-            <button onClick={() => setActiveTab('pos')} className="btn btn-primary">
-              <ShoppingCart size={15} />
-              <span>Open POS Billing (F2)</span>
+            <button onClick={() => setActiveTab('pos')} className="btn btn-primary btn-sm">
+              <ShoppingCart size={14} />
+              <span>Open POS (F2)</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Catalog Table */}
+      {/* Catalog Container */}
       <div className="glass-panel" style={{ overflow: 'hidden' }}>
         <div style={{
-          padding: '14px 20px',
+          padding: '12px 16px',
           borderBottom: '1px solid #e2e8f0',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: '#f8fafc'
+          background: '#f8fafc',
+          flexWrap: 'wrap',
+          gap: '6px'
         }}>
-          <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#0f172a' }}>
-            {isAdmin ? `Medicine Inventory Catalog (${filteredMedicines.length} items)` : `Tablet Availability & Rack Locator (${filteredMedicines.length} items)`}
+          <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>
+            {isAdmin ? `Drug Master Catalog (${filteredMedicines.length} items)` : `Stock Availability (${filteredMedicines.length} items)`}
           </div>
-          <span style={{ fontSize: '11.5px', color: '#64748b' }}>
-            Click medicine row to inspect batch details & stock expiry
+          <span style={{ fontSize: '11px', color: '#64748b' }}>
+            Tap row to view batch expiry & stock
           </span>
         </div>
 
-        <div className="data-table-container" style={{ border: 'none', borderRadius: 0 }}>
+        {/* 1. DESKTOP DATA TABLE */}
+        <div className="data-table-container desktop-only" style={{ border: 'none', borderRadius: 0 }}>
           <table className="data-table">
             <thead>
               <tr>
@@ -346,6 +340,146 @@ export default function InventoryPage({
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* 2. MOBILE MEDICINE CARDS VIEW */}
+        <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px' }}>
+          {filteredMedicines.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
+              No medicines found matching filters.
+            </div>
+          ) : (
+            filteredMedicines.map((med) => {
+              const isExpanded = expandedMedId === med.id;
+              const totalPacks = med.total_stock_packs ?? (med.batches?.reduce((acc, b) => acc + (b.is_expired ? 0 : b.pack_quantity), 0) || 0);
+              const isLow = totalPacks <= med.min_stock_alert;
+
+              return (
+                <div
+                  key={med.id}
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '12px',
+                    padding: '12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)'
+                  }}
+                >
+                  {/* Top Bar: Name & Badges */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 800, fontSize: '14px', color: '#0f172a' }}>{med.name}</span>
+                        <span className="badge badge-cyan">{med.dosage_form}</span>
+                        {med.requires_prescription && <span className="badge badge-rose">Rx</span>}
+                      </div>
+                      <div style={{ fontSize: '11.5px', color: '#475569', marginTop: '2px' }}>
+                        {med.generic_name || 'Standard Formulation'}
+                      </div>
+                    </div>
+
+                    <span className={`badge ${totalPacks === 0 ? 'badge-rose' : (isLow ? 'badge-amber' : 'badge-emerald')}`} style={{ fontSize: '11.5px', fontWeight: 800 }}>
+                      {totalPacks} pk
+                    </span>
+                  </div>
+
+                  {/* Details Row: Rack & Manufacturer */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: '#64748b', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
+                    <div>
+                      {med.rack_location ? (
+                        <span style={{ color: '#0284c7', fontWeight: 700 }}>📍 {med.rack_location}</span>
+                      ) : (
+                        <span>Rack: -</span>
+                      )}
+                      <span> • {med.manufacturer || 'Direct'}</span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {isAdmin && (
+                        <button
+                          onClick={() => onOpenAddBatch(med.id)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '3px 8px', fontSize: '11px' }}
+                        >
+                          <PackagePlus size={12} color="#0284c7" />
+                          <span>+ Stock</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => toggleExpand(med.id)}
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '3px 8px', fontSize: '11px' }}
+                      >
+                        {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        <span>Batches ({med.batches?.length || 0})</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Expanded Batches on Mobile */}
+                  {isExpanded && (
+                    <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px', marginTop: '4px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#0284c7', marginBottom: '6px' }}>
+                        BATCH DETAILS & EXPIRY:
+                      </div>
+
+                      {(!med.batches || med.batches.length === 0) ? (
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>No active batches found.</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {med.batches.map(b => (
+                            <div
+                              key={b.id}
+                              style={{
+                                background: '#ffffff',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '6px',
+                                padding: '8px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>
+                                  Batch #{b.batch_number}
+                                </div>
+                                <div style={{ fontSize: '10.5px', color: b.is_near_expiry ? '#d97706' : '#059669', fontWeight: 600 }}>
+                                  Exp: {b.expiry_date}
+                                </div>
+                              </div>
+
+                              <div style={{ textAlign: 'right' }}>
+                                <div className="mono" style={{ fontSize: '12.5px', fontWeight: 800, color: '#059669' }}>
+                                  {currency}{parseFloat(b.selling_price).toFixed(2)}
+                                </div>
+                                <div style={{ fontSize: '10.5px', color: '#475569' }}>
+                                  Stock: <strong>{b.pack_quantity}p</strong>
+                                </div>
+                              </div>
+
+                              {isAdmin && (
+                                <button
+                                  onClick={() => onOpenStockAdjust(b)}
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ padding: '3px 6px', fontSize: '10px', marginLeft: '6px' }}
+                                >
+                                  <Sliders size={11} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>

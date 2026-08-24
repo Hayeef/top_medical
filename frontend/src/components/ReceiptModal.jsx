@@ -11,6 +11,7 @@ import {
   Stethoscope,
   Building2
 } from 'lucide-react';
+import PharmacyLogo from './PharmacyLogo';
 
 export default function ReceiptModal({ invoice, profile, onClose }) {
   const [printFormat, setPrintFormat] = useState('thermal'); // 'thermal' or 'a4'
@@ -28,56 +29,58 @@ export default function ReceiptModal({ invoice, profile, onClose }) {
       <div className="modal-content" style={{ maxWidth: printFormat === 'thermal' ? '440px' : '760px' }}>
         {/* Header Controls (No Print) */}
         <div className="no-print" style={{
-          padding: '16px 20px',
+          padding: '14px 18px',
           borderBottom: '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'rgba(30, 41, 59, 0.4)'
+          background: 'var(--bg-main)',
+          flexWrap: 'wrap',
+          gap: '8px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Receipt size={18} color="#06b6d4" />
-            <span style={{ fontWeight: 700, fontSize: '15px' }}>Invoice #{invoice.invoice_number}</span>
+            <PharmacyLogo size={22} />
+            <span style={{ fontWeight: 800, fontSize: '14.5px', color: 'var(--text-main)' }}>Bill #{invoice.invoice_number}</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {/* Format Switcher */}
             <div style={{
               display: 'flex',
-              background: 'var(--bg-input)',
+              background: '#f1f5f9',
               borderRadius: '8px',
               padding: '2px',
-              border: '1px solid var(--border-subtle)'
+              border: '1px solid #e2e8f0'
             }}>
               <button
                 onClick={() => setPrintFormat('thermal')}
                 style={{
-                  padding: '4px 10px',
+                  padding: '4px 8px',
                   borderRadius: '6px',
                   border: 'none',
-                  background: printFormat === 'thermal' ? 'var(--primary)' : 'transparent',
-                  color: printFormat === 'thermal' ? '#ffffff' : 'var(--text-muted)',
+                  background: printFormat === 'thermal' ? '#0284c7' : 'transparent',
+                  color: printFormat === 'thermal' ? '#ffffff' : '#475569',
                   fontSize: '11px',
-                  fontWeight: 600,
+                  fontWeight: 700,
                   cursor: 'pointer'
                 }}
               >
-                80mm Thermal
+                Thermal 80mm
               </button>
               <button
                 onClick={() => setPrintFormat('a4')}
                 style={{
-                  padding: '4px 10px',
+                  padding: '4px 8px',
                   borderRadius: '6px',
                   border: 'none',
-                  background: printFormat === 'a4' ? 'var(--primary)' : 'transparent',
-                  color: printFormat === 'a4' ? '#ffffff' : 'var(--text-muted)',
+                  background: printFormat === 'a4' ? '#0284c7' : 'transparent',
+                  color: printFormat === 'a4' ? '#ffffff' : '#475569',
                   fontSize: '11px',
-                  fontWeight: 600,
+                  fontWeight: 700,
                   cursor: 'pointer'
                 }}
               >
-                A4 / A5 Tax Invoice
+                A4 / A5 Tax
               </button>
             </div>
 
@@ -87,7 +90,7 @@ export default function ReceiptModal({ invoice, profile, onClose }) {
               title="Print receipt"
             >
               <Printer size={14} />
-              <span>Print (Ctrl+P)</span>
+              <span>Print</span>
             </button>
 
             <button
@@ -101,12 +104,15 @@ export default function ReceiptModal({ invoice, profile, onClose }) {
         </div>
 
         {/* Printable Receipt Body */}
-        <div style={{ padding: '24px', backgroundColor: '#ffffff', color: '#111827', fontFamily: 'var(--font-mono)' }}>
+        <div style={{ padding: '20px', backgroundColor: '#ffffff', color: '#111827', fontFamily: 'var(--font-mono)' }}>
           {printFormat === 'thermal' ? (
             /* 80mm THERMAL RECEIPT LAYOUT */
             <div style={{ width: '100%', fontSize: '12px', lineHeight: 1.4 }}>
               {/* Header */}
               <div style={{ textAlign: 'center', borderBottom: '1px dashed #9ca3af', paddingBottom: '10px', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px' }}>
+                  <PharmacyLogo size={36} />
+                </div>
                 <h3 style={{ fontSize: '16px', fontWeight: 800, textTransform: 'uppercase', margin: 0, fontFamily: 'var(--font-main)' }}>
                   {profile?.name || 'TOP MEDICAL PHARMACY'}
                 </h3>
@@ -231,19 +237,24 @@ export default function ReceiptModal({ invoice, profile, onClose }) {
                 paddingBottom: '16px',
                 marginBottom: '16px'
               }}>
-                <div>
-                  <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase', margin: 0, fontFamily: 'var(--font-main)' }}>
-                    {profile?.name || 'TOP MEDICAL PHARMACY'}
-                  </h2>
-                  <p style={{ fontSize: '12px', color: '#475569', margin: '4px 0' }}>{profile?.tagline}</p>
-                  <p style={{ fontSize: '11.5px', color: '#334155', margin: '2px 0', maxWidth: '380px' }}>{profile?.address}</p>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+                  <div style={{ padding: '6px', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
+                    <PharmacyLogo size={42} />
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase', margin: 0, fontFamily: 'var(--font-main)' }}>
+                      {profile?.name || 'TOP MEDICAL PHARMACY'}
+                    </h2>
+                    <p style={{ fontSize: '12px', color: '#475569', margin: '4px 0' }}>{profile?.tagline}</p>
+                    <p style={{ fontSize: '11.5px', color: '#334155', margin: '2px 0', maxWidth: '380px' }}>{profile?.address}</p>
                   <p style={{ fontSize: '11.5px', color: '#334155', margin: '2px 0' }}>
                     <strong>Phone:</strong> {profile?.phone} | <strong>Email:</strong> {profile?.email}
                   </p>
-                  <div style={{ fontSize: '11px', marginTop: '6px', display: 'flex', gap: '12px', color: '#0f172a', fontWeight: 600 }}>
-                    <span>DL 20B: {profile?.dl_number_20b}</span>
-                    <span>DL 21B: {profile?.dl_number_21b}</span>
-                    <span>GSTIN: {profile?.gstin}</span>
+                    <div style={{ fontSize: '11px', marginTop: '6px', display: 'flex', gap: '12px', color: '#0f172a', fontWeight: 600 }}>
+                      <span>DL 20B: {profile?.dl_number_20b}</span>
+                      <span>DL 21B: {profile?.dl_number_21b}</span>
+                      <span>GSTIN: {profile?.gstin}</span>
+                    </div>
                   </div>
                 </div>
 

@@ -117,7 +117,7 @@ export default function AddBatchModal({ medicines, suppliers, defaultMedicineId,
             </select>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
             <div>
               <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
                 Supplier / Distributor
@@ -149,7 +149,7 @@ export default function AddBatchModal({ medicines, suppliers, defaultMedicineId,
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
             <div>
               <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
                 Expiry Date *
@@ -178,21 +178,21 @@ export default function AddBatchModal({ medicines, suppliers, defaultMedicineId,
 
           {/* Pricing Row */}
           <div style={{
-            background: 'rgba(30, 41, 59, 0.4)',
+            background: '#f8fafc',
             padding: '14px',
             borderRadius: '10px',
-            border: '1px solid var(--border-subtle)',
+            border: '1px solid #e2e8f0',
             display: 'flex',
             flexDirection: 'column',
             gap: '12px'
           }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase' }}>
-              Pricing & Profit Margin
+            <div style={{ fontSize: '12px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase' }}>
+              Pricing & Margin
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
               <div>
                 <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
-                  Purchase / Cost Price (₹)
+                  Purchase Price (₹)
                 </label>
                 <input
                   type="number"
@@ -207,7 +207,7 @@ export default function AddBatchModal({ medicines, suppliers, defaultMedicineId,
 
               <div>
                 <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
-                  MRP (Max Retail) (₹)
+                  MRP (₹)
                 </label>
                 <input
                   type="number"
@@ -221,7 +221,7 @@ export default function AddBatchModal({ medicines, suppliers, defaultMedicineId,
               </div>
 
               <div>
-                <label style={{ fontSize: '11px', fontWeight: 600, color: '#34d399', marginBottom: '4px', display: 'block' }}>
+                <label style={{ fontSize: '11px', fontWeight: 700, color: '#059669', marginBottom: '4px', display: 'block' }}>
                   Selling Price (₹) *
                 </label>
                 <input
@@ -237,14 +237,14 @@ export default function AddBatchModal({ medicines, suppliers, defaultMedicineId,
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--text-muted)', borderTop: '1px solid var(--border-subtle)', paddingTop: '8px' }}>
-              <span>Calculated Margin: <strong style={{ color: marginPct >= 0 ? '#34d399' : '#fb7185' }}>{marginPct}%</strong></span>
-              <span>Unit Price (per strip item): <strong>₹{formData.pack_size > 0 ? (sp / formData.pack_size).toFixed(2) : sp}</strong></span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: '#64748b', borderTop: '1px solid #e2e8f0', paddingTop: '8px', flexWrap: 'wrap', gap: '4px' }}>
+              <span>Margin: <strong style={{ color: marginPct >= 0 ? '#059669' : '#e11d48' }}>{marginPct}%</strong></span>
+              <span>Per Unit (loose): <strong>₹{formData.pack_size > 0 ? (sp / formData.pack_size).toFixed(2) : sp}</strong></span>
             </div>
           </div>
 
           {/* Stock Quantity Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
             <div>
               <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
                 Units Per Pack (e.g. 10s)

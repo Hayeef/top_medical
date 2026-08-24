@@ -333,20 +333,28 @@ export default function PosBillingPage({
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 390px', gap: '20px', padding: '24px', minHeight: 'calc(100vh - 70px)' }}>
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+      gap: '20px',
+      padding: '20px 20px 80px',
+      minHeight: 'calc(100vh - 70px)',
+      maxWidth: '100%',
+      boxSizing: 'border-box'
+    }}>
       {/* LEFT AREA: Medicine Search & Active Cart Table */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
         
         {/* Top Staff Charge Code Quick Selector Bar */}
-        <div className="glass-panel" style={{ padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', background: '#ffffff' }}>
+        <div className="glass-panel" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', background: '#ffffff' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <BadgeCheck size={18} color="#0284c7" />
-            <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase' }}>
-              Billing Staff Charge Code:
+            <span style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase' }}>
+              Billing Staff:
             </span>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div className="mobile-scroll-pills" style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
             {(staffList.length > 0 ? staffList : [
               { charge_code: 'SC-101', name: 'Ahmed (Staff 1)' },
               { charge_code: 'SC-102', name: 'Fatima (Staff 2)' },
@@ -364,20 +372,21 @@ export default function PosBillingPage({
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '6px',
-                    padding: '6px 12px',
+                    gap: '5px',
+                    padding: '5px 10px',
                     borderRadius: '8px',
                     border: active ? '2px solid #0284c7' : '1px solid #cbd5e1',
                     background: active ? '#f0f9ff' : '#ffffff',
                     color: active ? '#0284c7' : '#475569',
-                    fontSize: '12px',
+                    fontSize: '11.5px',
                     fontWeight: active ? 800 : 600,
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
-                    boxShadow: active ? '0 2px 6px rgba(2, 132, 199, 0.15)' : 'none'
+                    boxShadow: active ? '0 2px 6px rgba(2, 132, 199, 0.15)' : 'none',
+                    whiteSpace: 'nowrap'
                   }}
                 >
-                  <span className="mono" style={{ background: active ? '#0284c7' : '#e2e8f0', color: active ? '#ffffff' : '#475569', padding: '1px 5px', borderRadius: '4px', fontSize: '10.5px' }}>
+                  <span className="mono" style={{ background: active ? '#0284c7' : '#e2e8f0', color: active ? '#ffffff' : '#475569', padding: '1px 4px', borderRadius: '4px', fontSize: '10px' }}>
                     {staff.charge_code}
                   </span>
                   <span>{staff.name}</span>
@@ -388,7 +397,7 @@ export default function PosBillingPage({
         </div>
 
         {/* Instant Search Bar with Live Recommendation Dropdown */}
-        <div className="glass-panel" style={{ padding: '16px', position: 'relative' }}>
+        <div className="glass-panel" style={{ padding: '14px', position: 'relative' }}>
           <div style={{ position: 'relative' }}>
             <Search size={18} color="#0284c7" style={{ position: 'absolute', left: '14px', top: '13px' }} />
             <input
@@ -396,7 +405,7 @@ export default function PosBillingPage({
               type="text"
               className="input-field"
               style={{ paddingLeft: '42px', height: '44px', fontSize: '14px', background: '#f8fafc', borderColor: '#cbd5e1' }}
-              placeholder="Type any alphabet to auto-recommend tablets (e.g., 'a', 'd', 'p', 'b', 'c', 'g', 'm')..."
+              placeholder="Type any letter to search tablets (e.g., 'a', 'p', 'd', 'm')..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
@@ -413,21 +422,21 @@ export default function PosBillingPage({
           {searchResults.length > 0 && (
             <div style={{
               position: 'absolute',
-              top: '72px',
-              left: '16px',
-              right: '16px',
+              top: '68px',
+              left: '14px',
+              right: '14px',
               background: '#ffffff',
               border: '1px solid #cbd5e1',
               borderRadius: '12px',
               boxShadow: '0 15px 35px rgba(15, 23, 42, 0.15)',
               zIndex: 100,
-              maxHeight: '350px',
+              maxHeight: '320px',
               overflowY: 'auto',
-              padding: '8px'
+              padding: '6px'
             }}>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Recommended Tablets & Medicines ({searchResults.length} matches)</span>
-                <span>Use ↑ ↓ keys & press Enter</span>
+                <span>Recommended Medicines ({searchResults.length})</span>
+                <span className="desktop-only">Use ↑ ↓ keys & press Enter</span>
               </div>
               {searchResults.map((med, idx) => {
                 const totalStock = med.batches?.reduce((acc, b) => acc + (b.is_expired ? 0 : b.pack_quantity), 0) || 0;
@@ -437,7 +446,11 @@ export default function PosBillingPage({
                 return (
                   <div
                     key={med.id}
-                    onClick={() => addToCart(med)}
+                    onClick={() => {
+                      addToCart(med);
+                      setSearchQuery('');
+                      setSearchResults([]);
+                    }}
                     onMouseEnter={() => setSelectedIndex(idx)}
                     style={{
                       padding: '10px 12px',
@@ -449,32 +462,32 @@ export default function PosBillingPage({
                       borderBottom: '1px solid #f1f5f9',
                       background: isHighlighted ? '#f0f9ff' : 'transparent',
                       borderLeft: isHighlighted ? '3px solid #0284c7' : '3px solid transparent',
-                      transition: 'background 0.1s ease'
+                      transition: 'background 0.1s ease',
+                      gap: '8px'
                     }}
                   >
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontWeight: 800, fontSize: '14px', color: '#0f172a' }}>{med.name}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 800, fontSize: '13.5px', color: '#0f172a' }}>{med.name}</span>
                         <span className="badge badge-cyan">{med.dosage_form}</span>
                         {med.requires_prescription && <span className="badge badge-rose">Rx</span>}
                       </div>
-                      <div style={{ fontSize: '12px', color: '#475569', marginTop: '2px' }}>
+                      <div style={{ fontSize: '11.5px', color: '#475569', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {med.generic_name || 'Standard Composition'} • <em>{med.manufacturer}</em>
                       </div>
-                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', display: 'flex', gap: '10px' }}>
-                        {med.rack_location && <span><MapPin size={11} style={{ display: 'inline' }} /> {med.rack_location}</span>}
-                        {nextBatch && <span>Next Expiry: <strong style={{ color: nextBatch.is_near_expiry ? '#d97706' : '#059669' }}>{nextBatch.expiry_date}</strong> (Batch: {nextBatch.batch_number})</span>}
+                      <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        {med.rack_location && <span>📍 {med.rack_location}</span>}
+                        {nextBatch && <span>Exp: <strong style={{ color: nextBatch.is_near_expiry ? '#d97706' : '#059669' }}>{nextBatch.expiry_date}</strong></span>}
                       </div>
                     </div>
 
-                    <div style={{ textAlign: 'right' }}>
-                      <div className="mono" style={{ fontSize: '14.5px', fontWeight: 800, color: '#059669' }}>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div className="mono" style={{ fontSize: '14px', fontWeight: 800, color: '#059669' }}>
                         {currency}{nextBatch ? nextBatch.selling_price : '-'}
-                        <span style={{ fontSize: '10px', color: '#64748b' }}>/pack</span>
                       </div>
-                      <div style={{ fontSize: '11px', marginTop: '2px' }}>
-                        Stock: <strong style={{ color: totalStock > 10 ? '#059669' : (totalStock > 0 ? '#d97706' : '#e11d48') }}>
-                          {totalStock} packs
+                      <div style={{ fontSize: '10.5px', marginTop: '2px' }}>
+                        <strong style={{ color: totalStock > 10 ? '#059669' : (totalStock > 0 ? '#d97706' : '#e11d48') }}>
+                          {totalStock} pk
                         </strong>
                       </div>
                     </div>
@@ -488,7 +501,7 @@ export default function PosBillingPage({
         {/* Active Cart Panel */}
         <div className="glass-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{
-            padding: '14px 20px',
+            padding: '12px 16px',
             borderBottom: '1px solid #e2e8f0',
             display: 'flex',
             alignItems: 'center',
@@ -497,148 +510,246 @@ export default function PosBillingPage({
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <ShoppingCart size={18} color="#0284c7" />
-              <span style={{ fontWeight: 800, fontSize: '14px', color: '#0f172a' }}>Dispensing Cart ({cart.length} items)</span>
-              <span className="badge badge-gray mono" style={{ marginLeft: '4px' }}>Billed by: {selectedStaffCode}</span>
+              <span style={{ fontWeight: 800, fontSize: '13.5px', color: '#0f172a' }}>Cart ({cart.length} items)</span>
             </div>
             {cart.length > 0 && (
-              <button onClick={clearCart} className="btn btn-secondary btn-sm" style={{ color: '#e11d48', borderColor: '#fecdd3' }}>
-                <Trash2 size={13} /> Clear Cart
+              <button onClick={clearCart} className="btn btn-secondary btn-sm" style={{ color: '#e11d48', borderColor: '#fecdd3', padding: '4px 8px', fontSize: '11px' }}>
+                <Trash2 size={12} /> Clear
               </button>
             )}
           </div>
 
-          {/* Cart Table */}
+          {/* Cart Content: Desktop Table & Mobile Cards */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {cart.length === 0 ? (
-              <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
-                <ShoppingCart size={48} strokeWidth={1} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
-                <h4 style={{ fontSize: '15px', fontWeight: 600, color: '#475569' }}>Cart is Empty</h4>
-                <p style={{ fontSize: '12.5px', marginTop: '4px', color: '#64748b' }}>
-                  Start typing any alphabet above (e.g. <strong>A</strong>, <strong>D</strong>, <strong>P</strong>) to add medicines.
+              <div style={{ padding: '50px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                <ShoppingCart size={44} strokeWidth={1} style={{ margin: '0 auto 10px', opacity: 0.4 }} />
+                <h4 style={{ fontSize: '14.5px', fontWeight: 600, color: '#475569' }}>Cart is Empty</h4>
+                <p style={{ fontSize: '12px', marginTop: '4px', color: '#64748b' }}>
+                  Type tablet letters in search above to add medicines.
                 </p>
               </div>
             ) : (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: '32%' }}>Medicine & Composition</th>
-                    <th style={{ width: '22%' }}>Batch & Expiry (FEFO)</th>
-                    <th style={{ width: '14%', textAlign: 'center' }}>Type & Qty</th>
-                    <th style={{ width: '12%', textAlign: 'right' }}>Price ({currency})</th>
-                    <th style={{ width: '14%', textAlign: 'right' }}>Line Total ({currency})</th>
-                    <th style={{ width: '6%', textAlign: 'center' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                {/* 1. DESKTOP CART TABLE */}
+                <table className="data-table desktop-only">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '32%' }}>Medicine & Composition</th>
+                      <th style={{ width: '22%' }}>Batch & Expiry (FEFO)</th>
+                      <th style={{ width: '14%', textAlign: 'center' }}>Type & Qty</th>
+                      <th style={{ width: '12%', textAlign: 'right' }}>Price ({currency})</th>
+                      <th style={{ width: '14%', textAlign: 'right' }}>Line Total ({currency})</th>
+                      <th style={{ width: '6%', textAlign: 'center' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cart.map((item, idx) => {
+                      const lineGross = item.unit_selling_price * item.quantity;
+                      const lineDisc = (lineGross * (item.discount_percent || 0)) / 100;
+                      const lineTotal = lineGross - lineDisc;
+
+                      return (
+                        <tr key={idx}>
+                          <td>
+                            <div style={{ fontWeight: 700, color: '#0f172a' }}>{item.medicine.name}</div>
+                            <div style={{ fontSize: '11px', color: '#64748b' }}>
+                              {item.medicine.generic_name?.slice(0, 35)}...
+                            </div>
+                            {item.medicine.rack_location && (
+                              <div style={{ fontSize: '10.5px', color: '#0284c7', marginTop: '2px', fontWeight: 600 }}>
+                                📍 {item.medicine.rack_location}
+                              </div>
+                            )}
+                          </td>
+
+                          <td>
+                            <select
+                              className="input-field mono"
+                              style={{ padding: '4px 8px', fontSize: '12px', height: '30px' }}
+                              value={item.batch.id}
+                              onChange={(e) => handleBatchChange(idx, e.target.value)}
+                            >
+                              {item.availableBatches.map(b => (
+                                <option key={b.id} value={b.id}>
+                                  {b.batch_number} (Exp: {b.expiry_date}) - {b.pack_quantity}p
+                                </option>
+                              ))}
+                            </select>
+                            <div style={{ fontSize: '10px', color: item.batch.is_near_expiry ? '#d97706' : '#059669', marginTop: '2px', fontWeight: 600 }}>
+                              {item.batch.is_near_expiry ? '⚠️ Near Expiry' : '🟢 Good Expiry'}
+                            </div>
+                          </td>
+
+                          <td>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                              <button
+                                type="button"
+                                onClick={() => toggleLoose(idx)}
+                                className={`badge ${item.is_loose ? 'badge-amber' : 'badge-cyan'}`}
+                                style={{ cursor: 'pointer', border: 'none' }}
+                                title="Click to toggle Pack vs Loose"
+                              >
+                                {item.is_loose ? `Loose (${item.pack_size}s)` : `Full Pack (${item.pack_size}s)`}
+                              </button>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <button
+                                  onClick={() => updateQuantity(idx, -1)}
+                                  style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                  <Minus size={11} />
+                                </button>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity}
+                                  onChange={(e) => setDirectQuantity(idx, e.target.value)}
+                                  className="mono"
+                                  style={{ width: '38px', height: '22px', textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px', fontWeight: 700 }}
+                                />
+                                <button
+                                  onClick={() => updateQuantity(idx, 1)}
+                                  style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                  <Plus size={11} />
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td style={{ textAlign: 'right' }}>
+                            <div className="mono" style={{ fontWeight: 600, color: '#0f172a' }}>{currency}{item.unit_selling_price.toFixed(2)}</div>
+                            <div style={{ fontSize: '10px', color: '#94a3b8', textDecoration: 'line-through' }}>
+                              MRP {currency}{item.unit_mrp.toFixed(2)}
+                            </div>
+                          </td>
+
+                          <td style={{ textAlign: 'right' }}>
+                            <div className="mono" style={{ fontWeight: 800, color: '#059669', fontSize: '14px' }}>
+                              {currency}{lineTotal.toFixed(2)}
+                            </div>
+                            <div style={{ fontSize: '10px', color: '#64748b' }}>
+                              GST {item.gst_rate}%
+                            </div>
+                          </td>
+
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              onClick={() => removeFromCart(idx)}
+                              style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+                              title="Remove item"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {/* 2. MOBILE CART CARDS VIEW */}
+                <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px' }}>
                   {cart.map((item, idx) => {
                     const lineGross = item.unit_selling_price * item.quantity;
                     const lineDisc = (lineGross * (item.discount_percent || 0)) / 100;
                     const lineTotal = lineGross - lineDisc;
 
                     return (
-                      <tr key={idx}>
-                        <td>
-                          <div style={{ fontWeight: 700, color: '#0f172a' }}>{item.medicine.name}</div>
-                          <div style={{ fontSize: '11px', color: '#64748b' }}>
-                            {item.medicine.generic_name?.slice(0, 35)}...
-                          </div>
-                          {item.medicine.rack_location && (
-                            <div style={{ fontSize: '10.5px', color: '#0284c7', marginTop: '2px', fontWeight: 600 }}>
-                              📍 {item.medicine.rack_location}
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '12px',
+                          padding: '12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px',
+                          boxShadow: '0 1px 4px rgba(0, 0, 0, 0.04)'
+                        }}
+                      >
+                        {/* Title & Delete */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: '13.5px', color: '#0f172a' }}>{item.medicine.name}</div>
+                            <div style={{ fontSize: '11px', color: '#64748b' }}>
+                              {item.medicine.generic_name?.slice(0, 30)}
                             </div>
-                          )}
-                        </td>
+                          </div>
+                          <button
+                            onClick={() => removeFromCart(idx)}
+                            style={{ background: '#fef2f2', border: '1px solid #fecdd3', color: '#e11d48', padding: '5px', borderRadius: '6px', cursor: 'pointer' }}
+                            title="Remove"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
 
-                        <td>
+                        {/* Batch & Expiry Selector */}
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                           <select
                             className="input-field mono"
-                            style={{ padding: '4px 8px', fontSize: '12px', height: '30px' }}
+                            style={{ padding: '4px 8px', fontSize: '11.5px', height: '32px', flex: 1 }}
                             value={item.batch.id}
                             onChange={(e) => handleBatchChange(idx, e.target.value)}
                           >
                             {item.availableBatches.map(b => (
                               <option key={b.id} value={b.id}>
-                                {b.batch_number} (Exp: {b.expiry_date}) - {b.pack_quantity}p
+                                Batch: {b.batch_number} (Exp: {b.expiry_date})
                               </option>
                             ))}
                           </select>
-                          <div style={{ fontSize: '10px', color: item.batch.is_near_expiry ? '#d97706' : '#059669', marginTop: '2px', fontWeight: 600 }}>
-                            {item.batch.is_near_expiry ? '⚠️ Near Expiry (<90d)' : '🟢 Good Expiry'}
-                          </div>
-                        </td>
+                          <button
+                            type="button"
+                            onClick={() => toggleLoose(idx)}
+                            className={`badge ${item.is_loose ? 'badge-amber' : 'badge-cyan'}`}
+                            style={{ cursor: 'pointer', border: 'none', height: '32px', padding: '0 8px' }}
+                          >
+                            {item.is_loose ? 'Loose' : 'Pack'}
+                          </button>
+                        </div>
 
-                        <td>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                        {/* Quantity Counter & Line Total */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1px dashed #f1f5f9' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <button
-                              type="button"
-                              onClick={() => toggleLoose(idx)}
-                              className={`badge ${item.is_loose ? 'badge-amber' : 'badge-cyan'}`}
-                              style={{ cursor: 'pointer', border: 'none' }}
-                              title="Click to toggle Pack vs Loose single units"
+                              onClick={() => updateQuantity(idx, -1)}
+                              style={{ width: '32px', height: '32px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}
                             >
-                              {item.is_loose ? `Loose (${item.pack_size}s)` : `Full Pack (${item.pack_size}s)`}
+                              <Minus size={14} />
                             </button>
+                            <input
+                              type="number"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) => setDirectQuantity(idx, e.target.value)}
+                              className="mono"
+                              style={{ width: '44px', height: '32px', textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', fontWeight: 800 }}
+                            />
+                            <button
+                              onClick={() => updateQuantity(idx, 1)}
+                              style={{ width: '32px', height: '32px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <button
-                                onClick={() => updateQuantity(idx, -1)}
-                                style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                              >
-                                <Minus size={11} />
-                              </button>
-                              <input
-                                type="number"
-                                min="1"
-                                className="mono"
-                                style={{ width: '38px', textAlign: 'center', background: 'transparent', border: 'none', color: '#0f172a', fontWeight: 700, fontSize: '13px' }}
-                                value={item.quantity}
-                                onChange={(e) => {
-                                  const val = parseInt(e.target.value) || 1;
-                                  const updated = [...cart];
-                                  updated[idx].quantity = val;
-                                  setCart(updated);
-                                }}
-                              />
-                              <button
-                                onClick={() => updateQuantity(idx, 1)}
-                                style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                              >
-                                <Plus size={11} />
-                              </button>
+                          <div style={{ textAlign: 'right' }}>
+                            <div className="mono" style={{ fontWeight: 800, color: '#059669', fontSize: '15px' }}>
+                              {currency}{lineTotal.toFixed(2)}
+                            </div>
+                            <div style={{ fontSize: '10px', color: '#64748b' }}>
+                              @{currency}{item.unit_selling_price.toFixed(2)}/{item.is_loose ? 'unit' : 'pk'}
                             </div>
                           </div>
-                        </td>
-
-                        <td style={{ textAlign: 'right' }}>
-                          <div className="mono" style={{ fontWeight: 600, color: '#0f172a' }}>{currency}{item.unit_selling_price.toFixed(2)}</div>
-                          <div style={{ fontSize: '10px', color: '#94a3b8', textDecoration: 'line-through' }}>
-                            MRP {currency}{item.unit_mrp.toFixed(2)}
-                          </div>
-                        </td>
-
-                        <td style={{ textAlign: 'right' }}>
-                          <div className="mono" style={{ fontWeight: 800, color: '#059669', fontSize: '14px' }}>
-                            {currency}{lineTotal.toFixed(2)}
-                          </div>
-                          <div style={{ fontSize: '10px', color: '#64748b' }}>
-                            GST {item.gst_rate}%
-                          </div>
-                        </td>
-
-                        <td style={{ textAlign: 'center' }}>
-                          <button
-                            onClick={() => removeFromCart(idx)}
-                            style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
-                            title="Remove line item"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </td>
-                      </tr>
+                        </div>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+              </>
             )}
           </div>
 
@@ -854,20 +965,50 @@ export default function PosBillingPage({
 
           {/* Cash Tendered & Change Calc */}
           {paymentMethod === 'CASH' && (
-            <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '12px', color: '#475569', fontWeight: 600 }}>Cash Received:</span>
                 <input
                   type="number"
                   className="input-field mono"
-                  style={{ width: '100px', height: '30px', textAlign: 'right', fontSize: '13px', background: '#ffffff' }}
+                  style={{ width: '110px', height: '34px', textAlign: 'right', fontSize: '14px', background: '#ffffff', fontWeight: 700 }}
                   placeholder="0.00"
                   value={cashTendered}
                   onChange={(e) => setCashTendered(e.target.value)}
                 />
               </div>
+
+              {/* Quick Cash Denomination Chips */}
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {[
+                  { label: 'Exact', val: grandTotal },
+                  { label: '+100', val: (parseFloat(cashTendered) || 0) + 100 },
+                  { label: '+500', val: (parseFloat(cashTendered) || 0) + 500 },
+                  { label: '500', val: 500 },
+                  { label: '2000', val: 2000 },
+                ].map((chip, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setCashTendered(chip.val.toFixed(2))}
+                    style={{
+                      padding: '3px 8px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      color: '#0284c7',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+
               {tenderedNum > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '12px', color: '#059669', fontWeight: 700 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', fontSize: '13px', color: '#059669', fontWeight: 800, borderTop: '1px dashed #cbd5e1', paddingTop: '6px' }}>
                   <span>Change Return:</span>
                   <span className="mono">{currency}{changeDue.toFixed(2)}</span>
                 </div>
@@ -909,6 +1050,39 @@ export default function PosBillingPage({
           </button>
         </div>
       </div>
+
+      {/* Floating Sticky Mobile Summary Bar if cart has items */}
+      {cart.length > 0 && (
+        <div className="mobile-only" style={{
+          position: 'fixed',
+          bottom: '62px',
+          left: 0,
+          right: 0,
+          padding: '10px 16px',
+          background: '#0f172a',
+          color: '#ffffff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          zIndex: 800,
+          boxShadow: '0 -4px 15px rgba(0, 0, 0, 0.2)'
+        }}>
+          <div>
+            <div style={{ fontSize: '11px', color: '#94a3b8' }}>{cart.length} medicines in cart</div>
+            <div className="mono" style={{ fontSize: '18px', fontWeight: 900, color: '#38bdf8' }}>
+              {currency}{grandTotal.toFixed(2)}
+            </div>
+          </div>
+          <button
+            onClick={handleCheckout}
+            disabled={isSubmitting}
+            className="btn btn-emerald btn-sm"
+            style={{ padding: '8px 16px', fontSize: '13px', fontWeight: 800 }}
+          >
+            <span>Dispense Bill →</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

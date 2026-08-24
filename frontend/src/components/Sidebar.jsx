@@ -7,14 +7,14 @@ import {
   FileText, 
   Users, 
   Settings, 
-  HeartPulse, 
-  PackagePlus, 
-  Zap, 
   LogOut, 
   UserCheck,
   Shield,
-  Camera
+  Camera,
+  X,
+  FileSpreadsheet
 } from 'lucide-react';
+import PharmacyLogo from './PharmacyLogo';
 
 export default function Sidebar({ 
   activeTab, 
@@ -23,7 +23,10 @@ export default function Sidebar({
   profile, 
   user, 
   onLogout,
-  onOpenScanBill 
+  onOpenScanBill,
+  onOpenExcelUpload,
+  isMobileOpen = false,
+  onCloseMobile
 }) {
   const isAdmin = user?.is_superuser || user?.is_staff || user?.email?.includes('admin');
 
@@ -49,60 +52,72 @@ export default function Sidebar({
     { id: 'inventory', label: 'Check Drug Stock', icon: Pill },
   ];
 
-  return (
-    <aside style={{
-      width: '260px',
-      minWidth: '260px',
-      height: '100vh',
-      backgroundColor: '#ffffff',
-      borderRight: '1px solid #e2e8f0',
-      display: 'flex',
-      flexDirection: 'column',
-      position: 'sticky',
-      top: 0,
-      zIndex: 50,
-      userSelect: 'none',
-      boxShadow: '2px 0 10px rgba(0, 0, 0, 0.02)'
-    }}>
+  const handleSelectNav = (tabId) => {
+    setActiveTab(tabId);
+    if (onCloseMobile) onCloseMobile();
+  };
+
+  const content = (
+    <>
       {/* Brand Header */}
       <div style={{
-        padding: '20px',
-        borderBottom: '1px solid #e2e8f0',
+        padding: '18px 20px',
+        borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
-        gap: '12px'
+        justifyContent: 'space-between',
+        background: 'var(--bg-card)'
       }}>
-        <div style={{
-          width: '42px',
-          height: '42px',
-          borderRadius: '12px',
-          background: 'linear-gradient(135deg, #0284c7 0%, #10b981 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)'
-        }}>
-          <HeartPulse size={24} color="#ffffff" strokeWidth={2.5} />
-        </div>
-        <div>
-          <h1 style={{ fontSize: '15.5px', fontWeight: 800, letterSpacing: '-0.02em', color: '#0f172a', lineHeight: 1.2 }}>
-            {profile?.name || 'TOP MEDICAL'}
-          </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-            <span className="pulse-dot"></span>
-            <span style={{ fontSize: '11px', color: isAdmin ? '#0284c7' : '#059669', fontWeight: 700 }}>
-              {isAdmin ? 'Admin Portal' : 'Billing Terminal'}
-            </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '42px',
+            height: '42px',
+            borderRadius: '12px',
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(2, 132, 199, 0.15)'
+          }}>
+            <PharmacyLogo size={32} />
+          </div>
+          <div>
+            <h1 style={{ fontSize: '15px', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-main)', lineHeight: 1.2 }}>
+              {profile?.name || 'TOP MEDICAL'}
+            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+              <span className="pulse-dot"></span>
+              <span style={{ fontSize: '11px', color: isAdmin ? '#0284c7' : '#059669', fontWeight: 700 }}>
+                {isAdmin ? 'Admin Portal' : 'Billing Terminal'}
+              </span>
+            </div>
           </div>
         </div>
+
+        {/* Mobile Close Button */}
+        {isMobileOpen && (
+          <button
+            type="button"
+            onClick={onCloseMobile}
+            className="btn btn-secondary btn-sm"
+            style={{ width: '32px', height: '32px', padding: 0 }}
+            aria-label="Close Menu"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       {/* Admin Fast Supplier Inward Shortcut */}
       {isAdmin && (
-        <div style={{ padding: '12px 12px 0' }}>
+        <div style={{ padding: '12px 12px 0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <button
             type="button"
-            onClick={onOpenScanBill}
+            onClick={() => {
+              if (onCloseMobile) onCloseMobile();
+              onOpenScanBill();
+            }}
             className="btn btn-emerald"
             style={{ width: '100%', padding: '9px 12px', fontSize: '12.5px', justifyContent: 'center' }}
           >
@@ -113,9 +128,9 @@ export default function Sidebar({
       )}
 
       {/* Navigation Menu */}
-      <div style={{ padding: '16px 12px', flex: 1, overflowY: 'auto' }}>
-        <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.08em', padding: '0 8px 8px' }}>
-          {isAdmin ? 'Admin Menu' : 'Cashier Counter'}
+      <div style={{ padding: '14px 10px', flex: 1, overflowY: 'auto' }}>
+        <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-dim)', letterSpacing: '0.08em', padding: '0 8px 8px' }}>
+          {isAdmin ? 'Main Navigation' : 'Cashier Counter'}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           {navItems.map((item) => {
@@ -124,7 +139,7 @@ export default function Sidebar({
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => handleSelectNav(item.id)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -134,7 +149,7 @@ export default function Sidebar({
                   borderRadius: '10px',
                   border: isActive ? '1px solid #bae6fd' : '1px solid transparent',
                   background: isActive ? '#f0f9ff' : 'transparent',
-                  color: isActive ? '#0284c7' : '#475569',
+                  color: isActive ? '#0284c7' : 'var(--text-muted)',
                   cursor: 'pointer',
                   fontSize: '13.5px',
                   fontWeight: isActive ? 700 : 500,
@@ -143,21 +158,9 @@ export default function Sidebar({
                   outline: 'none',
                   fontFamily: 'inherit'
                 }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.backgroundColor = '#f8fafc';
-                    e.currentTarget.style.color = '#0f172a';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.style.color = '#475569';
-                  }
-                }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <Icon size={18} color={isActive ? '#0284c7' : '#64748b'} strokeWidth={isActive ? 2.5 : 2} />
+                  <Icon size={18} color={isActive ? '#0284c7' : 'var(--text-dim)'} strokeWidth={isActive ? 2.5 : 2} />
                   <span>{item.label}</span>
                 </div>
                 {item.count > 0 && (
@@ -194,7 +197,8 @@ export default function Sidebar({
           border: `1px solid ${isAdmin ? '#bae6fd' : '#a7f3d0'}`,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between'
+          justifyContent: 'space-between',
+          flexShrink: 0
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
             <div style={{
@@ -221,7 +225,10 @@ export default function Sidebar({
           </div>
           
           <button
-            onClick={onLogout}
+            onClick={() => {
+              if (onCloseMobile) onCloseMobile();
+              onLogout();
+            }}
             style={{
               background: '#fef2f2',
               border: '1px solid #fca5a5',
@@ -244,20 +251,59 @@ export default function Sidebar({
         </div>
       )}
 
-      {/* Quick Shortcuts Footer */}
-      <div style={{
+      {/* Quick Shortcuts Footer (Desktop only) */}
+      <div className="desktop-only" style={{
         padding: '10px 14px',
         margin: '0 12px 12px',
         borderRadius: '10px',
         background: '#f8fafc',
         border: '1px solid #e2e8f0',
+        flexShrink: 0
       }}>
-        <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', justifyContent: 'space-between', width: '100%' }}>
           <span>POS: <kbd style={{ background: '#e2e8f0', padding: '1px 4px', borderRadius: '3px', color: '#0284c7', fontWeight: 700 }}>F2</kbd></span>
           <span>Search: <kbd style={{ background: '#e2e8f0', padding: '1px 4px', borderRadius: '3px', color: '#0284c7', fontWeight: 700 }}>F4</kbd></span>
           <span>Print: <kbd style={{ background: '#e2e8f0', padding: '1px 4px', borderRadius: '3px', color: '#0284c7', fontWeight: 700 }}>F8</kbd></span>
         </div>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* 1. Desktop Fixed Sidebar */}
+      <aside
+        className="desktop-only"
+        style={{
+          width: '260px',
+          minWidth: '260px',
+          height: '100vh',
+          backgroundColor: '#ffffff',
+          borderRight: '1px solid #e2e8f0',
+          flexDirection: 'column',
+          position: 'sticky',
+          top: 0,
+          zIndex: 50,
+          userSelect: 'none',
+          boxShadow: '2px 0 10px rgba(0, 0, 0, 0.02)'
+        }}
+      >
+        {content}
+      </aside>
+
+      {/* 2. Mobile Slide-Over Drawer */}
+      {isMobileOpen && (
+        <>
+          <div
+            className="mobile-drawer-backdrop mobile-only"
+            onClick={onCloseMobile}
+            aria-hidden="true"
+          />
+          <div className="mobile-drawer-panel mobile-only" role="dialog" aria-modal="true">
+            {content}
+          </div>
+        </>
+      )}
+    </>
   );
 }

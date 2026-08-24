@@ -1,20 +1,19 @@
 import React, { useState } from 'react';
 import { 
-  HeartPulse, 
   Lock, 
   Mail, 
   Eye, 
   EyeOff, 
   ShieldCheck, 
-  KeyRound, 
   ArrowRight, 
   AlertCircle
 } from 'lucide-react';
+import PharmacyLogo from '../components/PharmacyLogo';
 import { authAPI } from '../api';
 
 export default function LoginPage({ onLoginSuccess }) {
-  const [identifier, setIdentifier] = useState('admin@topmedical.com');
-  const [password, setPassword] = useState('AdminTopMedical11@');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -39,19 +38,13 @@ export default function LoginPage({ onLoginSuccess }) {
         localStorage.setItem('tm_auth_token', response.token);
         onLoginSuccess(response.user);
       } else {
-        setError(response?.error || 'Login failed. Please check your credentials.');
+        setError(response?.error || 'Invalid credentials. Access denied.');
       }
     } catch (err) {
-      setError(err.message || 'Invalid User ID or password. Please try again.');
+      setError(err.message || 'Invalid User ID or Password. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const fillCredentials = (user, pass) => {
-    setIdentifier(user);
-    setPassword(pass);
-    setError(null);
   };
 
   return (
@@ -62,37 +55,37 @@ export default function LoginPage({ onLoginSuccess }) {
       alignItems: 'center',
       justifyContent: 'center',
       background: 'linear-gradient(135deg, #f0fdf4 0%, #f8fafc 50%, #f0f9ff 100%)',
-      padding: '20px',
+      padding: '16px',
       position: 'relative',
       overflow: 'hidden'
     }}>
       {/* Background ambient lighting */}
       <div style={{
         position: 'absolute',
-        width: '500px',
-        height: '500px',
+        width: '400px',
+        height: '400px',
         background: 'radial-gradient(circle, rgba(2, 132, 199, 0.08) 0%, transparent 70%)',
-        top: '-100px',
-        right: '-100px',
+        top: '-80px',
+        right: '-80px',
         borderRadius: '50%',
         pointerEvents: 'none'
       }}></div>
       <div style={{
         position: 'absolute',
-        width: '400px',
-        height: '400px',
+        width: '350px',
+        height: '350px',
         background: 'radial-gradient(circle, rgba(16, 185, 129, 0.08) 0%, transparent 70%)',
-        bottom: '-100px',
-        left: '-100px',
+        bottom: '-80px',
+        left: '-80px',
         borderRadius: '50%',
         pointerEvents: 'none'
       }}></div>
 
-      {/* Single Unified Login Card */}
+      {/* Unified Login Card */}
       <div style={{
         width: '100%',
-        maxWidth: '440px',
-        padding: '38px 34px',
+        maxWidth: '430px',
+        padding: '36px 28px',
         borderRadius: '24px',
         background: '#ffffff',
         border: '1px solid #e2e8f0',
@@ -101,27 +94,28 @@ export default function LoginPage({ onLoginSuccess }) {
         zIndex: 10
       }}>
         
-        {/* Brand Header */}
+        {/* Brand Header with New Pharmacy Logo */}
         <div style={{ textAlign: 'center', marginBottom: '26px' }}>
           <div style={{
-            width: '56px',
-            height: '56px',
-            borderRadius: '16px',
-            background: 'linear-gradient(135deg, #0284c7 0%, #10b981 100%)',
+            width: '68px',
+            height: '68px',
+            borderRadius: '20px',
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             margin: '0 auto 14px',
-            boxShadow: '0 8px 20px rgba(2, 132, 199, 0.25)'
+            boxShadow: '0 10px 25px -5px rgba(2, 132, 199, 0.2)'
           }}>
-            <HeartPulse size={28} color="#ffffff" strokeWidth={2.5} />
+            <PharmacyLogo size={52} />
           </div>
 
-          <h2 style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', margin: 0 }}>
+          <h2 style={{ fontSize: '21px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', margin: 0 }}>
             TOP MEDICAL PHARMACY
           </h2>
           <p style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
-            Point of Sale & Inventory Management System
+            Authorized Personnel Login
           </p>
         </div>
 
@@ -137,7 +131,7 @@ export default function LoginPage({ onLoginSuccess }) {
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            marginBottom: '20px'
+            marginBottom: '18px'
           }}>
             <AlertCircle size={18} style={{ flexShrink: 0 }} />
             <span>{error}</span>
@@ -145,7 +139,7 @@ export default function LoginPage({ onLoginSuccess }) {
         )}
 
         {/* Login Form */}
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
           {/* User ID / Email Input */}
           <div>
@@ -157,9 +151,10 @@ export default function LoginPage({ onLoginSuccess }) {
               <input
                 type="text"
                 required
-                className="input-field mono"
-                style={{ paddingLeft: '42px', height: '44px', fontSize: '13.5px', background: '#f8fafc', borderColor: '#cbd5e1' }}
-                placeholder="Enter User ID or Email..."
+                autoComplete="username"
+                className="input-field"
+                style={{ paddingLeft: '42px', height: '44px', fontSize: '14px', background: '#f8fafc', borderColor: '#cbd5e1' }}
+                placeholder="Enter User ID or Email"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 autoFocus
@@ -177,9 +172,10 @@ export default function LoginPage({ onLoginSuccess }) {
               <input
                 type={showPassword ? 'text' : 'password'}
                 required
+                autoComplete="current-password"
                 className="input-field"
                 style={{ paddingLeft: '42px', paddingRight: '42px', height: '44px', fontSize: '14px', background: '#f8fafc', borderColor: '#cbd5e1' }}
-                placeholder="••••••••••••"
+                placeholder="Enter Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -203,7 +199,7 @@ export default function LoginPage({ onLoginSuccess }) {
             </div>
           </div>
 
-          {/* Single Sign In Button */}
+          {/* Sign In Button */}
           <button
             type="submit"
             disabled={loading}
@@ -211,65 +207,30 @@ export default function LoginPage({ onLoginSuccess }) {
             style={{ width: '100%', height: '46px', marginTop: '6px', fontSize: '14.5px' }}
           >
             {loading ? (
-              <span>Signing in...</span>
+              <span>Verifying Credentials...</span>
             ) : (
               <>
-                <span>Sign In to Pharmacy Portal</span>
+                <span>Sign In</span>
                 <ArrowRight size={17} />
               </>
             )}
           </button>
         </form>
 
-        {/* Quick 1-Click Credential Helpers */}
-        <div style={{
-          marginTop: '22px',
-          padding: '12px 14px',
-          background: '#f8fafc',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '8px'
-        }}>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>
-            <div>Auto-detects role on login</div>
-          </div>
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <button
-              type="button"
-              onClick={() => fillCredentials('admin@topmedical.com', 'AdminTopMedical11@')}
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '11px', padding: '4px 8px' }}
-            >
-              <KeyRound size={11} color="#0284c7" /> Fill Admin
-            </button>
-            <button
-              type="button"
-              onClick={() => fillCredentials('topmedicalnatekal@gmail.com', 'Topmedical11@')}
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '11px', padding: '4px 8px' }}
-            >
-              <KeyRound size={11} color="#059669" /> Fill Staff
-            </button>
-          </div>
-        </div>
-
         {/* Security Footer */}
         <div style={{
-          marginTop: '20px',
-          paddingTop: '14px',
+          marginTop: '22px',
+          paddingTop: '16px',
           borderTop: '1px solid #f1f5f9',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
           gap: '12px',
-          fontSize: '11px',
+          fontSize: '11.5px',
           color: '#64748b'
         }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <ShieldCheck size={13} color="#059669" /> Automatic Role Authentication
+            <ShieldCheck size={14} color="#059669" /> Secure POS Terminal
           </span>
           <span>•</span>
           <span>DL 20B/21B</span>

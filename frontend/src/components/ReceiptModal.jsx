@@ -116,10 +116,10 @@ export default function ReceiptModal({ invoice, profile, onClose }) {
                 <h3 style={{ fontSize: '16px', fontWeight: 800, textTransform: 'uppercase', margin: 0, fontFamily: 'var(--font-main)' }}>
                   {profile?.name || 'TOP MEDICAL PHARMACY'}
                 </h3>
-                <p style={{ fontSize: '11px', color: '#4b5563', margin: '3px 0' }}>{profile?.address}</p>
-                <p style={{ fontSize: '11px', color: '#4b5563', margin: '2px 0' }}>Tel: {profile?.phone}</p>
+                <p style={{ fontSize: '11px', color: '#4b5563', margin: '3px 0' }}>{profile?.address || '3-79/4, R.B.COMPLEX, GROUND FLOOR, UNIVERSITY ROAD, DERALAKATTE, ULLAL TALUK, DERALAKATTE, MANGALORE 575018'}</p>
+                <p style={{ fontSize: '11px', color: '#4b5563', margin: '2px 0' }}>Tel: {profile?.phone || '9148240793'}</p>
                 <div style={{ fontSize: '10px', color: '#374151', marginTop: '4px', fontWeight: 600 }}>
-                  <span>DL: {profile?.dl_number_20b}</span> | <span>GSTIN: {profile?.gstin}</span>
+                  <span>DL: {profile?.dl_number_20b || 'KA-MN1-300667'}</span> | <span>GSTIN: {profile?.gstin || '29AJPPU6288G1Z7'}</span>
                 </div>
               </div>
 
@@ -208,10 +208,30 @@ export default function ReceiptModal({ invoice, profile, onClose }) {
                   <span>NET TOTAL:</span>
                   <span>{currency}{parseFloat(invoice.grand_total).toFixed(2)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
-                  <span>Paid via <strong>{invoice.payment_method}</strong>:</span>
-                  <span>{currency}{parseFloat(invoice.amount_paid).toFixed(2)}</span>
-                </div>
+
+                {/* Payment Tender Details */}
+                {invoice.payment_method === 'MIXED' ? (
+                  <div style={{ fontSize: '10.5px', borderBottom: '1px dotted #cbd5e1', paddingBottom: '4px', marginBottom: '4px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                      <span>Split Payment:</span>
+                      <span>{currency}{parseFloat(invoice.amount_paid).toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#059669', paddingLeft: '8px' }}>
+                      <span>• Cash Received:</span>
+                      <span>{currency}{parseFloat(invoice.cash_amount || 0).toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0284c7', paddingLeft: '8px' }}>
+                      <span>• UPI / GPay:</span>
+                      <span>{currency}{parseFloat(invoice.upi_amount || 0).toFixed(2)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                    <span>Paid via <strong>{invoice.payment_method === 'UPI' ? 'UPI / GPay' : invoice.payment_method}</strong>:</span>
+                    <span>{currency}{parseFloat(invoice.amount_paid).toFixed(2)}</span>
+                  </div>
+                )}
+
                 {parseFloat(invoice.change_due) > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#059669' }}>
                     <span>Change Returned:</span>
@@ -245,15 +265,14 @@ export default function ReceiptModal({ invoice, profile, onClose }) {
                     <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase', margin: 0, fontFamily: 'var(--font-main)' }}>
                       {profile?.name || 'TOP MEDICAL PHARMACY'}
                     </h2>
-                    <p style={{ fontSize: '12px', color: '#475569', margin: '4px 0' }}>{profile?.tagline}</p>
-                    <p style={{ fontSize: '11.5px', color: '#334155', margin: '2px 0', maxWidth: '380px' }}>{profile?.address}</p>
+                    <p style={{ fontSize: '12px', color: '#475569', margin: '4px 0' }}>{profile?.tagline || 'Quality Care & Trusted Medications'}</p>
+                    <p style={{ fontSize: '11.5px', color: '#334155', margin: '2px 0', maxWidth: '380px' }}>{profile?.address || '3-79/4, R.B.COMPLEX, GROUND FLOOR, UNIVERSITY ROAD, DERALAKATTE, ULLAL TALUK, DERALAKATTE, MANGALORE 575018'}</p>
                   <p style={{ fontSize: '11.5px', color: '#334155', margin: '2px 0' }}>
-                    <strong>Phone:</strong> {profile?.phone} | <strong>Email:</strong> {profile?.email}
+                    <strong>Phone:</strong> {profile?.phone || '9148240793'} | <strong>Email:</strong> {profile?.email || 'billing@topmedical.com'}
                   </p>
                     <div style={{ fontSize: '11px', marginTop: '6px', display: 'flex', gap: '12px', color: '#0f172a', fontWeight: 600 }}>
-                      <span>DL 20B: {profile?.dl_number_20b}</span>
-                      <span>DL 21B: {profile?.dl_number_21b}</span>
-                      <span>GSTIN: {profile?.gstin}</span>
+                      <span>DL No: {profile?.dl_number_20b || 'KA-MN1-300667'}</span>
+                      <span>GSTIN: {profile?.gstin || '29AJPPU6288G1Z7'}</span>
                     </div>
                   </div>
                 </div>
@@ -404,10 +423,27 @@ export default function ReceiptModal({ invoice, profile, onClose }) {
                     <span>Grand Total:</span>
                     <span>{currency}{parseFloat(invoice.grand_total).toFixed(2)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '11.5px' }}>
-                    <span>Amount Paid ({invoice.payment_method}):</span>
-                    <span style={{ fontWeight: 700 }}>{currency}{parseFloat(invoice.amount_paid).toFixed(2)}</span>
-                  </div>
+                  {invoice.payment_method === 'MIXED' ? (
+                    <div style={{ marginTop: '4px', padding: '6px', background: '#f8fafc', borderRadius: '4px', fontSize: '11px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                        <span>Split Payment Paid:</span>
+                        <span>{currency}{parseFloat(invoice.amount_paid).toFixed(2)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#059669' }}>
+                        <span>• Cash Tendered:</span>
+                        <span>{currency}{parseFloat(invoice.cash_amount || 0).toFixed(2)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0284c7' }}>
+                        <span>• UPI / GPay:</span>
+                        <span>{currency}{parseFloat(invoice.upi_amount || 0).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '11.5px' }}>
+                      <span>Amount Paid ({invoice.payment_method === 'UPI' ? 'UPI / GPay' : invoice.payment_method}):</span>
+                      <span style={{ fontWeight: 700 }}>{currency}{parseFloat(invoice.amount_paid).toFixed(2)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 

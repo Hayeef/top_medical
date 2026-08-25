@@ -52,14 +52,14 @@ def seed():
         defaults={
             "name": "TOP MEDICAL PHARMACY",
             "tagline": "Retail & Wholesale Dispensing Pharmacy",
-            "address": "Main Road, Natekal, Mangalore, Karnataka - 575018",
-            "phone": "+91 824 228 4567",
+            "address": "3-79/4, R.B.COMPLEX, GROUND FLOOR, UNIVERSITY ROAD, DERALAKATTE, ULLAL TALUK, DERALAKATTE, MANGALORE 575018",
+            "phone": "9148240793",
             "email": "topmedicalnatekal@gmail.com",
-            "gstin": "29AAAAA0000A1Z5",
-            "dl_number_20b": "KA-B1-20B-123456",
-            "dl_number_21b": "KA-B1-21B-123457",
+            "gstin": "29AJPPU6288G1Z7",
+            "dl_number_20b": "KA-MN1-300667",
+            "dl_number_21b": "KA-MN1-300667",
             "upi_id": "topmedical@upi",
-            "currency_symbol": "Rs. ",
+            "currency_symbol": "₹",
             "invoice_footer_note": "Thank you for choosing Top Medical Pharmacy. Wishing you good health! Medicines once sold cannot be returned without original bill."
         }
     )

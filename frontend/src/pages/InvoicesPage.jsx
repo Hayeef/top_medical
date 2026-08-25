@@ -9,7 +9,11 @@ import {
   ChevronUp, 
   Package,
   Calendar,
-  DollarSign
+  DollarSign,
+  Banknote,
+  QrCode,
+  Sparkles,
+  Users
 } from 'lucide-react';
 import { billingAPI } from '../api';
 
@@ -74,14 +78,34 @@ export default function InvoicesPage({ profile, onOpenReceipt }) {
     }
   };
 
+  // Accounting & Settlement Summary for active filtered invoices
+  const activeInvoices = invoices.filter(inv => inv.payment_status !== 'CANCELLED');
+  const totalInvoiced = activeInvoices.reduce((sum, inv) => sum + (parseFloat(inv.grand_total) || 0), 0);
+  const totalCashCollected = activeInvoices.reduce((sum, inv) => {
+    const c = parseFloat(inv.cash_amount);
+    if (!isNaN(c) && c > 0) return sum + c;
+    if (inv.payment_method === 'CASH') return sum + (parseFloat(inv.amount_paid || inv.grand_total) || 0);
+    return sum;
+  }, 0);
+  const totalUpiCollected = activeInvoices.reduce((sum, inv) => {
+    const u = parseFloat(inv.upi_amount);
+    if (!isNaN(u) && u > 0) return sum + u;
+    if (inv.payment_method === 'UPI') return sum + (parseFloat(inv.amount_paid || inv.grand_total) || 0);
+    return sum;
+  }, 0);
+  const totalAmountPaid = activeInvoices.reduce((sum, inv) => sum + (parseFloat(inv.amount_paid) || 0), 0);
+  const totalDueAmount = Math.max(0, totalInvoiced - totalAmountPaid);
+
   // Staff summary calculation for active filtered results
   const staffSalesSummary = invoices.reduce((acc, inv) => {
     if (inv.payment_status !== 'CANCELLED') {
       const code = inv.staff_code || 'SC-101';
       const name = inv.staff_name || 'Staff 1';
-      if (!acc[code]) acc[code] = { code, name, count: 0, revenue: 0 };
+      if (!acc[code]) acc[code] = { code, name, count: 0, revenue: 0, cash: 0, upi: 0 };
       acc[code].count += 1;
       acc[code].revenue += parseFloat(inv.grand_total) || 0;
+      acc[code].cash += parseFloat(inv.cash_amount) || (inv.payment_method === 'CASH' ? parseFloat(inv.amount_paid || inv.grand_total) : 0);
+      acc[code].upi += parseFloat(inv.upi_amount) || (inv.payment_method === 'UPI' ? parseFloat(inv.amount_paid || inv.grand_total) : 0);
     }
     return acc;
   }, {});
@@ -89,6 +113,84 @@ export default function InvoicesPage({ profile, onOpenReceipt }) {
   return (
     <div className="main-page-wrapper">
       
+      {/* 1. Daily Account & Drawer Settlement Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+        
+        {/* Cash in Counter Drawer */}
+        <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #10b981', background: '#f0fdf4' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Cash in Drawer
+            </span>
+            <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Banknote size={17} color="#059669" />
+            </div>
+          </div>
+          <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#065f46', marginTop: '6px' }}>
+            {currency}{totalCashCollected.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          </div>
+          <div style={{ fontSize: '11px', color: '#16a34a', marginTop: '2px', fontWeight: 600 }}>
+            Physical cash collected
+          </div>
+        </div>
+
+        {/* UPI / GPay in Account */}
+        <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #0284c7', background: '#f0f9ff' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              UPI / GPay in Account
+            </span>
+            <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <QrCode size={17} color="#0284c7" />
+            </div>
+          </div>
+          <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#0369a1', marginTop: '6px' }}>
+            {currency}{totalUpiCollected.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          </div>
+          <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '2px', fontWeight: 600 }}>
+            Digital QR / VPA receipts
+          </div>
+        </div>
+
+        {/* Total Invoiced Sales */}
+        <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #6366f1', background: '#eef2ff' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: '#4f46e5', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Total Filtered Sales
+            </span>
+            <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <DollarSign size={17} color="#4f46e5" />
+            </div>
+          </div>
+          <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#3730a3', marginTop: '6px' }}>
+            {currency}{totalInvoiced.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          </div>
+          <div style={{ fontSize: '11px', color: '#6366f1', marginTop: '2px', fontWeight: 600 }}>
+            {activeInvoices.length} active bills
+          </div>
+        </div>
+
+        {/* Unpaid / Credit Dues */}
+        {totalDueAmount > 0 && (
+          <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #e11d48', background: '#fff1f2' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: '#e11d48', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Credit Dues
+              </span>
+              <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Users size={17} color="#e11d48" />
+              </div>
+            </div>
+            <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#9f1239', marginTop: '6px' }}>
+              {currency}{totalDueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </div>
+            <div style={{ fontSize: '11px', color: '#e11d48', marginTop: '2px', fontWeight: 600 }}>
+              Unpaid patient balances
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Staff Performance Snapshot Bar */}
       <div className="mobile-scroll-pills" style={{ display: 'flex', gap: '10px' }}>
         {(staffList.length > 0 ? staffList : [
@@ -96,7 +198,7 @@ export default function InvoicesPage({ profile, onOpenReceipt }) {
           { charge_code: 'SC-102', name: 'Fatima (Staff 2)' },
           { charge_code: 'SC-103', name: 'Bilal (Staff 3)' },
         ]).map((stf) => {
-          const stats = staffSalesSummary[stf.charge_code] || { count: 0, revenue: 0 };
+          const stats = staffSalesSummary[stf.charge_code] || { count: 0, revenue: 0, cash: 0, upi: 0 };
           const isSelected = staffFilter === stf.charge_code;
           return (
             <div 
@@ -108,7 +210,7 @@ export default function InvoicesPage({ profile, onOpenReceipt }) {
                 cursor: 'pointer',
                 border: isSelected ? '2px solid #0284c7' : '1px solid #e2e8f0',
                 background: isSelected ? '#f0f9ff' : '#ffffff',
-                minWidth: '180px',
+                minWidth: '200px',
                 flex: '1 0 auto'
               }}
             >
@@ -126,6 +228,10 @@ export default function InvoicesPage({ profile, onOpenReceipt }) {
                 <span className="mono" style={{ fontSize: '14px', fontWeight: 800, color: '#059669' }}>
                   {currency}{stats.revenue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </span>
+              </div>
+              <div style={{ marginTop: '4px', fontSize: '10.5px', display: 'flex', justifyContent: 'space-between', color: '#64748b', borderTop: '1px dashed #e2e8f0', paddingTop: '4px' }}>
+                <span style={{ color: '#059669' }}>Cash: {currency}{stats.cash.toFixed(0)}</span>
+                <span style={{ color: '#0284c7' }}>UPI: {currency}{stats.upi.toFixed(0)}</span>
               </div>
             </div>
           );
@@ -163,13 +269,14 @@ export default function InvoicesPage({ profile, onOpenReceipt }) {
 
           <select
             className="input-field"
-            style={{ flex: '1 1 120px', height: '38px', fontSize: '12px' }}
+            style={{ flex: '1 1 130px', height: '38px', fontSize: '12px' }}
             value={paymentFilter}
             onChange={(e) => setPaymentFilter(e.target.value)}
           >
             <option value="">All Payments</option>
-            <option value="CASH">Cash</option>
-            <option value="UPI">UPI / QR</option>
+            <option value="CASH">Cash Only</option>
+            <option value="UPI">UPI / GPay Only</option>
+            <option value="MIXED">Split (Cash + UPI)</option>
             <option value="CARD">Card</option>
             <option value="CREDIT">Credit / Due</option>
           </select>
@@ -305,9 +412,19 @@ export default function InvoicesPage({ profile, onOpenReceipt }) {
                         </td>
 
                         <td>
-                          <span className={`badge ${inv.payment_method === 'CASH' ? 'badge-emerald' : (inv.payment_method === 'UPI' ? 'badge-cyan' : 'badge-purple')}`}>
-                            {inv.payment_method}
-                          </span>
+                          {inv.payment_method === 'MIXED' ? (
+                            <span className="badge badge-purple" title={`Cash: ${currency}${inv.cash_amount} | UPI: ${currency}${inv.upi_amount}`} style={{ fontSize: '10.5px' }}>
+                              Split (C: ₹{parseFloat(inv.cash_amount || 0).toFixed(0)} + U: ₹{parseFloat(inv.upi_amount || 0).toFixed(0)})
+                            </span>
+                          ) : inv.payment_method === 'CASH' ? (
+                            <span className="badge badge-emerald">Cash</span>
+                          ) : inv.payment_method === 'UPI' ? (
+                            <span className="badge badge-cyan">UPI / GPay</span>
+                          ) : inv.payment_method === 'CARD' ? (
+                            <span className="badge badge-indigo">Card</span>
+                          ) : (
+                            <span className="badge badge-amber">Credit / Due</span>
+                          )}
                         </td>
 
                         <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '14px', color: isCancelled ? '#e11d48' : '#059669' }} className="mono">
@@ -420,9 +537,15 @@ export default function InvoicesPage({ profile, onOpenReceipt }) {
                         <span style={{ fontWeight: 800, fontSize: '14px', color: '#0f172a' }}>
                           #{inv.invoice_number}
                         </span>
-                        <span className={`badge ${inv.payment_method === 'CASH' ? 'badge-emerald' : 'badge-cyan'}`}>
-                          {inv.payment_method}
-                        </span>
+                        {inv.payment_method === 'MIXED' ? (
+                          <span className="badge badge-purple" style={{ fontSize: '10px' }}>
+                            Split (₹{parseFloat(inv.cash_amount || 0).toFixed(0)}+₹{parseFloat(inv.upi_amount || 0).toFixed(0)})
+                          </span>
+                        ) : (
+                          <span className={`badge ${inv.payment_method === 'CASH' ? 'badge-emerald' : (inv.payment_method === 'UPI' ? 'badge-cyan' : 'badge-amber')}`}>
+                            {inv.payment_method === 'UPI' ? 'UPI / GPay' : inv.payment_method}
+                          </span>
+                        )}
                         {isCancelled && <span className="badge badge-rose">CANCELLED</span>}
                       </div>
                       <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>

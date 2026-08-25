@@ -19,7 +19,19 @@ class DashboardSummaryView(APIView):
         ).exclude(payment_status__in=['CANCELLED', 'REFUNDED'])
 
         today_revenue = today_invoices.aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
+        today_cash_revenue = today_invoices.aggregate(total=Sum('cash_amount'))['total'] or Decimal('0.00')
+        today_upi_revenue = today_invoices.aggregate(total=Sum('upi_amount'))['total'] or Decimal('0.00')
+        today_card_revenue = today_invoices.aggregate(total=Sum('card_amount'))['total'] or Decimal('0.00')
+        today_credit_sales = today_invoices.filter(
+            Q(payment_method='CREDIT') | Q(payment_status='DUE')
+        ).aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
         today_orders_count = today_invoices.count()
+
+        # All-time totals
+        all_time_invoices = Invoice.objects.exclude(payment_status__in=['CANCELLED', 'REFUNDED'])
+        all_time_cash = all_time_invoices.aggregate(total=Sum('cash_amount'))['total'] or Decimal('0.00')
+        all_time_upi = all_time_invoices.aggregate(total=Sum('upi_amount'))['total'] or Decimal('0.00')
+        all_time_revenue = all_time_invoices.aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
 
         # Gross profit estimate for today
         today_items = InvoiceItem.objects.filter(
@@ -63,13 +75,93 @@ class DashboardSummaryView(APIView):
 
         return Response({
             "today_revenue": round(float(today_revenue), 2),
+            "today_cash_revenue": round(float(today_cash_revenue), 2),
+            "today_upi_revenue": round(float(today_upi_revenue), 2),
+            "today_card_revenue": round(float(today_card_revenue), 2),
             "today_orders_count": today_orders_count,
             "today_profit": round(float(today_profit), 2),
+            "all_time_revenue": round(float(all_time_revenue), 2),
+            "all_time_cash_revenue": round(float(all_time_cash), 2),
+            "all_time_upi_revenue": round(float(all_time_upi), 2),
+            "payment_breakdown": {
+                "cash": round(float(today_cash_revenue), 2),
+                "upi": round(float(today_upi_revenue), 2),
+                "card": round(float(today_card_revenue), 2),
+                "credit": round(float(today_credit_sales), 2),
+            },
             "total_medicines": total_medicines,
             "low_stock_count": low_stock_count,
             "near_expiry_count": near_expiry_count,
             "expired_count": expired_count,
             "total_credit_due": round(float(total_credit_due), 2),
+        })
+
+
+class PaymentBreakdownView(APIView):
+    """
+    Detailed payment breakdown (Cash, UPI / GPay, Card, Due) over specified periods:
+    today, 7 days, 30 days, or custom date range.
+    """
+    def get(self, request):
+        days = request.query_params.get('days')
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+
+        invoices = Invoice.objects.exclude(payment_status__in=['CANCELLED', 'REFUNDED'])
+
+        if start_date_str and end_date_str:
+            try:
+                s_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                e_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                start_dt = timezone.make_aware(datetime.combine(s_date, datetime.min.time()))
+                end_dt = timezone.make_aware(datetime.combine(e_date, datetime.max.time()))
+                invoices = invoices.filter(created_at__range=(start_dt, end_dt))
+            except ValueError:
+                pass
+        elif days:
+            try:
+                d = int(days)
+                cutoff = timezone.now() - timedelta(days=d)
+                invoices = invoices.filter(created_at__gte=cutoff)
+            except ValueError:
+                pass
+
+        total_cash = invoices.aggregate(total=Sum('cash_amount'))['total'] or Decimal('0.00')
+        total_upi = invoices.aggregate(total=Sum('upi_amount'))['total'] or Decimal('0.00')
+        total_card = invoices.aggregate(total=Sum('card_amount'))['total'] or Decimal('0.00')
+        total_paid = invoices.aggregate(total=Sum('amount_paid'))['total'] or Decimal('0.00')
+        total_revenue = invoices.aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
+        total_due = max(Decimal('0.00'), total_revenue - total_paid)
+
+        cash_count = invoices.filter(Q(payment_method='CASH') | Q(cash_amount__gt=0)).count()
+        upi_count = invoices.filter(Q(payment_method__in=['UPI', 'GPAY']) | Q(upi_amount__gt=0)).count()
+        card_count = invoices.filter(Q(payment_method='CARD') | Q(card_amount__gt=0)).count()
+        credit_count = invoices.filter(Q(payment_method='CREDIT') | Q(payment_status='DUE')).count()
+
+        total_collected = total_cash + total_upi + total_card
+        cash_pct = round((float(total_cash) / float(total_collected) * 100), 1) if total_collected > 0 else 0.0
+        upi_pct = round((float(total_upi) / float(total_collected) * 100), 1) if total_collected > 0 else 0.0
+        card_pct = round((float(total_card) / float(total_collected) * 100), 1) if total_collected > 0 else 0.0
+
+        return Response({
+            "total_revenue": round(float(total_revenue), 2),
+            "total_amount_paid": round(float(total_paid), 2),
+            "total_cash": round(float(total_cash), 2),
+            "total_upi": round(float(total_upi), 2),
+            "total_card": round(float(total_card), 2),
+            "total_due": round(float(total_due), 2),
+            "percentages": {
+                "cash": cash_pct,
+                "upi": upi_pct,
+                "card": card_pct,
+            },
+            "counts": {
+                "total": invoices.count(),
+                "cash": cash_count,
+                "upi": upi_count,
+                "card": card_count,
+                "credit": credit_count,
+            }
         })
 
 
@@ -89,6 +181,8 @@ class SalesTrendView(APIView):
             ).exclude(payment_status__in=['CANCELLED', 'REFUNDED'])
 
             rev = invoices.aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
+            cash_rev = invoices.aggregate(total=Sum('cash_amount'))['total'] or Decimal('0.00')
+            upi_rev = invoices.aggregate(total=Sum('upi_amount'))['total'] or Decimal('0.00')
             cnt = invoices.count()
 
             data.append({
@@ -96,6 +190,8 @@ class SalesTrendView(APIView):
                 "day": day_date.strftime('%a'),
                 "formatted_date": day_date.strftime('%d %b'),
                 "revenue": round(float(rev), 2),
+                "cash_revenue": round(float(cash_rev), 2),
+                "upi_revenue": round(float(upi_rev), 2),
                 "invoices": cnt,
             })
 
@@ -139,3 +235,4 @@ class TopSellingView(APIView):
             for item in top_items
         ]
         return Response(result)
+

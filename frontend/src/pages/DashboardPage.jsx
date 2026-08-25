@@ -10,7 +10,12 @@ import {
   Package, 
   ArrowUpRight,
   ShieldAlert,
-  Calendar
+  Calendar,
+  Banknote,
+  QrCode,
+  CreditCard,
+  Sparkles,
+  Wallet
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, Bar, Cell } from 'recharts';
 
@@ -26,6 +31,14 @@ export default function DashboardPage({
 }) {
   const currency = profile?.currency_symbol || '₹';
   const COLORS = ['#0284c7', '#10b981', '#6366f1', '#f59e0b', '#8b5cf6', '#ec4899'];
+
+  const todayCash = parseFloat(summary?.today_cash_revenue) || 0;
+  const todayUpi = parseFloat(summary?.today_upi_revenue) || 0;
+  const todayCard = parseFloat(summary?.today_card_revenue) || 0;
+  const totalCollectedToday = todayCash + todayUpi + todayCard;
+
+  const cashPct = totalCollectedToday > 0 ? ((todayCash / totalCollectedToday) * 100).toFixed(1) : 0;
+  const upiPct = totalCollectedToday > 0 ? ((todayUpi / totalCollectedToday) * 100).toFixed(1) : 0;
 
   return (
     <div className="main-page-wrapper">
@@ -141,6 +154,83 @@ export default function DashboardPage({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Cash & UPI / GPay Collections & Drawer Settlement Box */}
+      <div className="glass-panel" style={{ padding: '18px 20px', background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Wallet size={18} color="#0284c7" />
+              <span>Today's Counter Payment Reconciliation (Cash vs UPI / GPay)</span>
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+              Real-time cash drawer tracking and digital UPI settlement
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveTab('invoices')}
+            className="btn btn-secondary btn-sm"
+            style={{ fontSize: '11.5px' }}
+          >
+            View Invoices Archive →
+          </button>
+        </div>
+
+        {/* 2 Big Visual Columns */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+          
+          {/* Cash Drawer Box */}
+          <div style={{ padding: '14px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Cash in Counter Drawer
+              </div>
+              <div className="mono" style={{ fontSize: '24px', fontWeight: 900, color: '#065f46', marginTop: '4px' }}>
+                {currency}{todayCash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <div style={{ fontSize: '11px', color: '#16a34a', marginTop: '2px', fontWeight: 600 }}>
+                {cashPct}% of today's intake
+              </div>
+            </div>
+            <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Banknote size={24} color="#059669" />
+            </div>
+          </div>
+
+          {/* UPI / GPay Account Box */}
+          <div style={{ padding: '14px 16px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                UPI / GPay in Bank Account
+              </div>
+              <div className="mono" style={{ fontSize: '24px', fontWeight: 900, color: '#0369a1', marginTop: '4px' }}>
+                {currency}{todayUpi.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '2px', fontWeight: 600 }}>
+                {upiPct}% of today's intake
+              </div>
+            </div>
+            <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <QrCode size={24} color="#0284c7" />
+            </div>
+          </div>
+
+        </div>
+
+        {/* Visual Progress Bar Ratio */}
+        {totalCollectedToday > 0 && (
+          <div style={{ marginTop: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+              <span style={{ color: '#059669' }}>Cash: {cashPct}%</span>
+              <span style={{ color: '#0284c7' }}>UPI / GPay: {upiPct}%</span>
+            </div>
+            <div style={{ height: '8px', width: '100%', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden', display: 'flex' }}>
+              <div style={{ width: `${cashPct}%`, background: '#10b981', transition: 'width 0.4s ease' }} title={`Cash: ${cashPct}%`} />
+              <div style={{ width: `${upiPct}%`, background: '#0284c7', transition: 'width 0.4s ease' }} title={`UPI: ${upiPct}%`} />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Visual Charts Row */}

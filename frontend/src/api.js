@@ -104,6 +104,7 @@ export const billingAPI = {
   createInvoice: (data) => request('/billing/invoices/', { method: 'POST', body: JSON.stringify(data) }),
   cancelInvoice: (id) => request(`/billing/invoices/${id}/cancel_invoice/`, { method: 'POST' }),
   getNextInvoiceNumber: () => request('/billing/invoices/next_number/'),
+  getPaymentSummary: (params = '') => request(`/billing/invoices/payment_summary/${params ? `?${params}` : ''}`),
 
   // Customers
   getCustomers: (search = '') => request(`/billing/customers/${search ? `?search=${encodeURIComponent(search)}` : ''}`),
@@ -131,6 +132,7 @@ export const authAPI = {
 
 export const analyticsAPI = {
   getSummary: () => request('/analytics/summary/'),
+  getPaymentBreakdown: (params = '') => request(`/analytics/payment-breakdown/${params ? `?${params}` : ''}`),
   getSalesTrend: (days = 7) => request(`/analytics/sales-trend/?days=${days}`),
   getCategoryDistribution: () => request('/analytics/category-distribution/'),
   getTopSelling: () => request('/analytics/top-selling/'),

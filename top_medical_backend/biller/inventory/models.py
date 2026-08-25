@@ -48,8 +48,8 @@ class Medicine(models.Model):
         ('Other', 'Other Consumable'),
     ]
 
-    name = models.CharField(max_length=255, help_text="Brand name of the medicine e.g. Augmentin 625 Duo")
-    generic_name = models.CharField(max_length=255, blank=True, null=True, help_text="Salt composition e.g. Amoxicillin & Clavulanate")
+    name = models.CharField(max_length=255, db_index=True, help_text="Brand name of the medicine e.g. Augmentin 625 Duo")
+    generic_name = models.CharField(max_length=255, blank=True, null=True, db_index=True, help_text="Salt composition e.g. Amoxicillin & Clavulanate")
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='medicines')
     dosage_form = models.CharField(max_length=50, choices=DOSAGE_CHOICES, default='Tablet')
     strength = models.CharField(max_length=100, blank=True, null=True, help_text="e.g. 625mg, 500mg, 100ml")

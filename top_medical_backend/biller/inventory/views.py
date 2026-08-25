@@ -55,22 +55,46 @@ class MedicineViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def pos_search(self, request):
-        """Ultra-fast search tailored for POS billing: returns medicines with active stock and FEFO batch info."""
+        """Ultra-fast instant alphabet search tailored for POS billing: returns medicines with active stock and FEFO batch info."""
         query = request.query_params.get('q', '').strip()
         if not query:
-            medicines = Medicine.objects.filter(is_active=True).prefetch_related('batches')[:30]
+            medicines = Medicine.objects.filter(is_active=True).select_related('category').prefetch_related('batches')[:60]
+        elif len(query) == 1:
+            # Instant 1-letter alphabet search: starts-with has top priority
+            starts = list(
+                Medicine.objects.filter(is_active=True, name__istartswith=query)
+                .select_related('category').prefetch_related('batches')[:50]
+            )
+            if len(starts) < 25:
+                contains = list(
+                    Medicine.objects.filter(is_active=True, name__icontains=query)
+                    .exclude(id__in=[m.id for m in starts])
+                    .select_related('category').prefetch_related('batches')[:30]
+                )
+                medicines = starts + contains
+            else:
+                medicines = starts
         else:
-            medicines = Medicine.objects.filter(
-                Q(name__icontains=query) |
-                Q(generic_name__icontains=query) |
-                Q(barcode=query) |
-                Q(batches__batch_number__icontains=query)
-            ).filter(is_active=True).distinct().prefetch_related('batches')[:40]
+            # Multi-character query: starts with name -> generic name -> substring
+            starts = list(
+                Medicine.objects.filter(is_active=True, name__istartswith=query)
+                .select_related('category').prefetch_related('batches')[:40]
+            )
+            start_ids = [m.id for m in starts]
+            
+            contains = list(
+                Medicine.objects.filter(
+                    Q(name__icontains=query) |
+                    Q(generic_name__icontains=query) |
+                    Q(barcode__iexact=query)
+                ).filter(is_active=True)
+                .exclude(id__in=start_ids)
+                .select_related('category').prefetch_related('batches')[:40]
+            )
+            medicines = starts + contains
 
         serializer = self.get_serializer(medicines, many=True)
         return Response(serializer.data)
-
-        return Response(low_stock_list)
 
     @action(detail=False, methods=['post'])
     @transaction.atomic

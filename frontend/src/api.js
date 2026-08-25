@@ -120,6 +120,7 @@ export const billingAPI = {
   getStaff: () => request('/billing/staff/'),
   createStaff: (data) => request('/billing/staff/', { method: 'POST', body: JSON.stringify(data) }),
   updateStaff: (id, data) => request(`/billing/staff/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteStaff: (id) => request(`/billing/staff/${id}/`, { method: 'DELETE' }),
 
   // Pharmacy Profile
   getProfile: () => request('/billing/profile/'),
@@ -136,4 +137,5 @@ export const analyticsAPI = {
   getSalesTrend: (days = 7) => request(`/analytics/sales-trend/?days=${days}`),
   getCategoryDistribution: () => request('/analytics/category-distribution/'),
   getTopSelling: () => request('/analytics/top-selling/'),
+  getDailySoldReport: (params = '') => request(`/analytics/daily-sold-report/${params ? `?${params}` : ''}`),
 };

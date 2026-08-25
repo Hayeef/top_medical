@@ -13,11 +13,12 @@ import {
   Banknote,
   QrCode,
   Sparkles,
-  Users
+  Users,
+  ClipboardList
 } from 'lucide-react';
 import { billingAPI } from '../api';
 
-export default function InvoicesPage({ profile, onOpenReceipt }) {
+export default function InvoicesPage({ profile, onOpenReceipt, onOpenDailyReport }) {
   const [invoices, setInvoices] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -318,6 +319,17 @@ export default function InvoicesPage({ profile, onOpenReceipt }) {
               style={{ padding: '2px 8px', fontSize: '11px' }}
             >
               Clear Filters
+            </button>
+          )}
+
+          {onOpenDailyReport && (
+            <button
+              onClick={onOpenDailyReport}
+              className="btn btn-secondary btn-sm"
+              style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '5px', borderColor: '#0284c7', color: '#0284c7', background: '#f0f9ff' }}
+            >
+              <ClipboardList size={13} />
+              <span>Daily Sold Sheet (PDF)</span>
             </button>
           )}
         </div>

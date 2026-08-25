@@ -7,9 +7,11 @@ import {
   Phone, 
   MapPin, 
   UserPlus,
-  Plus
+  Plus,
+  BadgeCheck
 } from 'lucide-react';
 import { inventoryAPI } from '../api';
+import StaffManagementCard from '../components/StaffManagementCard';
 
 export default function ContactsPage({ 
   customers, 
@@ -90,6 +92,12 @@ export default function ContactsPage({
             className={`btn btn-sm ${tab === 'doctors' ? 'btn-primary' : 'btn-secondary'}`}
           >
             <Stethoscope size={14} /> Doctors ({doctors.length})
+          </button>
+          <button
+            onClick={() => setTab('staff')}
+            className={`btn btn-sm ${tab === 'staff' ? 'btn-primary' : 'btn-secondary'}`}
+          >
+            <BadgeCheck size={14} /> Staff & Charge Codes
           </button>
         </div>
 
@@ -332,6 +340,11 @@ export default function ContactsPage({
             )}
           </div>
         </div>
+      )}
+
+      {/* 4. STAFF & CHARGE CODES TAB */}
+      {tab === 'staff' && (
+        <StaffManagementCard onStaffUpdated={onRefresh} />
       )}
 
       {/* MODAL: ADD SUPPLIER */}

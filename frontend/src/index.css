@@ -658,3 +658,65 @@ button, a, input, select, textarea, [role="button"] {
   }
 }
 
+/* Print Media Styles for Official Invoices & Reorder PDF Reports */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+  }
+  
+  .no-print,
+  nav,
+  header,
+  aside,
+  .sidebar,
+  .mobile-bottom-nav,
+  .btn,
+  button {
+    display: none !important;
+  }
+  
+  .modal-backdrop {
+    position: static !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  
+  .modal-content {
+    max-width: 100% !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .print-container {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+  }
+}
+
+

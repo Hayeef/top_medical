@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     DashboardSummaryView, SalesTrendView, 
     CategoryDistributionView, TopSellingView,
-    PaymentBreakdownView
+    PaymentBreakdownView, DailySoldReportView
 )
 
 urlpatterns = [
@@ -11,5 +11,6 @@ urlpatterns = [
     path('sales-trend/', SalesTrendView.as_view(), name='analytics-sales-trend'),
     path('category-distribution/', CategoryDistributionView.as_view(), name='analytics-category-dist'),
     path('top-selling/', TopSellingView.as_view(), name='analytics-top-selling'),
+    path('daily-sold-report/', DailySoldReportView.as_view(), name='analytics-daily-sold-report'),
 ]
 

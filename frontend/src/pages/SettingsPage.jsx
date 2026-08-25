@@ -6,11 +6,13 @@ import {
   FileText, 
   Save, 
   QrCode, 
-  CheckCircle
+  CheckCircle,
+  BadgeCheck
 } from 'lucide-react';
 import { billingAPI } from '../api';
+import StaffManagementCard from '../components/StaffManagementCard';
 
-export default function SettingsPage({ profile, onProfileUpdated }) {
+export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated }) {
   const [formData, setFormData] = useState({
     name: '',
     tagline: '',
@@ -284,6 +286,9 @@ export default function SettingsPage({ profile, onProfileUpdated }) {
           </button>
         </div>
       </form>
+
+      {/* Staff & Custom Charge Codes Management Section */}
+      <StaffManagementCard onStaffUpdated={onStaffUpdated} />
     </div>
   );
 }

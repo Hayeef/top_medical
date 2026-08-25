@@ -15,7 +15,8 @@ import {
   QrCode,
   CreditCard,
   Sparkles,
-  Wallet
+  Wallet,
+  ClipboardList
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, Bar, Cell } from 'recharts';
 
@@ -27,7 +28,8 @@ export default function DashboardPage({
   profile, 
   setActiveTab,
   onOpenAddMedicine,
-  onOpenAddBatch 
+  onOpenAddBatch,
+  onOpenDailyReport
 }) {
   const currency = profile?.currency_symbol || '₹';
   const COLORS = ['#0284c7', '#10b981', '#6366f1', '#f59e0b', '#8b5cf6', '#ec4899'];
@@ -42,6 +44,31 @@ export default function DashboardPage({
 
   return (
     <div className="main-page-wrapper">
+      
+      {/* Dashboard Top Header Bar with Daily Reorder Report Action */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+            Pharmacy Overview & Analytics
+          </h2>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            Real-time sales & inventory metrics
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {onOpenDailyReport && (
+            <button
+              onClick={onOpenDailyReport}
+              className="btn btn-primary btn-sm"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 8px rgba(2, 132, 199, 0.2)' }}
+            >
+              <ClipboardList size={15} />
+              <span>Daily Sold Medicines (PDF Reorder)</span>
+            </button>
+          )}
+        </div>
+      </div>
       
       {/* Critical Alert Banner if expired or near expiry items exist */}
       {((summary?.expired_count || 0) > 0 || (summary?.near_expiry_count || 0) > 0 || (summary?.low_stock_count || 0) > 0) && (

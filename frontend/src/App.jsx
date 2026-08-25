@@ -10,6 +10,7 @@ import CustomerModal from './components/CustomerModal';
 import DoctorModal from './components/DoctorModal';
 import ScanSupplierBillModal from './components/ScanSupplierBillModal';
 import ExcelBulkUploadModal from './components/ExcelBulkUploadModal';
+import DailySoldReportModal from './components/DailySoldReportModal';
 
 import LoginPage from './pages/LoginPage';
 import PosBillingPage from './pages/PosBillingPage';
@@ -60,6 +61,7 @@ export default function App() {
   const [batchToAdjust, setBatchToAdjust] = useState(null);
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [isAddDoctorOpen, setIsAddDoctorOpen] = useState(false);
+  const [isDailyReportOpen, setIsDailyReportOpen] = useState(false);
   const [receiptInvoice, setReceiptInvoice] = useState(null);
 
   // Load all pharmacy datasets
@@ -200,6 +202,7 @@ export default function App() {
         onLogout={handleLogout}
         onOpenScanBill={() => setIsScanBillOpen(true)}
         onOpenExcelUpload={() => setIsExcelUploadOpen(true)}
+        onOpenDailyReport={() => setIsDailyReportOpen(true)}
         isMobileOpen={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
       />
@@ -246,6 +249,7 @@ export default function App() {
               onOpenAddMedicine={() => setIsAddMedicineOpen(true)}
               onOpenAddBatch={() => handleOpenAddBatch(null)}
               onOpenScanBill={() => setIsScanBillOpen(true)}
+              onOpenDailyReport={() => setIsDailyReportOpen(true)}
             />
           )}
 
@@ -260,6 +264,7 @@ export default function App() {
               onOpenStockAdjust={handleOpenStockAdjust}
               onOpenScanBill={() => setIsScanBillOpen(true)}
               onOpenExcelUpload={() => setIsExcelUploadOpen(true)}
+              onOpenDailyReport={() => setIsDailyReportOpen(true)}
             />
           )}
 
@@ -276,6 +281,7 @@ export default function App() {
               profile={profile}
               user={authUser}
               onOpenReceipt={(inv) => setReceiptInvoice(inv)}
+              onOpenDailyReport={() => setIsDailyReportOpen(true)}
             />
           )}
 
@@ -295,6 +301,7 @@ export default function App() {
             <SettingsPage
               profile={profile}
               onProfileUpdated={(updated) => setProfile(updated)}
+              onStaffUpdated={loadInitialData}
             />
           )}
         </main>
@@ -369,6 +376,16 @@ export default function App() {
         <DoctorModal
           onClose={() => setIsAddDoctorOpen(false)}
           onCreated={handleDoctorCreated}
+        />
+      )}
+
+      {isDailyReportOpen && (
+        <DailySoldReportModal
+          isOpen={isDailyReportOpen}
+          onClose={() => setIsDailyReportOpen(false)}
+          profile={profile}
+          suppliers={suppliers}
+          categories={categories}
         />
       )}
     </div>

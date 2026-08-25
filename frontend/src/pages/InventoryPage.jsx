@@ -10,7 +10,8 @@ import {
   Sliders, 
   ShoppingCart, 
   FileSpreadsheet,
-  Camera
+  Camera,
+  ClipboardList
 } from 'lucide-react';
 
 export default function InventoryPage({ 
@@ -23,6 +24,7 @@ export default function InventoryPage({
   onOpenStockAdjust,
   onOpenScanBill,
   onOpenExcelUpload,
+  onOpenDailyReport,
   setActiveTab 
 }) {
   const [search, setSearch] = useState('');
@@ -119,6 +121,16 @@ export default function InventoryPage({
             <button onClick={onOpenAddMedicine} className="btn btn-primary btn-sm">
               <Plus size={14} />
               <span>+ Medicine (F3)</span>
+            </button>
+          )}
+          {onOpenDailyReport && (
+            <button 
+              onClick={onOpenDailyReport} 
+              className="btn btn-secondary btn-sm"
+              style={{ borderColor: '#0284c7', color: '#0284c7', background: '#f0f9ff' }}
+            >
+              <ClipboardList size={14} />
+              <span>Daily Sold Sheet (PDF)</span>
             </button>
           )}
           {!isAdmin && setActiveTab && (

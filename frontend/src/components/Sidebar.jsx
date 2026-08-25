@@ -12,7 +12,8 @@ import {
   Shield,
   Camera,
   X,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ClipboardList
 } from 'lucide-react';
 import PharmacyLogo from './PharmacyLogo';
 
@@ -25,6 +26,7 @@ export default function Sidebar({
   onLogout,
   onOpenScanBill,
   onOpenExcelUpload,
+  onOpenDailyReport,
   isMobileOpen = false,
   onCloseMobile
 }) {
@@ -35,6 +37,7 @@ export default function Sidebar({
     { id: 'pos', label: 'POS Billing', icon: ShoppingCart, badge: 'F2', highlight: true },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'inventory', label: 'Medicine Stock', icon: Pill, badge: 'F3' },
+    { id: 'daily_report', label: 'Daily Reorder (PDF)', icon: ClipboardList, badge: 'PDF', isAction: true },
     { 
       id: 'alerts', 
       label: 'Alerts & Expiry', 
@@ -50,10 +53,15 @@ export default function Sidebar({
     { id: 'pos', label: 'POS Billing Terminal', icon: ShoppingCart, badge: 'F2', highlight: true },
     { id: 'invoices', label: 'Sales & Past Bills', icon: FileText },
     { id: 'inventory', label: 'Check Drug Stock', icon: Pill },
+    { id: 'daily_report', label: 'Daily Sold Sheet', icon: ClipboardList, badge: 'PDF', isAction: true },
   ];
 
-  const handleSelectNav = (tabId) => {
-    setActiveTab(tabId);
+  const handleSelectNav = (item) => {
+    if (item.isAction && onOpenDailyReport) {
+      onOpenDailyReport();
+    } else {
+      setActiveTab(item.id);
+    }
     if (onCloseMobile) onCloseMobile();
   };
 
@@ -139,7 +147,7 @@ export default function Sidebar({
             return (
               <button
                 key={item.id}
-                onClick={() => handleSelectNav(item.id)}
+                onClick={() => handleSelectNav(item)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',

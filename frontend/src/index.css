@@ -637,3 +637,24 @@ button, a, input, select, textarea, [role="button"] {
   }
 }
 
+/* POS Terminal Responsive Grid Layout */
+.pos-billing-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 20px;
+  padding: 20px 20px 80px;
+  min-height: calc(100vh - 70px);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1100px) {
+  .pos-billing-grid {
+    grid-template-columns: 1fr;
+    padding: 14px 14px 80px;
+  }
+  .pos-billing-right {
+    max-width: 100% !important;
+  }
+}
+

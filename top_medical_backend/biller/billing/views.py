@@ -3,6 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db import transaction
+from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
@@ -125,6 +126,83 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         next_num = Invoice.generate_next_invoice_number()
         return Response({"next_invoice_number": next_num})
 
+    @action(detail=False, methods=['get'])
+    def payment_summary(self, request):
+        """
+        Summary of payments received (Cash, UPI / GPay, Card, Due)
+        for accounting, daily settlement, and cash drawer reconciliation.
+        Supports filtering by start_date, end_date, staff_code.
+        """
+        qs = self.get_queryset().exclude(payment_status__in=['CANCELLED', 'REFUNDED'])
+
+        totals = qs.aggregate(
+            total_revenue=Sum('grand_total'),
+            total_amount_paid=Sum('amount_paid'),
+            total_cash=Sum('cash_amount'),
+            total_upi=Sum('upi_amount'),
+            total_card=Sum('card_amount'),
+            total_discount=Sum('discount_amount'),
+            total_tax=Sum('tax_amount'),
+        )
+
+        total_revenue = totals['total_revenue'] or Decimal('0.00')
+        total_amount_paid = totals['total_amount_paid'] or Decimal('0.00')
+        total_cash = totals['total_cash'] or Decimal('0.00')
+        total_upi = totals['total_upi'] or Decimal('0.00')
+        total_card = totals['total_card'] or Decimal('0.00')
+        total_discount = totals['total_discount'] or Decimal('0.00')
+        total_tax = totals['total_tax'] or Decimal('0.00')
+        total_due = max(Decimal('0.00'), total_revenue - total_amount_paid)
+
+        total_count = qs.count()
+        cash_invoices_count = qs.filter(Q(payment_method='CASH') | Q(cash_amount__gt=0)).count()
+        upi_invoices_count = qs.filter(Q(payment_method__in=['UPI', 'GPAY']) | Q(upi_amount__gt=0)).count()
+        card_invoices_count = qs.filter(Q(payment_method='CARD') | Q(card_amount__gt=0)).count()
+        credit_invoices_count = qs.filter(Q(payment_method='CREDIT') | Q(payment_status='DUE')).count()
+
+        # Staff-level collection breakdown
+        staff_stats = []
+        staff_groups = qs.values('staff_code', 'staff_name').annotate(
+            invoices_count=Count('id'),
+            cash_collected=Sum('cash_amount'),
+            upi_collected=Sum('upi_amount'),
+            card_collected=Sum('card_amount'),
+            total_collected=Sum('amount_paid'),
+            total_sales=Sum('grand_total')
+        ).order_by('-total_sales')
+
+        for st in staff_groups:
+            staff_stats.append({
+                'staff_code': st['staff_code'] or 'N/A',
+                'staff_name': st['staff_name'] or 'Unknown Staff',
+                'invoices_count': st['invoices_count'],
+                'cash_collected': round(float(st['cash_collected'] or 0.0), 2),
+                'upi_collected': round(float(st['upi_collected'] or 0.0), 2),
+                'card_collected': round(float(st['card_collected'] or 0.0), 2),
+                'total_collected': round(float(st['total_collected'] or 0.0), 2),
+                'total_sales': round(float(st['total_sales'] or 0.0), 2),
+            })
+
+        return Response({
+            'total_invoices_count': total_count,
+            'total_revenue': round(float(total_revenue), 2),
+            'total_amount_paid': round(float(total_amount_paid), 2),
+            'total_cash_received': round(float(total_cash), 2),
+            'total_upi_received': round(float(total_upi), 2),
+            'total_card_received': round(float(total_card), 2),
+            'total_due_amount': round(float(total_due), 2),
+            'total_discount': round(float(total_discount), 2),
+            'total_tax': round(float(total_tax), 2),
+            'counts': {
+                'total': total_count,
+                'cash': cash_invoices_count,
+                'upi': upi_invoices_count,
+                'card': card_invoices_count,
+                'credit': credit_invoices_count,
+            },
+            'staff_breakdown': staff_stats,
+        })
+
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def cancel_invoice(self, request, pk=None):
@@ -171,3 +249,4 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         invoice.save()
 
         return Response({"message": f"Invoice {invoice.invoice_number} cancelled and stock successfully restored."})
+

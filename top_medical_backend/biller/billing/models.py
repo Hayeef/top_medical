@@ -7,12 +7,12 @@ from inventory.models import Medicine, Batch
 class PharmacyProfile(models.Model):
     name = models.CharField(max_length=200, default="Top Medical Pharmacy")
     tagline = models.CharField(max_length=255, default="Quality Care & Trusted Medications")
-    address = models.TextField(default="Shop 4, City Care Complex, Main Health Road")
-    phone = models.CharField(max_length=50, default="+91 98765 43210")
+    address = models.TextField(default="3-79/4, R.B.COMPLEX, GROUND FLOOR, UNIVERSITY ROAD, DERALAKATTE, ULLAL TALUK, DERALAKATTE, MANGALORE 575018")
+    phone = models.CharField(max_length=50, default="9148240793")
     email = models.EmailField(default="billing@topmedical.com")
-    gstin = models.CharField(max_length=50, default="29ABCDE1234F1Z5")
-    dl_number_20b = models.CharField(max_length=100, default="KA-B1-20B-123456", help_text="Drug License 20B (Allopathic)")
-    dl_number_21b = models.CharField(max_length=100, default="KA-B1-21B-123457", help_text="Drug License 21B")
+    gstin = models.CharField(max_length=50, default="29AJPPU6288G1Z7")
+    dl_number_20b = models.CharField(max_length=100, default="KA-MN1-300667", help_text="Drug License (DL No.)")
+    dl_number_21b = models.CharField(max_length=100, default="KA-MN1-300667", blank=True, null=True, help_text="Drug License 21B")
     fssai_number = models.CharField(max_length=100, blank=True, null=True, default="11223344556677")
     currency_symbol = models.CharField(max_length=10, default="₹")
     invoice_footer_note = models.TextField(
@@ -128,6 +128,9 @@ class Invoice(models.Model):
     grand_total = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     
     amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    cash_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text="Total cash received for this invoice")
+    upi_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text="Total UPI / GPay received for this invoice")
+    card_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text="Total Card received for this invoice")
     change_due = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     
     notes = models.TextField(blank=True, null=True)
@@ -139,6 +142,31 @@ class Invoice(models.Model):
 
     def __str__(self):
         return f"{self.invoice_number} - {self.customer_name} ({self.grand_total})"
+
+    def save(self, *args, **kwargs):
+        # Auto-reconcile cash and upi breakdown if not explicitly supplied
+        self.cash_amount = Decimal(str(self.cash_amount or '0.00'))
+        self.upi_amount = Decimal(str(self.upi_amount or '0.00'))
+        self.card_amount = Decimal(str(self.card_amount or '0.00'))
+        self.amount_paid = Decimal(str(self.amount_paid or '0.00'))
+        self.grand_total = Decimal(str(self.grand_total or '0.00'))
+
+        if self.cash_amount > Decimal('0.00') and self.upi_amount > Decimal('0.00') and self.payment_method not in ['MIXED', 'SPLIT']:
+            self.payment_method = 'MIXED'
+        elif self.payment_method == 'CASH' and self.cash_amount == Decimal('0.00') and self.upi_amount == Decimal('0.00') and self.card_amount == Decimal('0.00'):
+            self.cash_amount = self.amount_paid if self.amount_paid > Decimal('0.00') else self.grand_total
+        elif self.payment_method in ['UPI', 'GPAY'] and self.upi_amount == Decimal('0.00') and self.cash_amount == Decimal('0.00') and self.card_amount == Decimal('0.00'):
+            self.upi_amount = self.amount_paid if self.amount_paid > Decimal('0.00') else self.grand_total
+        elif self.payment_method == 'CARD' and self.card_amount == Decimal('0.00') and self.cash_amount == Decimal('0.00') and self.upi_amount == Decimal('0.00'):
+            self.card_amount = self.amount_paid if self.amount_paid > Decimal('0.00') else self.grand_total
+
+        # Ensure amount_paid covers cash + upi + card if explicitly passed
+        total_breakdown = self.cash_amount + self.upi_amount + self.card_amount
+        if total_breakdown > Decimal('0.00') and self.amount_paid == Decimal('0.00') and self.payment_method != 'CREDIT':
+            self.amount_paid = total_breakdown
+
+        super().save(*args, **kwargs)
+
 
     @classmethod
     def generate_next_invoice_number(cls):

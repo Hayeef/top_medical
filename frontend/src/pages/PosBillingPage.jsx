@@ -57,9 +57,12 @@ export default function PosBillingPage({
 
   // Discount & Payment
   const [discountType, setDiscountType] = useState('PERCENT'); // 'PERCENT' or 'FIXED'
+  const [discountPreset, setDiscountPreset] = useState('0'); // '0', '5', '10', '15', '20', 'custom_pct', 'custom_fixed'
   const [discountValue, setDiscountValue] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [cashTendered, setCashTendered] = useState('');
+  const [splitCash, setSplitCash] = useState('');
+  const [splitUpi, setSplitUpi] = useState('');
   
   // Checkout status
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -76,22 +79,77 @@ export default function PosBillingPage({
     }
   }, [staffList]);
 
-  // Instant Alphabet Search: query immediately as soon as 1 alphabet is typed
+  const catalogCacheRef = useRef([]);
+
+  // Pre-load medicines catalog in background for 0ms instant keystroke lookups
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    inventoryAPI.searchPOS('')
+      .then(res => {
+        if (Array.isArray(res) && res.length > 0) {
+          catalogCacheRef.current = res;
+        }
+      })
+      .catch(err => console.error('Failed to pre-cache medicines:', err));
+  }, []);
+
+  // Instant Alphabet Search: 0ms local in-memory filter + background API sync
+  const performSearch = (queryStr) => {
+    const q = (queryStr || '').trim().toLowerCase();
+    if (!q) {
       setSearchResults([]);
       setSelectedIndex(0);
       return;
     }
 
+    // 1. Instant 0ms Synchronous Filter from local cache
+    if (catalogCacheRef.current && catalogCacheRef.current.length > 0) {
+      const starts = [];
+      const contains = [];
+
+      catalogCacheRef.current.forEach(med => {
+        const mName = (med.name || '').toLowerCase();
+        const gName = (med.generic_name || '').toLowerCase();
+        const barcode = (med.barcode || '').toLowerCase();
+
+        if (mName.startsWith(q)) {
+          starts.push(med);
+        } else if (gName.startsWith(q) || mName.includes(q) || gName.includes(q) || barcode === q) {
+          contains.push(med);
+        }
+      });
+
+      const immediateResults = [...starts, ...contains].slice(0, 50);
+      setSearchResults(immediateResults);
+      setSelectedIndex(0);
+    }
+  };
+
+  // Trigger background search and sync
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults([]);
+      setSelectedIndex(0);
+      return;
+    }
+
+    // Run instant local filter first
+    performSearch(q);
+
     let isMounted = true;
     setIsSearching(true);
 
-    inventoryAPI.searchPOS(searchQuery.trim())
+    inventoryAPI.searchPOS(q)
       .then(results => {
-        if (isMounted) {
-          setSearchResults(results || []);
-          setSelectedIndex(0);
+        if (isMounted && Array.isArray(results)) {
+          setSearchResults(results);
+          // Merge newly discovered items into cache
+          const existingIds = new Set(catalogCacheRef.current.map(m => m.id));
+          results.forEach(m => {
+            if (!existingIds.has(m.id)) {
+              catalogCacheRef.current.push(m);
+            }
+          });
         }
       })
       .catch(err => {
@@ -209,6 +267,31 @@ export default function PosBillingPage({
     setCart(updated);
   };
 
+  // Handle discount preset change
+  const handleDiscountPresetChange = (preset) => {
+    setDiscountPreset(preset);
+    if (preset === '0') {
+      setDiscountType('PERCENT');
+      setDiscountValue(0);
+    } else if (preset === '5') {
+      setDiscountType('PERCENT');
+      setDiscountValue(5);
+    } else if (preset === '10') {
+      setDiscountType('PERCENT');
+      setDiscountValue(10);
+    } else if (preset === '15') {
+      setDiscountType('PERCENT');
+      setDiscountValue(15);
+    } else if (preset === '20') {
+      setDiscountType('PERCENT');
+      setDiscountValue(20);
+    } else if (preset === 'custom_pct') {
+      setDiscountType('PERCENT');
+    } else if (preset === 'custom_fixed') {
+      setDiscountType('FIXED');
+    }
+  };
+
   const updateQuantity = (index, delta) => {
     const updated = [...cart];
     const newQty = updated[index].quantity + delta;
@@ -220,14 +303,24 @@ export default function PosBillingPage({
     }
   };
 
+  const updateItemDiscount = (index, disc) => {
+    const updated = [...cart];
+    updated[index].discount_percent = Math.max(0, Math.min(100, parseFloat(disc) || 0));
+    setCart(updated);
+  };
+
   const removeFromCart = (index) => {
     setCart(cart.filter((_, i) => i !== index));
   };
 
   const clearCart = () => {
     setCart([]);
+    setDiscountPreset('0');
+    setDiscountType('PERCENT');
     setDiscountValue(0);
     setCashTendered('');
+    setSplitCash('');
+    setSplitUpi('');
     setCustomerName('');
     setCustomerPhone('');
     setDoctorName('');
@@ -236,27 +329,35 @@ export default function PosBillingPage({
     setCheckoutError(null);
   };
 
-  let subtotal = 0;
+  // MRP is Tax-Inclusive (GST is extracted, NOT added additionally on top)
+  let grossSubtotal = 0;
   let totalTax = 0;
 
   cart.forEach(item => {
     const gross = item.unit_selling_price * item.quantity;
     const disc = (gross * (item.discount_percent || 0)) / 100;
-    const net = gross - disc;
-    const tax = (net * item.gst_rate) / 100;
-    subtotal += net;
+    const net = gross - disc; // Net selling amount inclusive of GST
+    const gstRate = item.gst_rate || 12.0;
+    const taxableBase = net / (1 + (gstRate / 100));
+    const tax = net - taxableBase;
+    grossSubtotal += net;
     totalTax += tax;
   });
 
   const billDiscountAmt = discountType === 'PERCENT'
-    ? (subtotal * (parseFloat(discountValue) || 0)) / 100
-    : Math.min(subtotal, parseFloat(discountValue) || 0);
+    ? (grossSubtotal * (parseFloat(discountValue) || 0)) / 100
+    : Math.min(grossSubtotal, parseFloat(discountValue) || 0);
 
-  const totalBeforeRound = Math.max(0, subtotal - billDiscountAmt + totalTax);
+  // Grand Total = Gross Subtotal - Discount (Tax inclusive!)
+  const totalBeforeRound = Math.max(0, grossSubtotal - billDiscountAmt);
   const grandTotal = Math.round(totalBeforeRound);
   const roundOff = (grandTotal - totalBeforeRound).toFixed(2);
-  const cgst = (totalTax / 2).toFixed(2);
-  const sgst = (totalTax / 2).toFixed(2);
+  
+  // Tax breakdown components
+  const effectiveTax = grossSubtotal > 0 ? (totalTax * (totalBeforeRound / grossSubtotal)) : 0;
+  const cgst = (effectiveTax / 2).toFixed(2);
+  const sgst = (effectiveTax / 2).toFixed(2);
+  const subtotal = grossSubtotal;
 
   const tenderedNum = parseFloat(cashTendered) || 0;
   const changeDue = Math.max(0, tenderedNum - grandTotal);
@@ -278,6 +379,31 @@ export default function PosBillingPage({
       const finalCustPhone = customerPhone.trim() || (selectedCust ? selectedCust.phone : '');
       const finalDocName = doctorName.trim() || (selectedDoc ? selectedDoc.name : 'Self / OTC');
 
+      // Determine cash and upi breakdown
+      let finalCashAmt = '0.00';
+      let finalUpiAmt = '0.00';
+      let finalCardAmt = '0.00';
+      let finalAmtPaid = grandTotal.toFixed(2);
+
+      if (paymentMethod === 'CASH') {
+        finalCashAmt = (tenderedNum > 0 ? Math.min(tenderedNum, grandTotal) : grandTotal).toFixed(2);
+        finalAmtPaid = finalCashAmt;
+      } else if (paymentMethod === 'UPI') {
+        finalUpiAmt = grandTotal.toFixed(2);
+        finalAmtPaid = finalUpiAmt;
+      } else if (paymentMethod === 'CARD') {
+        finalCardAmt = grandTotal.toFixed(2);
+        finalAmtPaid = finalCardAmt;
+      } else if (paymentMethod === 'MIXED') {
+        const sCash = parseFloat(splitCash) || 0;
+        const sUpi = parseFloat(splitUpi) || (grandTotal - sCash);
+        finalCashAmt = sCash.toFixed(2);
+        finalUpiAmt = sUpi.toFixed(2);
+        finalAmtPaid = (sCash + sUpi).toFixed(2);
+      } else if (paymentMethod === 'CREDIT') {
+        finalAmtPaid = '0.00';
+      }
+
       const payload = {
         staff_code: selectedStaffCode || 'SC-101',
         staff_name: selectedStaffName || 'Staff 1',
@@ -289,16 +415,19 @@ export default function PosBillingPage({
         prescription_number: prescriptionNo,
         payment_method: paymentMethod,
         payment_status: paymentMethod === 'CREDIT' ? 'DUE' : 'PAID',
+        cash_amount: finalCashAmt,
+        upi_amount: finalUpiAmt,
+        card_amount: finalCardAmt,
+        amount_paid: finalAmtPaid,
         subtotal: subtotal.toFixed(2),
         discount_type: discountType,
         discount_value: parseFloat(discountValue) || 0,
         discount_amount: billDiscountAmt.toFixed(2),
-        tax_amount: totalTax.toFixed(2),
+        tax_amount: effectiveTax.toFixed(2),
         cgst_amount: cgst,
         sgst_amount: sgst,
         round_off: roundOff,
         grand_total: grandTotal.toFixed(2),
-        amount_paid: paymentMethod === 'CREDIT' ? '0.00' : (paymentMethod === 'CASH' && tenderedNum > 0 ? Math.min(tenderedNum, grandTotal).toFixed(2) : grandTotal.toFixed(2)),
         change_due: changeDue.toFixed(2),
         notes: doctorNotes,
         items_data: cart.map(item => ({
@@ -333,17 +462,9 @@ export default function PosBillingPage({
   };
 
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-      gap: '20px',
-      padding: '20px 20px 80px',
-      minHeight: 'calc(100vh - 70px)',
-      maxWidth: '100%',
-      boxSizing: 'border-box'
-    }}>
-      {/* LEFT AREA: Medicine Search & Active Cart Table */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
+    <div className="pos-billing-grid">
+      {/* LEFT AREA: Medicine Search & Active Cart Table (WIDER) */}
+      <div className="pos-billing-left" style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0, width: '100%' }}>
         
         {/* Top Staff Charge Code Quick Selector Bar */}
         <div className="glass-panel" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', background: '#ffffff' }}>
@@ -405,9 +526,13 @@ export default function PosBillingPage({
               type="text"
               className="input-field"
               style={{ paddingLeft: '42px', height: '44px', fontSize: '14px', background: '#f8fafc', borderColor: '#cbd5e1' }}
-              placeholder="Type any letter to search tablets (e.g., 'a', 'p', 'd', 'm')..."
+              placeholder="Type any letter to instantly list tablets (e.g., 'A', 'P', 'D', 'M')..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSearchQuery(val);
+                performSearch(val);
+              }}
               onKeyDown={handleSearchKeyDown}
               autoFocus
             />
@@ -430,13 +555,13 @@ export default function PosBillingPage({
               borderRadius: '12px',
               boxShadow: '0 15px 35px rgba(15, 23, 42, 0.15)',
               zIndex: 100,
-              maxHeight: '320px',
+              maxHeight: '360px',
               overflowY: 'auto',
               padding: '6px'
             }}>
-              <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Recommended Medicines ({searchResults.length})</span>
-                <span className="desktop-only">Use ↑ ↓ keys & press Enter</span>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', padding: '6px 10px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9' }}>
+                <span style={{ color: '#0284c7' }}>Matching Tablets & Medicines ({searchResults.length})</span>
+                <span className="desktop-only" style={{ color: '#059669' }}>Use ↑ ↓ keys & press Enter to Bill</span>
               </div>
               {searchResults.map((med, idx) => {
                 const totalStock = med.batches?.reduce((acc, b) => acc + (b.is_expired ? 0 : b.pack_quantity), 0) || 0;
@@ -461,33 +586,34 @@ export default function PosBillingPage({
                       justifyContent: 'space-between',
                       borderBottom: '1px solid #f1f5f9',
                       background: isHighlighted ? '#f0f9ff' : 'transparent',
-                      borderLeft: isHighlighted ? '3px solid #0284c7' : '3px solid transparent',
-                      transition: 'background 0.1s ease',
+                      borderLeft: isHighlighted ? '4px solid #0284c7' : '4px solid transparent',
+                      transition: 'all 0.08s ease',
                       gap: '8px'
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 800, fontSize: '13.5px', color: '#0f172a' }}>{med.name}</span>
-                        <span className="badge badge-cyan">{med.dosage_form}</span>
-                        {med.requires_prescription && <span className="badge badge-rose">Rx</span>}
+                        <span style={{ fontWeight: 800, fontSize: '14px', color: '#0f172a' }}>{med.name}</span>
+                        <span className="badge badge-cyan" style={{ fontSize: '10.5px' }}>{med.dosage_form}</span>
+                        {med.requires_prescription && <span className="badge badge-rose" style={{ fontSize: '10px' }}>Rx</span>}
                       </div>
                       <div style={{ fontSize: '11.5px', color: '#475569', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {med.generic_name || 'Standard Composition'} • <em>{med.manufacturer}</em>
                       </div>
-                      <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        {med.rack_location && <span>📍 {med.rack_location}</span>}
+                      <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '3px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        {med.rack_location && <span style={{ color: '#0284c7', fontWeight: 600 }}>📍 Rack: {med.rack_location}</span>}
                         {nextBatch && <span>Exp: <strong style={{ color: nextBatch.is_near_expiry ? '#d97706' : '#059669' }}>{nextBatch.expiry_date}</strong></span>}
+                        {nextBatch && <span className="mono">Batch: {nextBatch.batch_number}</span>}
                       </div>
                     </div>
 
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div className="mono" style={{ fontSize: '14px', fontWeight: 800, color: '#059669' }}>
+                      <div className="mono" style={{ fontSize: '15px', fontWeight: 900, color: '#059669' }}>
                         {currency}{nextBatch ? nextBatch.selling_price : '-'}
                       </div>
-                      <div style={{ fontSize: '10.5px', marginTop: '2px' }}>
+                      <div style={{ fontSize: '11px', marginTop: '2px' }}>
                         <strong style={{ color: totalStock > 10 ? '#059669' : (totalStock > 0 ? '#d97706' : '#e11d48') }}>
-                          {totalStock} pk
+                          {totalStock > 0 ? `${totalStock} Packs` : 'Out of Stock'}
                         </strong>
                       </div>
                     </div>
@@ -770,8 +896,8 @@ export default function PosBillingPage({
         </div>
       </div>
 
-      {/* RIGHT AREA: Optional Customer & Doctor Typing + Checkout Summary */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* RIGHT AREA: Optional Customer & Doctor Typing + Checkout Summary (COMPACT) */}
+      <div className="pos-billing-right" style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%', maxWidth: '380px' }}>
         
         {/* Optional Patient & Doctor Direct Inputs Card */}
         <div className="glass-panel" style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -862,36 +988,122 @@ export default function PosBillingPage({
               <span className="mono" style={{ fontWeight: 700, color: '#0f172a' }}>{currency}{subtotal.toFixed(2)}</span>
             </div>
 
-            {/* Bill Discount Input */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: '#475569' }}>Discount:</span>
+            {/* Bill Discount Dropdown & Controls */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: '#f8fafc', padding: '8px 10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>Bill Discount:</span>
+                
+                {/* Discount Preset Dropdown */}
                 <select
-                  style={{ background: '#f8fafc', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '11px', padding: '1px 4px' }}
-                  value={discountType}
-                  onChange={(e) => setDiscountType(e.target.value)}
+                  style={{
+                    background: '#ffffff',
+                    color: '#0f172a',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    padding: '3px 8px',
+                    cursor: 'pointer'
+                  }}
+                  value={discountPreset}
+                  onChange={(e) => handleDiscountPresetChange(e.target.value)}
                 >
-                  <option value="PERCENT">%</option>
-                  <option value="FIXED">{currency}</option>
+                  <option value="0">0% (No Discount)</option>
+                  <option value="5">5% Discount</option>
+                  <option value="10">10% Discount</option>
+                  <option value="15">15% Discount</option>
+                  <option value="20">20% Discount</option>
+                  <option value="custom_pct">Custom % Discount</option>
+                  <option value="custom_fixed">Custom Flat ({currency})</option>
                 </select>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <input
-                  type="number"
-                  min="0"
-                  style={{ width: '60px', textAlign: 'right', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '4px', color: '#e11d48', fontWeight: 700, fontSize: '12px', padding: '2px 4px' }}
-                  value={discountValue}
-                  onChange={(e) => setDiscountValue(e.target.value)}
-                />
-                <span className="mono" style={{ color: '#e11d48', fontSize: '12px', fontWeight: 600 }}>
-                  (-{currency}{billDiscountAmt.toFixed(2)})
-                </span>
+
+              {/* Quick Preset Pills & Custom Value Input */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {['0', '5', '10'].map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => handleDiscountPresetChange(val)}
+                      style={{
+                        padding: '2px 7px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        borderRadius: '4px',
+                        border: discountPreset === val ? '1px solid #e11d48' : '1px solid #cbd5e1',
+                        background: discountPreset === val ? '#ffe4e6' : '#ffffff',
+                        color: discountPreset === val ? '#e11d48' : '#475569',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {val === '0' ? 'None' : `${val}%`}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => handleDiscountPresetChange(discountPreset === 'custom_fixed' ? 'custom_fixed' : 'custom_pct')}
+                    style={{
+                      padding: '2px 7px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      borderRadius: '4px',
+                      border: discountPreset.startsWith('custom') ? '1px solid #e11d48' : '1px solid #cbd5e1',
+                      background: discountPreset.startsWith('custom') ? '#ffe4e6' : '#ffffff',
+                      color: discountPreset.startsWith('custom') ? '#e11d48' : '#475569',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Custom
+                  </button>
+                </div>
+
+                {/* Custom Input when custom is chosen or custom value is entered */}
+                {(discountPreset.startsWith('custom') || (!['0', '5', '10', '15', '20'].includes(discountPreset))) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="0"
+                      className="mono"
+                      style={{
+                        width: '65px',
+                        height: '28px',
+                        textAlign: 'right',
+                        background: '#ffffff',
+                        border: '1px solid #f43f5e',
+                        borderRadius: '4px',
+                        color: '#e11d48',
+                        fontWeight: 700,
+                        fontSize: '12px',
+                        padding: '2px 6px'
+                      }}
+                      value={discountValue}
+                      onChange={(e) => {
+                        setDiscountValue(e.target.value);
+                        if (!discountPreset.startsWith('custom')) {
+                          setDiscountPreset('custom_pct');
+                        }
+                      }}
+                    />
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b' }}>
+                      {discountType === 'PERCENT' ? '%' : currency}
+                    </span>
+                  </div>
+                )}
+
+                {billDiscountAmt > 0 && (
+                  <span className="mono" style={{ color: '#e11d48', fontSize: '12px', fontWeight: 800, marginLeft: 'auto' }}>
+                    -{currency}{billDiscountAmt.toFixed(2)}
+                  </span>
+                )}
               </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: '11.5px' }}>
-              <span>GST Total (CGST+SGST):</span>
-              <span className="mono">{currency}{totalTax.toFixed(2)}</span>
+              <span>GST Included in MRP:</span>
+              <span className="mono">{currency}{effectiveTax.toFixed(2)}</span>
             </div>
 
             {parseFloat(roundOff) !== 0 && (
@@ -927,10 +1139,11 @@ export default function PosBillingPage({
             <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#475569', marginBottom: '6px', display: 'block', textTransform: 'uppercase' }}>
               Payment Method
             </label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(105px, 1fr))', gap: '6px' }}>
               {[
                 { id: 'CASH', label: 'Cash', icon: Banknote },
-                { id: 'UPI', label: 'UPI / QR', icon: QrCode },
+                { id: 'UPI', label: 'UPI / GPay', icon: QrCode },
+                { id: 'MIXED', label: 'Split (Cash+UPI)', icon: Sparkles },
                 { id: 'CARD', label: 'Card', icon: CreditCard },
                 { id: 'CREDIT', label: 'Credit / Due', icon: User },
               ].map(m => {
@@ -940,22 +1153,30 @@ export default function PosBillingPage({
                   <button
                     key={m.id}
                     type="button"
-                    onClick={() => setPaymentMethod(m.id)}
+                    onClick={() => {
+                      setPaymentMethod(m.id);
+                      if (m.id === 'MIXED' && !splitCash && !splitUpi) {
+                        const half = (grandTotal / 2).toFixed(2);
+                        setSplitCash(half);
+                        setSplitUpi((grandTotal - parseFloat(half)).toFixed(2));
+                      }
+                    }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '8px',
-                      padding: '8px 12px',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      padding: '8px 10px',
                       borderRadius: '8px',
-                      border: active ? '1px solid #0284c7' : '1px solid #e2e8f0',
+                      border: active ? '2px solid #0284c7' : '1px solid #e2e8f0',
                       background: active ? '#f0f9ff' : '#ffffff',
                       color: active ? '#0284c7' : '#475569',
-                      fontWeight: active ? 700 : 600,
-                      fontSize: '12px',
+                      fontWeight: active ? 800 : 600,
+                      fontSize: '11.5px',
                       cursor: 'pointer'
                     }}
                   >
-                    <Icon size={15} />
+                    <Icon size={14} />
                     <span>{m.label}</span>
                   </button>
                 );
@@ -1013,6 +1234,110 @@ export default function PosBillingPage({
                   <span className="mono">{currency}{changeDue.toFixed(2)}</span>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Split Payment (Cash + UPI) Interface */}
+          {paymentMethod === 'MIXED' && (
+            <div style={{ background: '#fdf4ff', padding: '12px', borderRadius: '10px', border: '1px solid #f0abfc', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#86198f' }}>
+                  Split Payment Breakdown
+                </span>
+                <span className="mono" style={{ fontSize: '11.5px', color: '#a21caf', fontWeight: 700 }}>
+                  Total: {currency}{grandTotal.toFixed(2)}
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 700, color: '#059669', display: 'block', marginBottom: '3px' }}>
+                    Cash Amount ({currency})
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max={grandTotal}
+                    step="any"
+                    className="input-field mono"
+                    style={{ height: '34px', fontSize: '13px', background: '#ffffff', fontWeight: 700 }}
+                    placeholder="Cash ₹"
+                    value={splitCash}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSplitCash(val);
+                      const cVal = parseFloat(val) || 0;
+                      setSplitUpi(Math.max(0, grandTotal - cVal).toFixed(2));
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 700, color: '#0284c7', display: 'block', marginBottom: '3px' }}>
+                    UPI / GPay ({currency})
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max={grandTotal}
+                    step="any"
+                    className="input-field mono"
+                    style={{ height: '34px', fontSize: '13px', background: '#ffffff', fontWeight: 700 }}
+                    placeholder="UPI ₹"
+                    value={splitUpi}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSplitUpi(val);
+                      const uVal = parseFloat(val) || 0;
+                      setSplitCash(Math.max(0, grandTotal - uVal).toFixed(2));
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Quick Split Ratio Chips */}
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <span style={{ fontSize: '10.5px', color: '#701a75' }}>Quick:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const half = (grandTotal / 2).toFixed(2);
+                    setSplitCash(half);
+                    setSplitUpi((grandTotal - parseFloat(half)).toFixed(2));
+                  }}
+                  style={{
+                    padding: '2px 6px',
+                    fontSize: '10.5px',
+                    fontWeight: 700,
+                    borderRadius: '4px',
+                    border: '1px solid #d946ef',
+                    background: '#ffffff',
+                    color: '#86198f',
+                    cursor: 'pointer'
+                  }}
+                >
+                  50% / 50%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSplitCash('100.00');
+                    setSplitUpi(Math.max(0, grandTotal - 100).toFixed(2));
+                  }}
+                  style={{
+                    padding: '2px 6px',
+                    fontSize: '10.5px',
+                    fontWeight: 700,
+                    borderRadius: '4px',
+                    border: '1px solid #d946ef',
+                    background: '#ffffff',
+                    color: '#86198f',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ₹100 Cash + Rest UPI
+                </button>
+              </div>
             </div>
           )}
 

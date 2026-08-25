@@ -344,6 +344,8 @@ def seed():
         round_off=Decimal('0.48'),
         grand_total=Decimal('325.00'),
         amount_paid=Decimal('325.00'),
+        cash_amount=Decimal('0.00'),
+        upi_amount=Decimal('325.00'),
         change_due=Decimal('0.00'),
         notes="Rx for viral fever"
     )

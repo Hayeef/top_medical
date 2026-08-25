@@ -80,6 +80,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
             'payment_method', 'payment_status', 'subtotal', 'discount_type', 
             'discount_value', 'discount_amount', 'tax_amount', 'cgst_amount', 
             'sgst_amount', 'round_off', 'grand_total', 'amount_paid', 
+            'cash_amount', 'upi_amount', 'card_amount',
             'change_due', 'notes', 'items', 'items_data', 'created_at', 'updated_at'
         ]
         read_only_fields = ['invoice_number', 'created_at', 'updated_at']
@@ -91,6 +92,35 @@ class InvoiceSerializer(serializers.ModelSerializer):
         # Auto generate invoice number if not provided
         if not validated_data.get('invoice_number'):
             validated_data['invoice_number'] = Invoice.generate_next_invoice_number()
+
+        # Reconcile cash and upi amounts
+        pay_method = validated_data.get('payment_method', 'CASH')
+        cash_amt = Decimal(str(validated_data.get('cash_amount', '0.00') or '0.00'))
+        upi_amt = Decimal(str(validated_data.get('upi_amount', '0.00') or '0.00'))
+        card_amt = Decimal(str(validated_data.get('card_amount', '0.00') or '0.00'))
+        amt_paid = Decimal(str(validated_data.get('amount_paid', '0.00') or '0.00'))
+        gr_total = Decimal(str(validated_data.get('grand_total', '0.00') or '0.00'))
+
+        effective_paid = amt_paid if amt_paid > Decimal('0.00') else gr_total
+
+        if pay_method == 'CASH' and cash_amt == Decimal('0.00') and upi_amt == Decimal('0.00'):
+            validated_data['cash_amount'] = effective_paid
+            if amt_paid == Decimal('0.00') and validated_data.get('payment_status') != 'DUE':
+                validated_data['amount_paid'] = effective_paid
+        elif pay_method in ['UPI', 'GPAY'] and upi_amt == Decimal('0.00') and cash_amt == Decimal('0.00'):
+            validated_data['payment_method'] = 'UPI'
+            validated_data['upi_amount'] = effective_paid
+            if amt_paid == Decimal('0.00') and validated_data.get('payment_status') != 'DUE':
+                validated_data['amount_paid'] = effective_paid
+        elif pay_method == 'CARD' and card_amt == Decimal('0.00') and cash_amt == Decimal('0.00') and upi_amt == Decimal('0.00'):
+            validated_data['card_amount'] = effective_paid
+            if amt_paid == Decimal('0.00') and validated_data.get('payment_status') != 'DUE':
+                validated_data['amount_paid'] = effective_paid
+        elif cash_amt > Decimal('0.00') and upi_amt > Decimal('0.00'):
+            validated_data['payment_method'] = 'MIXED'
+            total_split = cash_amt + upi_amt + card_amt
+            if amt_paid == Decimal('0.00'):
+                validated_data['amount_paid'] = total_split
 
         # If customer is selected, ensure customer_name & phone are synced
         customer = validated_data.get('customer')
@@ -117,6 +147,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
         staff_name = validated_data.get('staff_name', 'Staff 1')
 
         invoice = Invoice.objects.create(**validated_data)
+
 
         # Create items and deduct stock from batches
         for item_data in items_data:
@@ -169,12 +200,12 @@ class InvoiceSerializer(serializers.ModelSerializer):
                 notes=f"Sold by [{staff_code}] {staff_name} to {invoice.customer_name} via {invoice.invoice_number}"
             )
 
-            # Calculate item line totals
+            # Calculate item line totals (MRP / Selling price is inclusive of GST)
             gross = unit_sp * Decimal(qty)
             disc_amt = (gross * disc_pct) / Decimal('100.0')
-            net_before_tax = gross - disc_amt
-            tax_amt = (net_before_tax * gst_rate) / Decimal('100.0')
-            item_total = net_before_tax + tax_amt
+            item_total = gross - disc_amt
+            taxable_base = item_total / (Decimal('1.0') + (gst_rate / Decimal('100.0')))
+            tax_amt = item_total - taxable_base
 
             InvoiceItem.objects.create(
                 invoice=invoice,

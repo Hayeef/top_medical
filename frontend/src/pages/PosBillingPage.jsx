@@ -658,122 +658,126 @@ export default function PosBillingPage({
             ) : (
               <>
                 {/* 1. DESKTOP CART TABLE */}
-                <table className="data-table desktop-only">
-                  <thead>
-                    <tr>
-                      <th style={{ width: '32%' }}>Medicine & Composition</th>
-                      <th style={{ width: '22%' }}>Batch & Expiry (FEFO)</th>
-                      <th style={{ width: '14%', textAlign: 'center' }}>Type & Qty</th>
-                      <th style={{ width: '12%', textAlign: 'right' }}>Price ({currency})</th>
-                      <th style={{ width: '14%', textAlign: 'right' }}>Line Total ({currency})</th>
-                      <th style={{ width: '6%', textAlign: 'center' }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cart.map((item, idx) => {
-                      const lineGross = item.unit_selling_price * item.quantity;
-                      const lineDisc = (lineGross * (item.discount_percent || 0)) / 100;
-                      const lineTotal = lineGross - lineDisc;
+                <div className="data-table-container desktop-only" style={{ border: 'none', borderRadius: 0, width: '100%', overflowX: 'auto' }}>
+                  <table className="data-table" style={{ width: '100%', minWidth: '650px', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '30%', minWidth: '180px' }}>Medicine & Composition</th>
+                        <th style={{ width: '24%', minWidth: '160px' }}>Batch & Expiry (FEFO)</th>
+                        <th style={{ width: '16%', minWidth: '130px', textAlign: 'center' }}>Type & Qty</th>
+                        <th style={{ width: '13%', minWidth: '100px', textAlign: 'right' }}>Price ({currency})</th>
+                        <th style={{ width: '13%', minWidth: '100px', textAlign: 'right' }}>Line Total ({currency})</th>
+                        <th style={{ width: '4%', minWidth: '40px', textAlign: 'center' }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cart.map((item, idx) => {
+                        const lineGross = item.unit_selling_price * item.quantity;
+                        const lineDisc = (lineGross * (item.discount_percent || 0)) / 100;
+                        const lineTotal = lineGross - lineDisc;
 
-                      return (
-                        <tr key={idx}>
-                          <td>
-                            <div style={{ fontWeight: 700, color: '#0f172a' }}>{item.medicine.name}</div>
-                            <div style={{ fontSize: '11px', color: '#64748b' }}>
-                              {item.medicine.generic_name?.slice(0, 35)}...
-                            </div>
-                            {item.medicine.rack_location && (
-                              <div style={{ fontSize: '10.5px', color: '#0284c7', marginTop: '2px', fontWeight: 600 }}>
-                                📍 {item.medicine.rack_location}
+                        return (
+                          <tr key={idx}>
+                            <td>
+                              <div style={{ fontWeight: 800, fontSize: '13.5px', color: '#0f172a' }}>{item.medicine.name}</div>
+                              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px' }}>
+                                {item.medicine.generic_name?.slice(0, 40) || 'Standard Salt'}
                               </div>
-                            )}
-                          </td>
+                              {item.medicine.rack_location && (
+                                <div style={{ fontSize: '10.5px', color: '#0284c7', marginTop: '2px', fontWeight: 700 }}>
+                                  📍 Rack {item.medicine.rack_location}
+                                </div>
+                              )}
+                            </td>
 
-                          <td>
-                            <select
-                              className="input-field mono"
-                              style={{ padding: '4px 8px', fontSize: '12px', height: '30px' }}
-                              value={item.batch.id}
-                              onChange={(e) => handleBatchChange(idx, e.target.value)}
-                            >
-                              {item.availableBatches.map(b => (
-                                <option key={b.id} value={b.id}>
-                                  {b.batch_number} (Exp: {b.expiry_date}) - {b.pack_quantity}p
-                                </option>
-                              ))}
-                            </select>
-                            <div style={{ fontSize: '10px', color: item.batch.is_near_expiry ? '#d97706' : '#059669', marginTop: '2px', fontWeight: 600 }}>
-                              {item.batch.is_near_expiry ? '⚠️ Near Expiry' : '🟢 Good Expiry'}
-                            </div>
-                          </td>
-
-                          <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                              <button
-                                type="button"
-                                onClick={() => toggleLoose(idx)}
-                                className={`badge ${item.is_loose ? 'badge-amber' : 'badge-cyan'}`}
-                                style={{ cursor: 'pointer', border: 'none' }}
-                                title="Click to toggle Pack vs Loose"
+                            <td>
+                              <select
+                                className="input-field mono"
+                                style={{ padding: '4px 8px', fontSize: '11.5px', height: '30px', width: '100%' }}
+                                value={item.batch.id}
+                                onChange={(e) => handleBatchChange(idx, e.target.value)}
                               >
-                                {item.is_loose ? `Loose (${item.pack_size}s)` : `Full Pack (${item.pack_size}s)`}
-                              </button>
-
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <button
-                                  onClick={() => updateQuantity(idx, -1)}
-                                  style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                >
-                                  <Minus size={11} />
-                                </button>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  value={item.quantity}
-                                  onChange={(e) => setDirectQuantity(idx, e.target.value)}
-                                  className="mono"
-                                  style={{ width: '38px', height: '22px', textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px', fontWeight: 700 }}
-                                />
-                                <button
-                                  onClick={() => updateQuantity(idx, 1)}
-                                  style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                >
-                                  <Plus size={11} />
-                                </button>
+                                {item.availableBatches.map(b => (
+                                  <option key={b.id} value={b.id}>
+                                    {b.batch_number} (Exp: {b.expiry_date}) - {b.pack_quantity}p
+                                  </option>
+                                ))}
+                              </select>
+                              <div style={{ fontSize: '10.5px', color: item.batch.is_near_expiry ? '#d97706' : '#059669', marginTop: '2px', fontWeight: 700 }}>
+                                {item.batch.is_near_expiry ? '⚠️ Near Expiry' : '🟢 Good Expiry'}
                               </div>
-                            </div>
-                          </td>
+                            </td>
 
-                          <td style={{ textAlign: 'right' }}>
-                            <div className="mono" style={{ fontWeight: 600, color: '#0f172a' }}>{currency}{item.unit_selling_price.toFixed(2)}</div>
-                            <div style={{ fontSize: '10px', color: '#94a3b8', textDecoration: 'line-through' }}>
-                              MRP {currency}{item.unit_mrp.toFixed(2)}
-                            </div>
-                          </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleLoose(idx)}
+                                  className={`badge ${item.is_loose ? 'badge-amber' : 'badge-cyan'}`}
+                                  style={{ cursor: 'pointer', border: 'none', padding: '2px 8px', fontSize: '11px', fontWeight: 700 }}
+                                  title="Click to toggle Pack vs Loose"
+                                >
+                                  {item.is_loose ? `Loose (${item.pack_size}s)` : `Full Pack (${item.pack_size}s)`}
+                                </button>
 
-                          <td style={{ textAlign: 'right' }}>
-                            <div className="mono" style={{ fontWeight: 800, color: '#059669', fontSize: '14px' }}>
-                              {currency}{lineTotal.toFixed(2)}
-                            </div>
-                            <div style={{ fontSize: '10px', color: '#64748b' }}>
-                              GST {item.gst_rate}%
-                            </div>
-                          </td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                  <button
+                                    onClick={() => updateQuantity(idx, -1)}
+                                    style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  >
+                                    <Minus size={11} />
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={item.quantity}
+                                    onChange={(e) => setDirectQuantity(idx, e.target.value)}
+                                    className="mono"
+                                    style={{ width: '38px', height: '22px', textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px', fontWeight: 800 }}
+                                  />
+                                  <button
+                                    onClick={() => updateQuantity(idx, 1)}
+                                    style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  >
+                                    <Plus size={11} />
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
 
-                          <td style={{ textAlign: 'center' }}>
-                            <button
-                              onClick={() => removeFromCart(idx)}
-                              style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
-                              title="Remove item"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            <td style={{ textAlign: 'right' }}>
+                              <div className="mono" style={{ fontWeight: 800, fontSize: '13px', color: '#0f172a' }}>
+                                {currency}{item.unit_selling_price.toFixed(2)}
+                              </div>
+                              <div style={{ fontSize: '10.5px', color: '#94a3b8', textDecoration: 'line-through' }}>
+                                MRP {currency}{item.unit_mrp.toFixed(2)}
+                              </div>
+                            </td>
+
+                            <td style={{ textAlign: 'right' }}>
+                              <div className="mono" style={{ fontWeight: 900, color: '#059669', fontSize: '14.5px' }}>
+                                {currency}{lineTotal.toFixed(2)}
+                              </div>
+                              <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
+                                GST {item.gst_rate}%
+                              </div>
+                            </td>
+
+                            <td style={{ textAlign: 'center' }}>
+                              <button
+                                onClick={() => removeFromCart(idx)}
+                                style={{ background: '#fef2f2', border: '1px solid #fecdd3', color: '#e11d48', padding: '5px', borderRadius: '6px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                                title="Remove item from cart"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
 
                 {/* 2. MOBILE CART CARDS VIEW */}
                 <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px' }}>

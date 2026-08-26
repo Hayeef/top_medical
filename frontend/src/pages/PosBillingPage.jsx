@@ -213,22 +213,33 @@ export default function PosBillingPage({
     }
 
     const bestBatch = activeBatches[0];
+    const packSize = bestBatch.pack_size || 10;
+    const isLooseAllowed = !['Syrup', 'Drops', 'Ointment', 'Inhaler', 'Device'].includes(medicine.dosage_form) && packSize > 1;
+
     const existingIndex = cart.findIndex(item => item.medicine.id === medicine.id && item.batch.id === bestBatch.id);
 
     if (existingIndex > -1) {
       const updated = [...cart];
-      updated[existingIndex].quantity += 1;
+      updated[existingIndex].strip_quantity = (updated[existingIndex].strip_quantity || 0) + 1;
       setCart(updated);
     } else {
+      const stripMrp = parseFloat(bestBatch.mrp);
+      const stripSp = parseFloat(bestBatch.selling_price);
+      const tabMrp = parseFloat((stripMrp / packSize).toFixed(2));
+      const tabSp = parseFloat((stripSp / packSize).toFixed(2));
+
       const newItem = {
         medicine,
         batch: bestBatch,
         availableBatches: activeBatches,
-        is_loose: false,
-        quantity: 1,
-        pack_size: bestBatch.pack_size || 10,
-        unit_mrp: parseFloat(bestBatch.mrp),
-        unit_selling_price: parseFloat(bestBatch.selling_price),
+        pack_size: packSize,
+        is_loose_allowed: isLooseAllowed,
+        strip_quantity: 1,
+        loose_quantity: 0,
+        strip_mrp: stripMrp,
+        strip_selling_price: stripSp,
+        tab_mrp: tabMrp,
+        tab_selling_price: tabSp,
         discount_percent: 0,
         gst_rate: parseFloat(medicine.gst_rate) || 12.0,
       };
@@ -245,26 +256,61 @@ export default function PosBillingPage({
     const item = updated[index];
     const newBatch = item.availableBatches.find(b => b.id === parseInt(batchId));
     if (newBatch) {
+      const packSize = newBatch.pack_size || 10;
       item.batch = newBatch;
-      item.pack_size = newBatch.pack_size;
-      item.unit_mrp = item.is_loose ? parseFloat(newBatch.unit_mrp) : parseFloat(newBatch.mrp);
-      item.unit_selling_price = item.is_loose ? parseFloat(newBatch.unit_selling_price) : parseFloat(newBatch.selling_price);
+      item.pack_size = packSize;
+      item.strip_mrp = parseFloat(newBatch.mrp);
+      item.strip_selling_price = parseFloat(newBatch.selling_price);
+      item.tab_mrp = parseFloat((parseFloat(newBatch.mrp) / packSize).toFixed(2));
+      item.tab_selling_price = parseFloat((parseFloat(newBatch.selling_price) / packSize).toFixed(2));
       setCart(updated);
     }
   };
 
-  const toggleLoose = (index) => {
+  const updateStripQuantity = (index, delta) => {
     const updated = [...cart];
-    const item = updated[index];
-    item.is_loose = !item.is_loose;
-    if (item.is_loose) {
-      item.unit_mrp = parseFloat(item.batch.unit_mrp);
-      item.unit_selling_price = parseFloat(item.batch.unit_selling_price);
+    const current = updated[index].strip_quantity || 0;
+    const nextVal = Math.max(0, current + delta);
+    updated[index].strip_quantity = nextVal;
+    if (nextVal === 0 && (updated[index].loose_quantity || 0) === 0) {
+      setCart(cart.filter((_, i) => i !== index));
     } else {
-      item.unit_mrp = parseFloat(item.batch.mrp);
-      item.unit_selling_price = parseFloat(item.batch.selling_price);
+      setCart(updated);
     }
-    setCart(updated);
+  };
+
+  const setDirectStripQuantity = (index, val) => {
+    const updated = [...cart];
+    const nextVal = Math.max(0, parseInt(val) || 0);
+    updated[index].strip_quantity = nextVal;
+    if (nextVal === 0 && (updated[index].loose_quantity || 0) === 0) {
+      setCart(cart.filter((_, i) => i !== index));
+    } else {
+      setCart(updated);
+    }
+  };
+
+  const updateLooseQuantity = (index, delta) => {
+    const updated = [...cart];
+    const current = updated[index].loose_quantity || 0;
+    const nextVal = Math.max(0, current + delta);
+    updated[index].loose_quantity = nextVal;
+    if (nextVal === 0 && (updated[index].strip_quantity || 0) === 0) {
+      setCart(cart.filter((_, i) => i !== index));
+    } else {
+      setCart(updated);
+    }
+  };
+
+  const setDirectLooseQuantity = (index, val) => {
+    const updated = [...cart];
+    const nextVal = Math.max(0, parseInt(val) || 0);
+    updated[index].loose_quantity = nextVal;
+    if (nextVal === 0 && (updated[index].strip_quantity || 0) === 0) {
+      setCart(cart.filter((_, i) => i !== index));
+    } else {
+      setCart(updated);
+    }
   };
 
   // Handle discount preset change
@@ -289,17 +335,6 @@ export default function PosBillingPage({
       setDiscountType('PERCENT');
     } else if (preset === 'custom_fixed') {
       setDiscountType('FIXED');
-    }
-  };
-
-  const updateQuantity = (index, delta) => {
-    const updated = [...cart];
-    const newQty = updated[index].quantity + delta;
-    if (newQty <= 0) {
-      removeFromCart(index);
-    } else {
-      updated[index].quantity = newQty;
-      setCart(updated);
     }
   };
 
@@ -334,9 +369,11 @@ export default function PosBillingPage({
   let totalTax = 0;
 
   cart.forEach(item => {
-    const gross = item.unit_selling_price * item.quantity;
-    const disc = (gross * (item.discount_percent || 0)) / 100;
-    const net = gross - disc; // Net selling amount inclusive of GST
+    const strips = item.strip_quantity || 0;
+    const loose = item.loose_quantity || 0;
+    const itemGross = (strips * item.strip_selling_price) + (loose * item.tab_selling_price);
+    const disc = (itemGross * (item.discount_percent || 0)) / 100;
+    const net = itemGross - disc; // Net selling amount inclusive of GST
     const gstRate = item.gst_rate || 12.0;
     const taxableBase = net / (1 + (gstRate / 100));
     const tax = net - taxableBase;
@@ -404,6 +441,40 @@ export default function PosBillingPage({
         finalAmtPaid = '0.00';
       }
 
+      const itemsData = [];
+      cart.forEach(item => {
+        const strips = item.strip_quantity || 0;
+        const loose = item.loose_quantity || 0;
+
+        if (strips > 0) {
+          itemsData.push({
+            medicine_id: item.medicine.id,
+            batch_id: item.batch.id,
+            is_loose: false,
+            quantity: strips,
+            pack_size: item.pack_size,
+            unit_mrp: item.strip_mrp,
+            unit_selling_price: item.strip_selling_price,
+            discount_percent: item.discount_percent || 0,
+            gst_rate: item.gst_rate || 12.0,
+          });
+        }
+
+        if (loose > 0) {
+          itemsData.push({
+            medicine_id: item.medicine.id,
+            batch_id: item.batch.id,
+            is_loose: true,
+            quantity: loose,
+            pack_size: item.pack_size,
+            unit_mrp: item.tab_mrp,
+            unit_selling_price: item.tab_selling_price,
+            discount_percent: item.discount_percent || 0,
+            gst_rate: item.gst_rate || 12.0,
+          });
+        }
+      });
+
       const payload = {
         staff_code: selectedStaffCode || 'SC-101',
         staff_name: selectedStaffName || 'Staff 1',
@@ -430,16 +501,7 @@ export default function PosBillingPage({
         grand_total: grandTotal.toFixed(2),
         change_due: changeDue.toFixed(2),
         notes: doctorNotes,
-        items_data: cart.map(item => ({
-          medicine_id: item.medicine.id,
-          batch_id: item.batch.id,
-          is_loose: item.is_loose,
-          quantity: item.quantity,
-          unit_mrp: item.unit_mrp,
-          unit_selling_price: item.unit_selling_price,
-          discount_percent: item.discount_percent || 0,
-          gst_rate: item.gst_rate || 12.0,
-        })),
+        items_data: itemsData,
       };
 
       const createdInvoice = await billingAPI.createInvoice(payload);
@@ -659,20 +721,23 @@ export default function PosBillingPage({
               <>
                 {/* 1. DESKTOP CART TABLE */}
                 <div className="data-table-container desktop-only" style={{ border: 'none', borderRadius: 0, width: '100%', overflowX: 'auto' }}>
-                  <table className="data-table" style={{ width: '100%', minWidth: '650px', borderCollapse: 'collapse' }}>
+                  <table className="data-table" style={{ width: '100%', minWidth: '680px', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr>
-                        <th style={{ width: '30%', minWidth: '180px' }}>Medicine & Composition</th>
-                        <th style={{ width: '24%', minWidth: '160px' }}>Batch & Expiry (FEFO)</th>
-                        <th style={{ width: '16%', minWidth: '130px', textAlign: 'center' }}>Type & Qty</th>
-                        <th style={{ width: '13%', minWidth: '100px', textAlign: 'right' }}>Price ({currency})</th>
-                        <th style={{ width: '13%', minWidth: '100px', textAlign: 'right' }}>Line Total ({currency})</th>
-                        <th style={{ width: '4%', minWidth: '40px', textAlign: 'center' }}></th>
+                        <th style={{ width: '25%', minWidth: '150px' }}>Medicine & Composition</th>
+                        <th style={{ width: '18%', minWidth: '130px' }}>Batch & Expiry (FEFO)</th>
+                        <th style={{ width: '14%', minWidth: '100px', textAlign: 'center' }}>Strips (Pk)</th>
+                        <th style={{ width: '19%', minWidth: '135px', textAlign: 'center' }}>Loose (Tabs)</th>
+                        <th style={{ width: '10%', minWidth: '75px', textAlign: 'right' }}>Price ({currency})</th>
+                        <th style={{ width: '10%', minWidth: '75px', textAlign: 'right' }}>Line Total ({currency})</th>
+                        <th style={{ width: '4%', minWidth: '35px', textAlign: 'center' }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {cart.map((item, idx) => {
-                        const lineGross = item.unit_selling_price * item.quantity;
+                        const strips = item.strip_quantity || 0;
+                        const loose = item.loose_quantity || 0;
+                        const lineGross = (strips * item.strip_selling_price) + (loose * item.tab_selling_price);
                         const lineDisc = (lineGross * (item.discount_percent || 0)) / 100;
                         const lineTotal = lineGross - lineDisc;
 
@@ -708,54 +773,127 @@ export default function PosBillingPage({
                               </div>
                             </td>
 
+                            {/* 1. STRIPS (PACKS) COLUMN */}
                             <td style={{ textAlign: 'center' }}>
-                              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleLoose(idx)}
-                                  className={`badge ${item.is_loose ? 'badge-amber' : 'badge-cyan'}`}
-                                  style={{ cursor: 'pointer', border: 'none', padding: '2px 8px', fontSize: '11px', fontWeight: 700 }}
-                                  title="Click to toggle Pack vs Loose"
-                                >
-                                  {item.is_loose ? `Loose (${item.pack_size}s)` : `Full Pack (${item.pack_size}s)`}
-                                </button>
-
+                              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                                   <button
-                                    onClick={() => updateQuantity(idx, -1)}
+                                    type="button"
+                                    onClick={() => updateStripQuantity(idx, -1)}
                                     style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                    title="Decrease full strips"
                                   >
                                     <Minus size={11} />
                                   </button>
                                   <input
                                     type="number"
-                                    min="1"
-                                    value={item.quantity}
-                                    onChange={(e) => setDirectQuantity(idx, e.target.value)}
+                                    min="0"
+                                    value={item.strip_quantity}
+                                    onChange={(e) => setDirectStripQuantity(idx, e.target.value)}
                                     className="mono"
-                                    style={{ width: '38px', height: '22px', textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px', fontWeight: 800 }}
+                                    style={{ width: '38px', height: '22px', textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px', fontWeight: 800, background: item.strip_quantity > 0 ? '#f0f9ff' : '#ffffff' }}
+                                    title="Number of full strips"
                                   />
                                   <button
-                                    onClick={() => updateQuantity(idx, 1)}
+                                    type="button"
+                                    onClick={() => updateStripQuantity(idx, 1)}
                                     style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                    title="Increase full strips"
                                   >
                                     <Plus size={11} />
                                   </button>
                                 </div>
+                                <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
+                                  {currency}{item.strip_selling_price}/pk ({item.pack_size}s)
+                                </span>
                               </div>
                             </td>
 
-                            <td style={{ textAlign: 'right' }}>
-                              <div className="mono" style={{ fontWeight: 800, fontSize: '13px', color: '#0f172a' }}>
-                                {currency}{item.unit_selling_price.toFixed(2)}
-                              </div>
-                              <div style={{ fontSize: '10.5px', color: '#94a3b8', textDecoration: 'line-through' }}>
-                                MRP {currency}{item.unit_mrp.toFixed(2)}
-                              </div>
+                            {/* 2. DEDICATED LOOSE TABLETS COLUMN */}
+                            <td style={{ textAlign: 'center' }}>
+                              {item.is_loose_allowed ? (
+                                <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => updateLooseQuantity(idx, -1)}
+                                      style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                      title="Decrease loose tablets"
+                                    >
+                                      <Minus size={11} />
+                                    </button>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={item.loose_quantity}
+                                      onChange={(e) => setDirectLooseQuantity(idx, e.target.value)}
+                                      className="mono"
+                                      placeholder="0"
+                                      style={{ width: '42px', height: '22px', textAlign: 'center', border: item.loose_quantity > 0 ? '1.5px solid #d97706' : '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px', fontWeight: 800, background: item.loose_quantity > 0 ? '#fffbeb' : '#ffffff', color: item.loose_quantity > 0 ? '#92400e' : '#0f172a' }}
+                                      title="Type number of loose tablets to bill"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => updateLooseQuantity(idx, 1)}
+                                      style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                      title="Increase loose tablets"
+                                    >
+                                      <Plus size={11} />
+                                    </button>
+                                  </div>
+
+                                  {/* Quick Chips for Odd Tablet Prescriptions */}
+                                  <div style={{ display: 'flex', gap: '2px' }}>
+                                    {[2, 3, 5, 7, 10].filter(n => n < item.pack_size).map(n => (
+                                      <button
+                                        key={n}
+                                        type="button"
+                                        onClick={() => {
+                                          if (item.strip_quantity === 1 && item.loose_quantity === 0) {
+                                            setDirectStripQuantity(idx, 0);
+                                          }
+                                          setDirectLooseQuantity(idx, n);
+                                        }}
+                                        style={{
+                                          padding: '1px 4px',
+                                          fontSize: '9.5px',
+                                          fontWeight: item.loose_quantity === n ? 800 : 600,
+                                          borderRadius: '3px',
+                                          border: item.loose_quantity === n ? '1px solid #d97706' : '1px solid #e2e8f0',
+                                          background: item.loose_quantity === n ? '#fef3c7' : '#ffffff',
+                                          color: item.loose_quantity === n ? '#92400e' : '#475569',
+                                          cursor: 'pointer'
+                                        }}
+                                        title={`Bill ${n} loose tablets`}
+                                      >
+                                        {n}t
+                                      </button>
+                                    ))}
+                                    <span style={{ fontSize: '9.5px', color: '#0284c7', fontWeight: 700, marginLeft: '2px' }}>
+                                      @{currency}{item.tab_selling_price}/t
+                                    </span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="badge badge-slate" style={{ fontSize: '10px' }}>Whole Unit</span>
+                              )}
                             </td>
 
+                            {/* PRICE BREAKDOWN */}
                             <td style={{ textAlign: 'right' }}>
-                              <div className="mono" style={{ fontWeight: 900, color: '#059669', fontSize: '14.5px' }}>
+                              <div className="mono" style={{ fontWeight: 800, fontSize: '12px', color: '#0f172a' }}>
+                                {currency}{item.strip_selling_price.toFixed(2)}<span style={{ fontSize: '9.5px', color: '#64748b' }}>/pk</span>
+                              </div>
+                              {item.is_loose_allowed && (
+                                <div className="mono" style={{ fontSize: '11px', color: '#d97706', fontWeight: 700 }}>
+                                  {currency}{item.tab_selling_price.toFixed(2)}<span style={{ fontSize: '9px', color: '#92400e' }}>/tab</span>
+                                </div>
+                              )}
+                            </td>
+
+                            {/* LINE TOTAL */}
+                            <td style={{ textAlign: 'right' }}>
+                              <div className="mono" style={{ fontWeight: 900, color: '#059669', fontSize: '14px' }}>
                                 {currency}{lineTotal.toFixed(2)}
                               </div>
                               <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
@@ -782,7 +920,9 @@ export default function PosBillingPage({
                 {/* 2. MOBILE CART CARDS VIEW */}
                 <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px' }}>
                   {cart.map((item, idx) => {
-                    const lineGross = item.unit_selling_price * item.quantity;
+                    const strips = item.strip_quantity || 0;
+                    const loose = item.loose_quantity || 0;
+                    const lineGross = (strips * item.strip_selling_price) + (loose * item.tab_selling_price);
                     const lineDisc = (lineGross * (item.discount_percent || 0)) / 100;
                     const lineTotal = lineGross - lineDisc;
 
@@ -831,48 +971,80 @@ export default function PosBillingPage({
                               </option>
                             ))}
                           </select>
-                          <button
-                            type="button"
-                            onClick={() => toggleLoose(idx)}
-                            className={`badge ${item.is_loose ? 'badge-amber' : 'badge-cyan'}`}
-                            style={{ cursor: 'pointer', border: 'none', height: '32px', padding: '0 8px' }}
-                          >
-                            {item.is_loose ? 'Loose' : 'Pack'}
-                          </button>
                         </div>
 
-                        {/* Quantity Counter & Line Total */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1px dashed #f1f5f9' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <button
-                              onClick={() => updateQuantity(idx, -1)}
-                              style={{ width: '32px', height: '32px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}
-                            >
-                              <Minus size={14} />
-                            </button>
-                            <input
-                              type="number"
-                              min="1"
-                              value={item.quantity}
-                              onChange={(e) => setDirectQuantity(idx, e.target.value)}
-                              className="mono"
-                              style={{ width: '44px', height: '32px', textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', fontWeight: 800 }}
-                            />
-                            <button
-                              onClick={() => updateQuantity(idx, 1)}
-                              style={{ width: '32px', height: '32px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}
-                            >
-                              <Plus size={14} />
-                            </button>
+                        {/* Strips and Loose Controls */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: '#f8fafc', padding: '8px', borderRadius: '8px' }}>
+                          <div>
+                            <div style={{ fontSize: '11px', fontWeight: 700, color: '#0369a1', marginBottom: '4px' }}>
+                              📦 Strips ({item.pack_size}s)
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <button
+                                onClick={() => updateStripQuantity(idx, -1)}
+                                style={{ width: '28px', height: '28px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer' }}
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={item.strip_quantity}
+                                onChange={(e) => setDirectStripQuantity(idx, e.target.value)}
+                                className="mono"
+                                style={{ width: '36px', height: '28px', textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px', fontWeight: 800 }}
+                              />
+                              <button
+                                onClick={() => updateStripQuantity(idx, 1)}
+                                style={{ width: '28px', height: '28px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer' }}
+                              >
+                                +
+                              </button>
+                            </div>
                           </div>
 
-                          <div style={{ textAlign: 'right' }}>
-                            <div className="mono" style={{ fontWeight: 800, color: '#059669', fontSize: '15px' }}>
-                              {currency}{lineTotal.toFixed(2)}
+                          {item.is_loose_allowed ? (
+                            <div>
+                              <div style={{ fontSize: '11px', fontWeight: 700, color: '#d97706', marginBottom: '4px' }}>
+                                💊 Loose Tabs (@{currency}{item.tab_selling_price})
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <button
+                                  onClick={() => updateLooseQuantity(idx, -1)}
+                                  style={{ width: '28px', height: '28px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer' }}
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={item.loose_quantity}
+                                  onChange={(e) => setDirectLooseQuantity(idx, e.target.value)}
+                                  className="mono"
+                                  style={{ width: '36px', height: '28px', textAlign: 'center', border: '1px solid #d97706', borderRadius: '4px', fontSize: '12px', fontWeight: 800, background: '#fffbeb' }}
+                                />
+                                <button
+                                  onClick={() => updateLooseQuantity(idx, 1)}
+                                  style={{ width: '28px', height: '28px', borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer' }}
+                                >
+                                  +
+                                </button>
+                              </div>
                             </div>
-                            <div style={{ fontSize: '10px', color: '#64748b' }}>
-                              @{currency}{item.unit_selling_price.toFixed(2)}/{item.is_loose ? 'unit' : 'pk'}
+                          ) : (
+                            <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center' }}>
+                              Whole unit
                             </div>
+                          )}
+                        </div>
+
+                        {/* Line Total */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px' }}>
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>
+                            GST {item.gst_rate}%
+                          </div>
+                          <div className="mono" style={{ fontWeight: 900, color: '#059669', fontSize: '15px' }}>
+                            {currency}{lineTotal.toFixed(2)}
                           </div>
                         </div>
                       </div>

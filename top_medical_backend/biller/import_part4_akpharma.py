@@ -29,6 +29,7 @@ def run():
     cat_vit = get_or_create_category("Vitamins & Supplements", "Multivitamins, Calcium, Vitamin D3")
     cat_neuro = get_or_create_category("Neurology & Psychiatry", "Anticonvulsants, Antidepressants")
     cat_diab = get_or_create_category("Diabetes & Endocrine", "Insulins, Oral Hypoglycemics")
+    cat_endo = get_or_create_category("Endocrinology & Thyroid", "Thyroid, Hormones")
 
     ak_items = [
         # Inv 260007300247824

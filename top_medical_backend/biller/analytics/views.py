@@ -66,7 +66,7 @@ class DashboardSummaryView(APIView):
         all_meds = Medicine.objects.filter(is_active=True).prefetch_related('batches')
         low_stock_count = 0
         for m in all_meds:
-            stock = sum(b.pack_quantity for b in m.batches.filter(pack_quantity__gt=0, expiry_date__gt=today))
+            stock = sum(b.pack_quantity for b in m.batches.all() if b.pack_quantity > 0 and b.expiry_date > today)
             if stock <= m.min_stock_alert:
                 low_stock_count += 1
 

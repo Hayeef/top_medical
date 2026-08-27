@@ -11,6 +11,7 @@ from .serializers import (
     CategorySerializer, SupplierSerializer, MedicineSerializer, 
     BatchSerializer, StockMovementSerializer
 )
+from .bill_parser import extract_supplier_invoice
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
@@ -27,13 +28,13 @@ class SupplierViewSet(viewsets.ModelViewSet):
 
 
 class MedicineViewSet(viewsets.ModelViewSet):
-    queryset = Medicine.objects.all().prefetch_related('batches')
+    queryset = Medicine.objects.all().select_related('category').prefetch_related('batches__supplier')
     serializer_class = MedicineSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'generic_name', 'manufacturer', 'barcode', 'rack_location', 'hsn_code']
 
     def get_queryset(self):
-        qs = Medicine.objects.all().prefetch_related('batches')
+        qs = Medicine.objects.all().select_related('category').prefetch_related('batches__supplier')
         category = self.request.query_params.get('category')
         prescription = self.request.query_params.get('prescription')
         low_stock = self.request.query_params.get('low_stock')
@@ -58,18 +59,18 @@ class MedicineViewSet(viewsets.ModelViewSet):
         """Ultra-fast instant alphabet search tailored for POS billing: returns medicines with active stock and FEFO batch info."""
         query = request.query_params.get('q', '').strip()
         if not query:
-            medicines = Medicine.objects.filter(is_active=True).select_related('category').prefetch_related('batches')[:60]
+            medicines = Medicine.objects.filter(is_active=True).select_related('category').prefetch_related('batches__supplier')[:60]
         elif len(query) == 1:
             # Instant 1-letter alphabet search: starts-with has top priority
             starts = list(
                 Medicine.objects.filter(is_active=True, name__istartswith=query)
-                .select_related('category').prefetch_related('batches')[:50]
+                .select_related('category').prefetch_related('batches__supplier')[:50]
             )
             if len(starts) < 25:
                 contains = list(
                     Medicine.objects.filter(is_active=True, name__icontains=query)
                     .exclude(id__in=[m.id for m in starts])
-                    .select_related('category').prefetch_related('batches')[:30]
+                    .select_related('category').prefetch_related('batches__supplier')[:30]
                 )
                 medicines = starts + contains
             else:
@@ -78,7 +79,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
             # Multi-character query: starts with name -> generic name -> substring
             starts = list(
                 Medicine.objects.filter(is_active=True, name__istartswith=query)
-                .select_related('category').prefetch_related('batches')[:40]
+                .select_related('category').prefetch_related('batches__supplier')[:40]
             )
             start_ids = [m.id for m in starts]
             
@@ -89,7 +90,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
                     Q(barcode__iexact=query)
                 ).filter(is_active=True)
                 .exclude(id__in=start_ids)
-                .select_related('category').prefetch_related('batches')[:40]
+                .select_related('category').prefetch_related('batches__supplier')[:40]
             )
             medicines = starts + contains
 
@@ -389,106 +390,25 @@ class BatchViewSet(viewsets.ModelViewSet):
     def scan_supplier_bill(self, request):
         """
         AI / OCR Purchase Bill Scanning Endpoint:
-        Takes an uploaded supplier invoice photo/document, extracts line items,
-        batch numbers, expiry dates, quantities, and rates for Admin review.
+        Takes an uploaded supplier invoice photo/document, base64 snapshot, or preset,
+        and extracts line items, batch numbers, expiry dates, quantities, and rates.
         """
         uploaded_file = request.FILES.get('bill_image') or request.FILES.get('file')
         sample_invoice_type = request.data.get('sample_type', 'standard')
+        image_base64 = request.data.get('image_base64')
+        custom_key = request.data.get('gemini_api_key')
 
-        # Generate intelligent extraction with date 2 years into future for expiry
-        today = date.today()
-        default_exp_1 = (today + timedelta(days=680)).strftime('%Y-%m-%d')
-        default_exp_2 = (today + timedelta(days=750)).strftime('%Y-%m-%d')
-        default_exp_3 = (today + timedelta(days=820)).strftime('%Y-%m-%d')
-        default_exp_4 = (today + timedelta(days=590)).strftime('%Y-%m-%d')
-
-        filename = uploaded_file.name if uploaded_file else "Invoice_Purchase_Stock.jpg"
-
-        # Realistic extracted data matching Indian pharmaceutical wholesale invoices
-        extracted_data = {
-            "supplier_name": "Micro Labs & Apex Pharma Distributors",
-            "supplier_gstin": "29AABCM8921K1Z3",
-            "invoice_number": f"INV-ML-{int(today.strftime('%y%m%d'))}42",
-            "invoice_date": today.strftime('%Y-%m-%d'),
-            "file_name": filename,
-            "items_count": 4,
-            "items": [
-                {
-                    "medicine_name": "Augmentin 625 Duo Tablet",
-                    "generic_name": "Amoxycillin (500mg) + Clavulanic Acid (125mg)",
-                    "category": "Antibiotics",
-                    "dosage_form": "Tablet",
-                    "manufacturer": "GlaxoSmithKline Pharmaceuticals",
-                    "hsn_code": "3004",
-                    "batch_number": f"AUG-{today.strftime('%y%m')}1",
-                    "expiry_date": default_exp_1,
-                    "pack_size": 10,
-                    "pack_quantity": 50,
-                    "purchase_price": 142.50,
-                    "mrp": 204.85,
-                    "selling_price": 185.00,
-                    "gst_rate": 12.0,
-                    "rack_location": "Rack A-1",
-                    "requires_prescription": True
-                },
-                {
-                    "medicine_name": "Dolo 650 Tablet",
-                    "generic_name": "Paracetamol (650mg)",
-                    "category": "Analgesics & Antipyretics",
-                    "dosage_form": "Tablet",
-                    "manufacturer": "Micro Labs Ltd",
-                    "hsn_code": "3004",
-                    "batch_number": f"DL-{today.strftime('%y%m')}8",
-                    "expiry_date": default_exp_2,
-                    "pack_size": 15,
-                    "pack_quantity": 100,
-                    "purchase_price": 22.80,
-                    "mrp": 34.16,
-                    "selling_price": 31.00,
-                    "gst_rate": 12.0,
-                    "rack_location": "Rack A-2",
-                    "requires_prescription": False
-                },
-                {
-                    "medicine_name": "Pan 40 Tablet",
-                    "generic_name": "Pantoprazole (40mg)",
-                    "category": "Antacids & Gastrointestinal",
-                    "dosage_form": "Tablet",
-                    "manufacturer": "Alkem Laboratories Ltd",
-                    "hsn_code": "3004",
-                    "batch_number": f"PAN-{today.strftime('%y%m')}4",
-                    "expiry_date": default_exp_3,
-                    "pack_size": 15,
-                    "pack_quantity": 40,
-                    "purchase_price": 95.00,
-                    "mrp": 155.00,
-                    "selling_price": 140.00,
-                    "gst_rate": 12.0,
-                    "rack_location": "Rack B-1",
-                    "requires_prescription": True
-                },
-                {
-                    "medicine_name": "Montair LC Tablet",
-                    "generic_name": "Montelukast (10mg) + Levocetirizine (5mg)",
-                    "category": "Respiratory & Antiallergic",
-                    "dosage_form": "Tablet",
-                    "manufacturer": "Cipla Ltd",
-                    "hsn_code": "3004",
-                    "batch_number": f"MLC-{today.strftime('%y%m')}9",
-                    "expiry_date": default_exp_4,
-                    "pack_size": 10,
-                    "pack_quantity": 30,
-                    "purchase_price": 165.00,
-                    "mrp": 248.00,
-                    "selling_price": 225.00,
-                    "gst_rate": 12.0,
-                    "rack_location": "Rack B-3",
-                    "requires_prescription": True
-                }
-            ]
-        }
-
-        return Response(extracted_data, status=status.HTTP_200_OK)
+        try:
+            extracted_data = extract_supplier_invoice(
+                uploaded_file=uploaded_file,
+                sample_type=sample_invoice_type,
+                image_base64=image_base64,
+                custom_api_key=custom_key
+            )
+            return Response(extracted_data, status=status.HTTP_200_OK)
+        except Exception as e:
+            print("Scan invoice error:", e)
+            return Response({"error": f"Failed to scan invoice: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['post'])
     @transaction.atomic
@@ -496,8 +416,12 @@ class BatchViewSet(viewsets.ModelViewSet):
         """
         Atomically inward medicines and batches reviewed from the supplier purchase bill.
         """
-        supplier_name = request.data.get('supplier_name', 'Wholesale Supplier')
-        invoice_number = request.data.get('invoice_number', f"PUR-{date.today().strftime('%Y%m%d')}")
+        supplier_name = request.data.get('supplier_name', 'Wholesale Supplier').strip()
+        supplier_gstin = request.data.get('supplier_gstin', '').strip()
+        supplier_phone = request.data.get('supplier_phone', '').strip()
+        supplier_address = request.data.get('supplier_address', '').strip()
+        invoice_number = request.data.get('invoice_number', f"PUR-{date.today().strftime('%Y%m%d')}").strip()
+        invoice_date = request.data.get('invoice_date', date.today().strftime('%Y-%m-%d'))
         items = request.data.get('items', [])
 
         if not items:
@@ -506,11 +430,27 @@ class BatchViewSet(viewsets.ModelViewSet):
         # Get or create Supplier
         supplier, _ = Supplier.objects.get_or_create(
             name=supplier_name,
-            defaults={"contact_person": "Wholesale Billing", "phone": "+91 98000 00000"}
+            defaults={
+                "contact_person": "Wholesale Billing",
+                "phone": supplier_phone or "+91 98000 00000",
+                "gstin": supplier_gstin,
+                "address": supplier_address
+            }
         )
+        if supplier_gstin and not supplier.gstin:
+            supplier.gstin = supplier_gstin
+            supplier.save()
+        if supplier_phone and not supplier.phone:
+            supplier.phone = supplier_phone
+            supplier.save()
+        if supplier_address and not supplier.address:
+            supplier.address = supplier_address
+            supplier.save()
 
         inwarded_batches = []
+        new_medicines_count = 0
         total_inwarded_value = Decimal('0.00')
+        total_mrp_value = Decimal('0.00')
 
         for item in items:
             med_name = item.get('medicine_name', '').strip()
@@ -521,13 +461,13 @@ class BatchViewSet(viewsets.ModelViewSet):
             category, _ = Category.objects.get_or_create(name=category_name)
 
             # Get or create Medicine
-            medicine, _ = Medicine.objects.get_or_create(
+            medicine, med_created = Medicine.objects.get_or_create(
                 name=med_name,
                 defaults={
-                    "generic_name": item.get('generic_name', ''),
+                    "generic_name": item.get('generic_name', med_name),
                     "category": category,
                     "dosage_form": item.get('dosage_form', 'Tablet'),
-                    "manufacturer": item.get('manufacturer', 'Standard Pharma'),
+                    "manufacturer": item.get('manufacturer', 'Pharma Standard'),
                     "hsn_code": item.get('hsn_code', '3004'),
                     "rack_location": item.get('rack_location', 'Rack A-1'),
                     "min_stock_alert": 10,
@@ -535,14 +475,21 @@ class BatchViewSet(viewsets.ModelViewSet):
                     "gst_rate": Decimal(str(item.get('gst_rate', 12.0))),
                 }
             )
+            if med_created:
+                new_medicines_count += 1
+            else:
+                # Update rack location or category if available
+                if item.get('rack_location') and not medicine.rack_location:
+                    medicine.rack_location = item.get('rack_location')
+                    medicine.save()
 
             # Create or update Batch
-            batch_num = item.get('batch_number', f"B-{date.today().strftime('%y%m%d')}").strip()
-            pack_qty = int(item.get('pack_quantity', 1))
-            pack_sz = int(item.get('pack_size', 10))
+            batch_num = (item.get('batch_number') or f"B-{date.today().strftime('%y%m%d')}").strip()
+            pack_qty = max(1, int(item.get('pack_quantity', 1)))
+            pack_sz = max(1, int(item.get('pack_size', 10)))
             purchase_pr = Decimal(str(item.get('purchase_price', 100.0)))
             mrp_pr = Decimal(str(item.get('mrp', 150.0)))
-            selling_pr = Decimal(str(item.get('selling_price', 135.0)))
+            selling_pr = Decimal(str(item.get('selling_price', mrp_pr * Decimal('0.92'))))
             exp_date_str = item.get('expiry_date') or (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
 
             batch, created = Batch.objects.get_or_create(
@@ -577,20 +524,24 @@ class BatchViewSet(viewsets.ModelViewSet):
                 quantity_packs=pack_qty,
                 quantity_loose=0,
                 reference_id=invoice_number,
-                notes=f"Auto Inward from Bill #{invoice_number} ({supplier.name})"
+                notes=f"Purchase Inward: Bill #{invoice_number} ({supplier.name}) on {invoice_date}"
             )
 
             total_inwarded_value += (purchase_pr * Decimal(pack_qty))
+            total_mrp_value += (mrp_pr * Decimal(pack_qty))
             inwarded_batches.append(batch.id)
 
         return Response({
             "success": True,
-            "message": f"Successfully inwarded {len(inwarded_batches)} medicine batches into inventory.",
+            "message": f"Successfully inwarded {len(inwarded_batches)} medicine batches into inventory ({new_medicines_count} new medicines).",
             "supplier": supplier.name,
             "invoice_number": invoice_number,
             "total_items": len(inwarded_batches),
-            "total_inward_value": round(total_inwarded_value, 2)
+            "new_medicines_created": new_medicines_count,
+            "total_inward_value": round(total_inwarded_value, 2),
+            "total_mrp_value": round(total_mrp_value, 2)
         }, status=status.HTTP_201_CREATED)
+
 
 
 class StockMovementViewSet(viewsets.ReadOnlyModelViewSet):

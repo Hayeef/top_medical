@@ -72,11 +72,17 @@ class Medicine(models.Model):
 
     @property
     def total_stock_packs(self):
-        return sum(batch.pack_quantity for batch in self.batches.filter(pack_quantity__gt=0, expiry_date__gt=date.today()))
+        today = date.today()
+        if hasattr(self, '_prefetched_objects_cache') and 'batches' in self._prefetched_objects_cache:
+            return sum(b.pack_quantity for b in self._prefetched_objects_cache['batches'] if b.pack_quantity > 0 and b.expiry_date > today)
+        return sum(b.pack_quantity for b in self.batches.all() if b.pack_quantity > 0 and b.expiry_date > today)
 
     @property
     def total_loose_units(self):
-        return sum(batch.loose_quantity for batch in self.batches.filter(expiry_date__gt=date.today()))
+        today = date.today()
+        if hasattr(self, '_prefetched_objects_cache') and 'batches' in self._prefetched_objects_cache:
+            return sum(b.loose_quantity for b in self._prefetched_objects_cache['batches'] if b.expiry_date > today)
+        return sum(b.loose_quantity for b in self.batches.all() if b.expiry_date > today)
 
     @property
     def has_low_stock(self):

@@ -62,15 +62,17 @@ export const inventoryAPI = {
   updateSupplier: (id, data) => request(`/inventory/suppliers/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // AI / OCR Supplier Bill Inward Scanner
-  scanSupplierBill: async (formData) => {
+  scanSupplierBill: async (payload) => {
     const url = `${API_BASE_URL}/inventory/batches/scan_supplier_bill/`;
+    const isFormData = payload instanceof FormData;
     const res = await fetch(url, {
       method: 'POST',
-      body: formData, // Sending FormData directly for multipart file uploads
+      headers: isFormData ? {} : { 'Content-Type': 'application/json' },
+      body: isFormData ? payload : JSON.stringify(payload),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Failed to scan invoice' }));
-      throw new Error(err.detail || 'Bill scanner failed to parse file.');
+      throw new Error(err.error || err.detail || 'Bill scanner failed to parse file.');
     }
     return await res.json();
   },

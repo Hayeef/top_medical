@@ -2,9 +2,10 @@ import os
 import re
 import json
 import base64
+import urllib.request
+import urllib.error
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-import httpx
 from django.conf import settings
 
 def normalize_expiry(exp_str):
@@ -708,16 +709,22 @@ def call_gemini_vision_api_sync(image_bytes, mime_type="image/jpeg", api_key=Non
     }
     
     try:
-        with httpx.Client(timeout=35.0) as client:
-            resp = client.post(url, json=payload)
-            if resp.status_code == 200:
-                data = resp.json()
+        req_data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(
+            url,
+            data=req_data,
+            headers={'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=35.0) as resp:
+            if resp.status == 200:
+                resp_body = resp.read().decode('utf-8')
+                data = json.loads(resp_body)
                 text_content = data['candidates'][0]['content']['parts'][0]['text']
                 clean_json = re.sub(r'^```json\s*|\s*```$', '', text_content.strip())
                 parsed = json.loads(clean_json)
                 return parsed
             else:
-                print("Gemini API error:", resp.status_code, resp.text)
+                print("Gemini API error:", resp.status)
                 return None
     except Exception as e:
         print("Gemini API call exception:", e)

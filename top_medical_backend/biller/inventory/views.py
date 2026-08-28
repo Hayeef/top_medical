@@ -99,6 +99,122 @@ class MedicineViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     @transaction.atomic
+    def quick_add_tablet_stock(self, request):
+        """
+        One-stop direct creation of a new Tablet / Medicine with its initial Batch and stock movement.
+        """
+        data = request.data
+        name = str(data.get('name', '')).strip().upper()
+        if not name:
+            return Response({"error": "Tablet / Medicine name is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        generic_name = str(data.get('generic_name', '')).strip()
+        dosage_form = str(data.get('dosage_form', 'Tablet')).strip()
+        category_id = data.get('category')
+        manufacturer = str(data.get('manufacturer', 'Standard Pharma')).strip()
+        hsn_code = str(data.get('hsn_code', '3004')).strip()
+        rack_location = str(data.get('rack_location', 'Rack A-1')).strip()
+        min_stock_alert = int(data.get('min_stock_alert', 10))
+        requires_prescription = bool(data.get('requires_prescription', False))
+        gst_rate = Decimal(str(data.get('gst_rate', 12.0)))
+
+        # Category
+        category = None
+        if category_id:
+            category = Category.objects.filter(id=category_id).first()
+        if not category:
+            cat_name = data.get('category_name') or 'General'
+            category, _ = Category.objects.get_or_create(name=cat_name)
+
+        # Get or create Medicine
+        medicine, created_med = Medicine.objects.get_or_create(
+            name=name,
+            defaults={
+                "generic_name": generic_name,
+                "dosage_form": dosage_form,
+                "category": category,
+                "manufacturer": manufacturer,
+                "hsn_code": hsn_code,
+                "rack_location": rack_location,
+                "min_stock_alert": min_stock_alert,
+                "requires_prescription": requires_prescription,
+                "gst_rate": gst_rate,
+            }
+        )
+
+        if not created_med:
+            if generic_name and not medicine.generic_name:
+                medicine.generic_name = generic_name
+            if rack_location:
+                medicine.rack_location = rack_location
+            medicine.save()
+
+        # Batch fields
+        batch_number = str(data.get('batch_number') or f"B-{date.today().strftime('%y%m%d')}").strip().upper()
+        pack_quantity = int(data.get('pack_quantity', 10))
+        pack_size = int(data.get('pack_size', 10))
+        purchase_price = Decimal(str(data.get('purchase_price', 50.0)))
+        mrp = Decimal(str(data.get('mrp', 90.0)))
+        selling_price = Decimal(str(data.get('selling_price', mrp)))
+        expiry_date = data.get('expiry_date') or (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
+
+        # Supplier
+        supplier = None
+        supplier_id = data.get('supplier')
+        supplier_name = data.get('supplier_name')
+        if supplier_id:
+            supplier = Supplier.objects.filter(id=supplier_id).first()
+        elif supplier_name:
+            supplier, _ = Supplier.objects.get_or_create(name=str(supplier_name).strip())
+
+        # Create or update Batch
+        batch, created_batch = Batch.objects.get_or_create(
+            medicine=medicine,
+            batch_number=batch_number,
+            defaults={
+                "supplier": supplier,
+                "expiry_date": expiry_date,
+                "purchase_price": purchase_price,
+                "mrp": mrp,
+                "selling_price": selling_price,
+                "pack_size": pack_size,
+                "pack_quantity": pack_quantity,
+                "loose_quantity": 0,
+            }
+        )
+
+        if not created_batch:
+            batch.pack_quantity += pack_quantity
+            batch.purchase_price = purchase_price
+            batch.mrp = mrp
+            batch.selling_price = selling_price
+            batch.expiry_date = expiry_date
+            if supplier:
+                batch.supplier = supplier
+            batch.save()
+
+        # Stock Movement
+        StockMovement.objects.create(
+            batch=batch,
+            movement_type='PURCHASE',
+            quantity_packs=pack_quantity,
+            quantity_loose=0,
+            reference_id=f"QUICK-ADD-{batch.batch_number}",
+            notes=f"Quick add from table by Admin ({pack_quantity} packs)"
+        )
+
+        batch_serializer = BatchSerializer(batch)
+        medicine_serializer = MedicineSerializer(medicine)
+
+        return Response({
+            "success": True,
+            "message": f"Successfully added {medicine.name} (Batch #{batch.batch_number}) with {pack_quantity} packs to stock.",
+            "medicine": medicine_serializer.data,
+            "batch": batch_serializer.data
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'])
+    @transaction.atomic
     def bulk_upload_excel(self, request):
         """
         Bulk Upload Inventory from Excel (.xlsx, .xls) or CSV spreadsheet.

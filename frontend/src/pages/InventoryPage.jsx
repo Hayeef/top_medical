@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Pill, 
   Search, 
@@ -26,7 +26,10 @@ import {
   Zap,
   RefreshCw,
   Edit3,
-  Check
+  Check,
+  X,
+  PlusCircle,
+  Tag
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { inventoryAPI } from '../api';
@@ -50,12 +53,37 @@ export default function InventoryPage({
   const [viewMode, setViewMode] = useState('table');
   
   // Search and Filters
-  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [activeSearch, setActiveSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedSupplier, setSelectedSupplier] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'low_stock' | 'expiring_soon' | 'out_of_stock' | 'expired'
   const [filterRx, setFilterRx] = useState('');
   const [expandedMedId, setExpandedMedId] = useState(null);
+
+  // Quick Add Tablet Inline Form State
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [quickAddSubmitting, setQuickAddSubmitting] = useState(false);
+  const [quickAddForm, setQuickAddForm] = useState({
+    name: '',
+    generic_name: '',
+    dosage_form: 'Tablet',
+    category: '',
+    manufacturer: '',
+    rack_location: 'Rack A-1',
+    batch_number: '',
+    expiry_date: '',
+    supplier: '',
+    supplier_name: '',
+    purchase_price: '',
+    mrp: '',
+    selling_price: '',
+    pack_quantity: '10',
+    pack_size: '10',
+    min_stock_alert: '10',
+    requires_prescription: false,
+    gst_rate: '12.0'
+  });
 
   // Server-fetched Batches (with fallback to client-flattened medicines)
   const [serverBatches, setServerBatches] = useState(null);
@@ -69,6 +97,12 @@ export default function InventoryPage({
 
   const isAdmin = user?.is_superuser || user?.is_staff || user?.email?.includes('admin');
   const currency = profile?.currency_symbol || '₹';
+
+  // Trigger search on button click or Enter key
+  const handleSearchSubmit = (e) => {
+    if (e) e.preventDefault();
+    setActiveSearch(searchInput.trim());
+  };
 
   // Client-side fallback flattened batches from medicines prop
   const localBatches = useMemo(() => {
@@ -126,7 +160,7 @@ export default function InventoryPage({
     setLoadingBatches(true);
     try {
       const params = new URLSearchParams();
-      if (search) params.append('search', search);
+      if (activeSearch) params.append('search', activeSearch);
       if (selectedCategory) params.append('category', selectedCategory);
       if (selectedSupplier) params.append('supplier', selectedSupplier);
       if (statusFilter !== 'all') params.append('status', statusFilter);
@@ -146,9 +180,9 @@ export default function InventoryPage({
 
   useEffect(() => {
     fetchStockTable();
-  }, [search, selectedCategory, selectedSupplier, statusFilter]);
+  }, [activeSearch, selectedCategory, selectedSupplier, statusFilter]);
 
-  // Master Active List of Batches (Server data prioritized, localBatches fallback)
+  // Active List of Batches (Server data prioritized, localBatches fallback)
   const allBatches = useMemo(() => {
     if (serverBatches && serverBatches.length > 0) {
       return serverBatches;
@@ -163,6 +197,8 @@ export default function InventoryPage({
     thresholdDate.setDate(thresholdDate.getDate() + 90);
     const thresholdStr = thresholdDate.toISOString().split('T')[0];
 
+    const q = (activeSearch || searchInput).toLowerCase().trim();
+
     return allBatches.filter(b => {
       const name = (b.medicine_name || '').toLowerCase();
       const generic = (b.medicine_generic || '').toLowerCase();
@@ -170,7 +206,6 @@ export default function InventoryPage({
       const rack = (b.rack_location || '').toLowerCase();
       const mfg = (b.manufacturer || '').toLowerCase();
       const supp = (b.supplier_name || '').toLowerCase();
-      const q = search.toLowerCase().trim();
 
       const matchesSearch = !q || name.includes(q) || generic.includes(q) || batchNo.includes(q) || rack.includes(q) || mfg.includes(q) || supp.includes(q);
       const matchesCat = !selectedCategory || String(b.category_id || b.category) === String(selectedCategory);
@@ -195,14 +230,14 @@ export default function InventoryPage({
 
       return matchesSearch && matchesCat && matchesSupp && matchesRx && matchesStatus;
     });
-  }, [allBatches, search, selectedCategory, selectedSupplier, filterRx, statusFilter]);
+  }, [allBatches, activeSearch, searchInput, selectedCategory, selectedSupplier, filterRx, statusFilter]);
 
   const showToast = (msg, type = 'success') => {
     setToastMessage({ text: msg, type });
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Helper to read current cell value (either pending user edit or saved batch value)
+  // Helper to read current cell value (pending edit or saved batch value)
   const getRowValue = (batch, field) => {
     if (rowEdits[batch.id] && rowEdits[batch.id][field] !== undefined) {
       return rowEdits[batch.id][field];
@@ -250,7 +285,6 @@ export default function InventoryPage({
 
   // Save Single Row
   const handleSaveRow = async (batch) => {
-    // If virtual batch without actual DB id, open create batch modal
     if (batch.is_virtual) {
       onOpenAddBatch?.(batch.medicine_id);
       return;
@@ -367,6 +401,86 @@ export default function InventoryPage({
     showToast('Discarded all unsaved changes.', 'info');
   };
 
+  // Handle Quick Add Tablet Submission
+  const handleQuickAddSubmit = async (e) => {
+    e.preventDefault();
+    if (!quickAddForm.name.trim()) {
+      showToast('Tablet / Medicine name is required.', 'error');
+      return;
+    }
+
+    setQuickAddSubmitting(true);
+    try {
+      const today = new Date();
+      const defaultExp = new Date(today.getFullYear() + 2, today.getMonth(), today.getDate()).toISOString().split('T')[0];
+      const defaultBatch = `B-${today.getFullYear().toString().slice(-2)}${(today.getMonth()+1).toString().padStart(2, '0')}${today.getDate().toString().padStart(2, '0')}`;
+
+      const payload = {
+        name: quickAddForm.name.trim().toUpperCase(),
+        generic_name: quickAddForm.generic_name.trim(),
+        dosage_form: quickAddForm.dosage_form || 'Tablet',
+        category: quickAddForm.category || (categories[0]?.id || null),
+        manufacturer: quickAddForm.manufacturer.trim() || 'Standard Pharma',
+        rack_location: quickAddForm.rack_location.trim() || 'Rack A-1',
+        batch_number: (quickAddForm.batch_number.trim() || defaultBatch).toUpperCase(),
+        expiry_date: quickAddForm.expiry_date || defaultExp,
+        supplier: quickAddForm.supplier || null,
+        supplier_name: quickAddForm.supplier_name.trim() || (suppliers[0]?.name || 'Direct Wholesale'),
+        purchase_price: parseFloat(quickAddForm.purchase_price || 0),
+        mrp: parseFloat(quickAddForm.mrp || 0),
+        selling_price: parseFloat(quickAddForm.selling_price || quickAddForm.mrp || 0),
+        pack_quantity: parseInt(quickAddForm.pack_quantity || 10),
+        pack_size: parseInt(quickAddForm.pack_size || 10),
+        min_stock_alert: parseInt(quickAddForm.min_stock_alert || 10),
+        requires_prescription: quickAddForm.requires_prescription,
+        gst_rate: parseFloat(quickAddForm.gst_rate || 12.0)
+      };
+
+      const res = await inventoryAPI.quickAddTabletStock(payload);
+
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.7 },
+        colors: ['#0284c7', '#10b981', '#6366f1']
+      });
+
+      showToast(`Added "${payload.name}" (${payload.pack_quantity} pk) to inventory stock!`);
+
+      // Reset Form & close drawer
+      setQuickAddForm({
+        name: '',
+        generic_name: '',
+        dosage_form: 'Tablet',
+        category: '',
+        manufacturer: '',
+        rack_location: 'Rack A-1',
+        batch_number: '',
+        expiry_date: '',
+        supplier: '',
+        supplier_name: '',
+        purchase_price: '',
+        mrp: '',
+        selling_price: '',
+        pack_quantity: '10',
+        pack_size: '10',
+        min_stock_alert: '10',
+        requires_prescription: false,
+        gst_rate: '12.0'
+      });
+      setIsQuickAddOpen(false);
+
+      // Refresh table and global data
+      fetchStockTable();
+      onReloadInventory?.();
+    } catch (err) {
+      console.error('Quick add tablet error:', err);
+      showToast(err.message || 'Failed to add tablet to inventory.', 'error');
+    } finally {
+      setQuickAddSubmitting(false);
+    }
+  };
+
   // Financial summary metrics
   const displaySummary = useMemo(() => {
     let totalCost = 0;
@@ -402,20 +516,21 @@ export default function InventoryPage({
 
   // Grouped Drug Catalog Filtered List
   const filteredCatalogMedicines = useMemo(() => {
+    const q = (activeSearch || searchInput).toLowerCase().trim();
     return medicines.filter(med => {
-      const matchesSearch = !search || 
-        med.name.toLowerCase().includes(search.toLowerCase()) ||
-        med.generic_name?.toLowerCase().includes(search.toLowerCase()) ||
-        med.manufacturer?.toLowerCase().includes(search.toLowerCase()) ||
-        med.rack_location?.toLowerCase().includes(search.toLowerCase()) ||
-        med.barcode?.includes(search);
+      const matchesSearch = !q || 
+        med.name.toLowerCase().includes(q) ||
+        med.generic_name?.toLowerCase().includes(q) ||
+        med.manufacturer?.toLowerCase().includes(q) ||
+        med.rack_location?.toLowerCase().includes(q) ||
+        med.barcode?.includes(q);
 
       const matchesCategory = !selectedCategory || med.category === parseInt(selectedCategory);
       const matchesRx = !filterRx || (filterRx === 'true' ? med.requires_prescription : !med.requires_prescription);
 
       return matchesSearch && matchesCategory && matchesRx;
     });
-  }, [medicines, search, selectedCategory, filterRx]);
+  }, [medicines, activeSearch, searchInput, selectedCategory, filterRx]);
 
   const toggleExpand = (id) => {
     setExpandedMedId(expandedMedId === id ? null : id);
@@ -451,27 +566,58 @@ export default function InventoryPage({
       {/* Top Action & Filter Bar */}
       <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
         
-        {/* Row 1: Search, Filter Selectors & View Switcher */}
+        {/* Row 1: Search Form with Search Button, Filters & View Switcher */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'space-between' }}>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 520px', flexWrap: 'wrap' }}>
-            {/* Search Box */}
-            <div style={{ position: 'relative', flex: '2 1 240px' }}>
-              <Search size={16} color="#0284c7" style={{ position: 'absolute', left: '12px', top: '11px' }} />
-              <input
-                type="text"
-                className="input-field"
-                style={{ paddingLeft: '36px', height: '38px', fontSize: '13px', background: '#f8fafc', borderColor: '#cbd5e1' }}
-                placeholder="Search tablet, brand, salt, batch, rack..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 540px', flexWrap: 'wrap' }}>
+            
+            {/* Search Input + Search Button Container */}
+            <form 
+              onSubmit={handleSearchSubmit} 
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: '2 1 280px' }}
+            >
+              <div style={{ position: 'relative', flex: 1 }}>
+                <Search size={15} color="#0284c7" style={{ position: 'absolute', left: '12px', top: '11px' }} />
+                <input
+                  type="text"
+                  className="input-field"
+                  style={{ paddingLeft: '34px', paddingRight: searchInput ? '28px' : '10px', height: '38px', fontSize: '13px', background: '#f8fafc', borderColor: '#cbd5e1' }}
+                  placeholder="Search tablet, salt, batch, rack..."
+                  value={searchInput}
+                  onChange={(e) => {
+                    setSearchInput(e.target.value);
+                    if (!e.target.value.trim()) setActiveSearch('');
+                  }}
+                />
+                {searchInput && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchInput('');
+                      setActiveSearch('');
+                    }}
+                    style={{ position: 'absolute', right: '8px', top: '10px', background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Explicit Search Button */}
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{ height: '38px', padding: '0 16px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
+              >
+                <Search size={14} />
+                <span>Search</span>
+              </button>
+            </form>
 
             {/* Category Dropdown */}
             <select
               className="input-field"
-              style={{ flex: '1 1 140px', height: '38px', fontSize: '12px' }}
+              style={{ flex: '1 1 130px', height: '38px', fontSize: '12px' }}
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
             >
@@ -485,11 +631,11 @@ export default function InventoryPage({
             {suppliers && suppliers.length > 0 && (
               <select
                 className="input-field"
-                style={{ flex: '1 1 140px', height: '38px', fontSize: '12px' }}
+                style={{ flex: '1 1 130px', height: '38px', fontSize: '12px' }}
                 value={selectedSupplier}
                 onChange={(e) => setSelectedSupplier(e.target.value)}
               >
-                <option value="">All Wholesale Suppliers</option>
+                <option value="">All Distributors</option>
                 {suppliers.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
@@ -499,7 +645,7 @@ export default function InventoryPage({
             {/* Rx Filter */}
             <select
               className="input-field"
-              style={{ flex: '1 1 120px', height: '38px', fontSize: '12px' }}
+              style={{ flex: '1 1 110px', height: '38px', fontSize: '12px' }}
               value={filterRx}
               onChange={(e) => setFilterRx(e.target.value)}
             >
@@ -608,10 +754,11 @@ export default function InventoryPage({
             Expired Batches
           </button>
 
-          {(search || selectedCategory || selectedSupplier || statusFilter !== 'all' || filterRx) && (
+          {(searchInput || activeSearch || selectedCategory || selectedSupplier || statusFilter !== 'all' || filterRx) && (
             <button
               onClick={() => {
-                setSearch('');
+                setSearchInput('');
+                setActiveSearch('');
                 setSelectedCategory('');
                 setSelectedSupplier('');
                 setStatusFilter('all');
@@ -635,8 +782,25 @@ export default function InventoryPage({
           )}
         </div>
 
-        {/* Row 3: Action Buttons */}
+        {/* Row 3: Action Buttons + Prominent "+ Add Tablet & Stock" Trigger */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+          
+          {/* Prominent Quick Add Tablet Button */}
+          {isAdmin && (
+            <button 
+              onClick={() => setIsQuickAddOpen(!isQuickAddOpen)} 
+              className="btn btn-primary btn-sm"
+              style={{
+                background: isQuickAddOpen ? '#0f172a' : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
+                fontWeight: 800
+              }}
+            >
+              {isQuickAddOpen ? <X size={14} /> : <PlusCircle size={14} />}
+              <span>{isQuickAddOpen ? 'Close Add Form' : '+ Add New Tablet & Stock'}</span>
+            </button>
+          )}
+
           {isAdmin && (
             <button onClick={onOpenScanBill} className="btn btn-emerald btn-sm">
               <Camera size={14} />
@@ -656,7 +820,7 @@ export default function InventoryPage({
             </button>
           )}
           {isAdmin && (
-            <button onClick={onOpenAddMedicine} className="btn btn-primary btn-sm">
+            <button onClick={onOpenAddMedicine} className="btn btn-secondary btn-sm">
               <Plus size={14} />
               <span>+ Medicine (F3)</span>
             </button>
@@ -690,6 +854,305 @@ export default function InventoryPage({
           )}
         </div>
       </div>
+
+      {/* =========================================================================
+          INLINE QUICK-ADD NEW TABLET & STOCK ACCORDION / FORM
+          ========================================================================= */}
+      {isQuickAddOpen && isAdmin && (
+        <div style={{
+          background: '#ffffff',
+          border: '2px solid #0284c7',
+          borderRadius: '14px',
+          padding: '18px 22px',
+          boxShadow: '0 8px 25px rgba(2, 132, 199, 0.12)',
+          animation: 'fadeInDown 0.25s ease'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <PlusCircle size={18} color="#0284c7" />
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '15px', color: '#0f172a' }}>
+                  Quick Add New Tablet / Drug to Inventory
+                </div>
+                <div style={{ fontSize: '11.5px', color: '#64748b' }}>
+                  Directly creates the medicine SKU, registers batch pricing, and adds inward stock to your table
+                </div>
+              </div>
+            </div>
+            <button 
+              type="button" 
+              onClick={() => setIsQuickAddOpen(false)}
+              style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <form onSubmit={handleQuickAddSubmit}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+              
+              {/* Medicine Name */}
+              <div style={{ gridColumn: 'span 2' }}>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Tablet / Medicine Brand Name <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  className="input-field"
+                  placeholder="e.g. DOLO 650MG, PAN 40 TAB, AUGMENTIN 625"
+                  value={quickAddForm.name}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, name: e.target.value })}
+                  style={{ height: '36px', fontWeight: 700 }}
+                  autoFocus
+                />
+              </div>
+
+              {/* Generic Name */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Generic / Salt Formulation
+                </label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="e.g. Paracetamol IP, Pantoprazole"
+                  value={quickAddForm.generic_name}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, generic_name: e.target.value })}
+                  style={{ height: '36px' }}
+                />
+              </div>
+
+              {/* Dosage Form */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Dosage Form
+                </label>
+                <select
+                  className="input-field"
+                  style={{ height: '36px' }}
+                  value={quickAddForm.dosage_form}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, dosage_form: e.target.value })}
+                >
+                  <option value="Tablet">Tablet</option>
+                  <option value="Capsule">Capsule</option>
+                  <option value="Syrup">Syrup</option>
+                  <option value="Injection">Injection</option>
+                  <option value="Ointment">Ointment / Gel</option>
+                  <option value="Drops">Drops</option>
+                  <option value="Inhaler">Inhaler / Respules</option>
+                  <option value="Device">Device / Consumable</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              {/* Category */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Therapeutic Category
+                </label>
+                <select
+                  className="input-field"
+                  style={{ height: '36px' }}
+                  value={quickAddForm.category}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, category: e.target.value })}
+                >
+                  <option value="">General / Auto-Category</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Batch Number */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Batch Number
+                </label>
+                <input
+                  type="text"
+                  className="input-field mono"
+                  placeholder="e.g. BT-2026A"
+                  value={quickAddForm.batch_number}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, batch_number: e.target.value })}
+                  style={{ height: '36px' }}
+                />
+              </div>
+
+              {/* Expiry Date */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Expiry Date
+                </label>
+                <input
+                  type="date"
+                  className="input-field mono"
+                  value={quickAddForm.expiry_date}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, expiry_date: e.target.value })}
+                  style={{ height: '36px' }}
+                />
+              </div>
+
+              {/* Rack Location */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Rack / Shelf Location
+                </label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="e.g. Rack A-1, Shelf 3"
+                  value={quickAddForm.rack_location}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, rack_location: e.target.value })}
+                  style={{ height: '36px' }}
+                />
+              </div>
+
+              {/* Wholesale Supplier */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Supplier / Distributor
+                </label>
+                <select
+                  className="input-field"
+                  style={{ height: '36px' }}
+                  value={quickAddForm.supplier}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, supplier: e.target.value })}
+                >
+                  <option value="">Direct Wholesale</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Cost Price */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Cost Rate / Pack (₹)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="input-field mono"
+                  placeholder="0.00"
+                  value={quickAddForm.purchase_price}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, purchase_price: e.target.value })}
+                  style={{ height: '36px' }}
+                />
+              </div>
+
+              {/* MRP */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  MRP / Pack (₹)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="input-field mono"
+                  placeholder="0.00"
+                  value={quickAddForm.mrp}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setQuickAddForm({
+                      ...quickAddForm,
+                      mrp: val,
+                      selling_price: quickAddForm.selling_price || val
+                    });
+                  }}
+                  style={{ height: '36px' }}
+                />
+              </div>
+
+              {/* Selling Price */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#059669', display: 'block', marginBottom: '4px' }}>
+                  Selling Price / Pack (₹)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="input-field mono"
+                  placeholder="0.00"
+                  value={quickAddForm.selling_price}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, selling_price: e.target.value })}
+                  style={{ height: '36px', fontWeight: 800, color: '#059669' }}
+                />
+              </div>
+
+              {/* Initial Inward Stock (Packs) */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#0284c7', display: 'block', marginBottom: '4px' }}>
+                  Initial Stock (Packs) <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  className="input-field mono"
+                  placeholder="10"
+                  value={quickAddForm.pack_quantity}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, pack_quantity: e.target.value })}
+                  style={{ height: '36px', fontWeight: 800 }}
+                />
+              </div>
+
+              {/* Pack Size */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Units per Pack (Strip size)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  className="input-field mono"
+                  placeholder="10"
+                  value={quickAddForm.pack_size}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, pack_size: e.target.value })}
+                  style={{ height: '36px' }}
+                />
+              </div>
+
+            </div>
+
+            {/* Bottom Row: Checkbox & Submit */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', borderTop: '1px solid #f1f5f9', paddingTop: '12px', flexWrap: 'wrap', gap: '10px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12.5px', color: '#475569' }}>
+                <input
+                  type="checkbox"
+                  checked={quickAddForm.requires_prescription}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, requires_prescription: e.target.checked })}
+                />
+                <span>Requires Doctor Prescription (Schedule H / Rx)</span>
+              </label>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsQuickAddOpen(false)}
+                  className="btn btn-secondary"
+                  style={{ padding: '8px 16px', fontSize: '13px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={quickAddSubmitting}
+                  className="btn btn-emerald"
+                  style={{ padding: '8px 22px', fontSize: '13px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Save size={15} />
+                  <span>{quickAddSubmitting ? 'Inwarding...' : '💾 Add & Inward to Inventory Stock'}</span>
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Financial Metrics Summary Banner (for Stock Table) */}
       {viewMode === 'table' && (

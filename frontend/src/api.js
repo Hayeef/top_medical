@@ -40,6 +40,10 @@ export const inventoryAPI = {
   getLowStock: () => request('/inventory/medicines/low_stock/'),
   getMedicine: (id) => request(`/inventory/medicines/${id}/`),
   createMedicine: (data) => request('/inventory/medicines/', { method: 'POST', body: JSON.stringify(data) }),
+  quickAddTabletStock: (data) => request('/inventory/medicines/quick_add_tablet_stock/', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  }),
   updateMedicine: (id, data) => request(`/inventory/medicines/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteMedicine: (id) => request(`/inventory/medicines/${id}/`, { method: 'DELETE' }),
 

@@ -14,3 +14,7 @@ dist/
 .vite/
 .DS_Store
 *.log
+
+# Heavy invoice photo datasets (keep local only)
+frontend/src/assets/data/
+frontend/src/assets/data2/

@@ -45,8 +45,17 @@ export const inventoryAPI = {
 
   // Batches
   getBatches: (params = '') => request(`/inventory/batches/${params ? `?${params}` : ''}`),
+  getStockTable: (params = '') => request(`/inventory/batches/stock_table/${params ? `?${params}` : ''}`),
   createBatch: (data) => request('/inventory/batches/', { method: 'POST', body: JSON.stringify(data) }),
   updateBatch: (id, data) => request(`/inventory/batches/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
+  quickUpdateBatch: (id, data) => request(`/inventory/batches/${id}/quick_update/`, {
+    method: 'POST',
+    body: JSON.stringify(data)
+  }),
+  bulkQuickUpdateBatches: (updates) => request('/inventory/batches/bulk_quick_update/', {
+    method: 'POST',
+    body: JSON.stringify({ updates })
+  }),
   adjustStock: (id, pack_delta, loose_delta, reason) => request(`/inventory/batches/${id}/adjust_stock/`, {
     method: 'POST',
     body: JSON.stringify({ pack_delta, loose_delta, reason }),

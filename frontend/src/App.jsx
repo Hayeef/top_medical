@@ -257,6 +257,7 @@ export default function App() {
             <InventoryPage
               medicines={medicines}
               categories={categories}
+              suppliers={suppliers}
               profile={profile}
               user={authUser}
               onOpenAddMedicine={() => setIsAddMedicineOpen(true)}
@@ -265,6 +266,8 @@ export default function App() {
               onOpenScanBill={() => setIsScanBillOpen(true)}
               onOpenExcelUpload={() => setIsExcelUploadOpen(true)}
               onOpenDailyReport={() => setIsDailyReportOpen(true)}
+              onReloadInventory={loadInitialData}
+              setActiveTab={setActiveTab}
             />
           )}
 

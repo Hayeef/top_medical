@@ -147,15 +147,23 @@ export default function DashboardPage({
         </div>
 
         {/* Total Active Inventory Value */}
-        <div className="glass-panel glass-card-interactive" style={{ padding: '16px' }}>
+        <div 
+          onClick={() => setActiveTab && setActiveTab('inventory')}
+          className="glass-panel glass-card-interactive" 
+          style={{ padding: '16px', cursor: 'pointer' }}
+          title="Click to open Live Stock & Price Master Table"
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Inventory Value</div>
+              <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span>Inventory Value</span>
+                <span className="badge badge-cyan" style={{ fontSize: '9px', padding: '0 4px' }}>Edit</span>
+              </div>
               <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#6366f1', marginTop: '4px' }}>
                 {currency}{summary?.total_inventory_value?.toLocaleString('en-IN', { minimumFractionDigits: 2 }) || '0.00'}
               </div>
               <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                {summary?.total_medicines_count || 0} Registered Drug SKUs
+                {summary?.total_medicines_count || 0} Registered SKUs • Quick Stock Table &rarr;
               </div>
             </div>
             <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

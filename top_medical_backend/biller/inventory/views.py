@@ -386,6 +386,209 @@ class BatchViewSet(viewsets.ModelViewSet):
 
         return Response(self.get_serializer(batch).data)
 
+    @action(detail=True, methods=['patch', 'post'])
+    def quick_update(self, request, pk=None):
+        """
+        Fast Inline Editing for Admin:
+        Allows modifying purchase_price, mrp, selling_price, pack_quantity, loose_quantity,
+        expiry_date, and medicine's rack_location.
+        Automatically logs StockMovement when stock count is changed.
+        """
+        batch = self.get_object()
+        data = request.data
+
+        old_pack_qty = batch.pack_quantity
+        old_loose_qty = batch.loose_quantity
+
+        if 'purchase_price' in data and data['purchase_price'] is not None:
+            batch.purchase_price = Decimal(str(data['purchase_price']))
+        if 'mrp' in data and data['mrp'] is not None:
+            batch.mrp = Decimal(str(data['mrp']))
+        if 'selling_price' in data and data['selling_price'] is not None:
+            batch.selling_price = Decimal(str(data['selling_price']))
+        if 'expiry_date' in data and data['expiry_date']:
+            batch.expiry_date = data['expiry_date']
+        if 'batch_number' in data and data['batch_number']:
+            batch.batch_number = str(data['batch_number']).strip().upper()
+
+        new_pack_qty = int(data['pack_quantity']) if 'pack_quantity' in data else old_pack_qty
+        new_loose_qty = int(data['loose_quantity']) if 'loose_quantity' in data else old_loose_qty
+
+        pack_delta = new_pack_qty - old_pack_qty
+        loose_delta = new_loose_qty - old_loose_qty
+
+        batch.pack_quantity = max(0, new_pack_qty)
+        batch.loose_quantity = max(0, new_loose_qty)
+        batch.save()
+
+        # Update rack location if provided on medicine
+        if 'rack_location' in data and batch.medicine:
+            batch.medicine.rack_location = str(data['rack_location']).strip()
+            batch.medicine.save(update_fields=['rack_location'])
+
+        # If stock quantity changed, log StockMovement
+        if pack_delta != 0 or loose_delta != 0:
+            notes = data.get('notes') or f"Inline table adjustment: {old_pack_qty} -> {new_pack_qty} packs ({'+' if pack_delta > 0 else ''}{pack_delta})"
+            StockMovement.objects.create(
+                batch=batch,
+                movement_type='ADJUSTMENT',
+                quantity_packs=pack_delta,
+                quantity_loose=loose_delta,
+                reference_id=f"ADJ-{date.today().strftime('%Y%m%d')}",
+                notes=notes
+            )
+
+        serializer = self.get_serializer(batch)
+        return Response({
+            "success": True,
+            "message": f"Updated {batch.medicine.name} (Batch #{batch.batch_number})",
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
+    @transaction.atomic
+    def bulk_quick_update(self, request):
+        """
+        Bulk Inline Save for multiple modified batches in table.
+        """
+        updates = request.data.get('updates', [])
+        if not updates:
+            return Response({"error": "No updates provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+        updated_batches = []
+        movements_to_create = []
+
+        for item in updates:
+            batch_id = item.get('id')
+            if not batch_id:
+                continue
+            try:
+                batch = Batch.objects.select_related('medicine').get(id=batch_id)
+            except Batch.DoesNotExist:
+                continue
+
+            old_pack_qty = batch.pack_quantity
+            old_loose_qty = batch.loose_quantity
+
+            if 'purchase_price' in item and item['purchase_price'] is not None:
+                batch.purchase_price = Decimal(str(item['purchase_price']))
+            if 'mrp' in item and item['mrp'] is not None:
+                batch.mrp = Decimal(str(item['mrp']))
+            if 'selling_price' in item and item['selling_price'] is not None:
+                batch.selling_price = Decimal(str(item['selling_price']))
+            if 'expiry_date' in item and item['expiry_date']:
+                batch.expiry_date = item['expiry_date']
+            if 'batch_number' in item and item['batch_number']:
+                batch.batch_number = str(item['batch_number']).strip().upper()
+
+            new_pack_qty = int(item['pack_quantity']) if 'pack_quantity' in item else old_pack_qty
+            new_loose_qty = int(item['loose_quantity']) if 'loose_quantity' in item else old_loose_qty
+
+            pack_delta = new_pack_qty - old_pack_qty
+            loose_delta = new_loose_qty - old_loose_qty
+
+            batch.pack_quantity = max(0, new_pack_qty)
+            batch.loose_quantity = max(0, new_loose_qty)
+            batch.save()
+
+            if 'rack_location' in item and batch.medicine:
+                batch.medicine.rack_location = str(item['rack_location']).strip()
+                batch.medicine.save(update_fields=['rack_location'])
+
+            if pack_delta != 0 or loose_delta != 0:
+                movements_to_create.append(StockMovement(
+                    batch=batch,
+                    movement_type='ADJUSTMENT',
+                    quantity_packs=pack_delta,
+                    quantity_loose=loose_delta,
+                    reference_id=f"BULK-ADJ-{date.today().strftime('%Y%m%d')}",
+                    notes=f"Bulk table stock adjustment: {old_pack_qty} -> {new_pack_qty} packs"
+                ))
+
+            updated_batches.append(batch)
+
+        if movements_to_create:
+            StockMovement.objects.bulk_create(movements_to_create)
+
+        serializer = self.get_serializer(updated_batches, many=True)
+        return Response({
+            "success": True,
+            "message": f"Successfully updated {len(updated_batches)} medicine batches.",
+            "updated_count": len(updated_batches),
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def stock_table(self, request):
+        """
+        Dedicated endpoint for the Admin Stock & Price Master Table with financial metrics.
+        """
+        search = request.query_params.get('search', '').strip()
+        category_id = request.query_params.get('category')
+        supplier_id = request.query_params.get('supplier')
+        status_filter = request.query_params.get('status', 'all')
+        limit = int(request.query_params.get('limit', 1000))
+
+        today = date.today()
+        expiring_threshold = today + timedelta(days=90)
+
+        qs = Batch.objects.all().select_related('medicine__category', 'supplier').order_by('medicine__name', 'expiry_date')
+
+        if search:
+            qs = qs.filter(
+                Q(medicine__name__icontains=search) |
+                Q(medicine__generic_name__icontains=search) |
+                Q(batch_number__icontains=search) |
+                Q(medicine__rack_location__icontains=search) |
+                Q(medicine__manufacturer__icontains=search) |
+                Q(supplier__name__icontains=search)
+            )
+
+        if category_id:
+            qs = qs.filter(medicine__category_id=category_id)
+
+        if supplier_id:
+            qs = qs.filter(supplier_id=supplier_id)
+
+        # Status filtering
+        if status_filter == 'low_stock':
+            qs = qs.filter(pack_quantity__lte=F('medicine__min_stock_alert'), pack_quantity__gt=0)
+        elif status_filter == 'out_of_stock':
+            qs = qs.filter(pack_quantity=0)
+        elif status_filter == 'in_stock':
+            qs = qs.filter(pack_quantity__gt=0)
+        elif status_filter == 'expiring_soon':
+            qs = qs.filter(expiry_date__gt=today, expiry_date__lte=expiring_threshold, pack_quantity__gt=0)
+        elif status_filter == 'expired':
+            qs = qs.filter(expiry_date__lte=today, pack_quantity__gt=0)
+
+        total_matching_count = qs.count()
+        batches = list(qs[:limit])
+
+        # Financial Aggregations
+        total_cost_val = sum(Decimal(str(b.purchase_price)) * Decimal(b.pack_quantity) for b in batches)
+        total_mrp_val = sum(Decimal(str(b.mrp)) * Decimal(b.pack_quantity) for b in batches)
+        total_sell_val = sum(Decimal(str(b.selling_price)) * Decimal(b.pack_quantity) for b in batches)
+        total_packs = sum(b.pack_quantity for b in batches)
+
+        gross_profit = total_sell_val - total_cost_val
+        margin_pct = float(round((gross_profit / total_sell_val * 100), 1)) if total_sell_val > 0 else 0.0
+
+        serializer = self.get_serializer(batches, many=True)
+        return Response({
+            "summary": {
+                "total_batches": total_matching_count,
+                "displayed_batches": len(batches),
+                "total_packs": total_packs,
+                "total_cost": round(float(total_cost_val), 2),
+                "total_mrp": round(float(total_mrp_val), 2),
+                "total_selling": round(float(total_sell_val), 2),
+                "gross_profit": round(float(gross_profit), 2),
+                "margin_pct": margin_pct,
+            },
+            "results": serializer.data
+        })
+
     @action(detail=False, methods=['post'])
     def scan_supplier_bill(self, request):
         """

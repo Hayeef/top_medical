@@ -523,7 +523,11 @@ class BatchViewSet(viewsets.ModelViewSet):
         if 'selling_price' in data and data['selling_price'] is not None:
             batch.selling_price = Decimal(str(data['selling_price']))
         if 'expiry_date' in data and data['expiry_date']:
-            batch.expiry_date = data['expiry_date']
+            exp_str = str(data['expiry_date']).strip()
+            try:
+                batch.expiry_date = datetime.strptime(exp_str, '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                pass
         if 'batch_number' in data and data['batch_number']:
             batch.batch_number = str(data['batch_number']).strip().upper()
 
@@ -536,6 +540,7 @@ class BatchViewSet(viewsets.ModelViewSet):
         batch.pack_quantity = max(0, new_pack_qty)
         batch.loose_quantity = max(0, new_loose_qty)
         batch.save()
+        batch.refresh_from_db()
 
         # Update rack location if provided on medicine
         if 'rack_location' in data and batch.medicine:
@@ -593,7 +598,11 @@ class BatchViewSet(viewsets.ModelViewSet):
             if 'selling_price' in item and item['selling_price'] is not None:
                 batch.selling_price = Decimal(str(item['selling_price']))
             if 'expiry_date' in item and item['expiry_date']:
-                batch.expiry_date = item['expiry_date']
+                exp_str = str(item['expiry_date']).strip()
+                try:
+                    batch.expiry_date = datetime.strptime(exp_str, '%Y-%m-%d').date()
+                except (ValueError, TypeError):
+                    pass
             if 'batch_number' in item and item['batch_number']:
                 batch.batch_number = str(item['batch_number']).strip().upper()
 
@@ -606,6 +615,7 @@ class BatchViewSet(viewsets.ModelViewSet):
             batch.pack_quantity = max(0, new_pack_qty)
             batch.loose_quantity = max(0, new_loose_qty)
             batch.save()
+            batch.refresh_from_db()
 
             if 'rack_location' in item and batch.medicine:
                 batch.medicine.rack_location = str(item['rack_location']).strip()

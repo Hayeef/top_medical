@@ -131,12 +131,21 @@ class Batch(models.Model):
         return self.mrp
 
     @property
+    def expiry_date_obj(self):
+        if isinstance(self.expiry_date, str):
+            try:
+                return datetime.strptime(self.expiry_date.split('T')[0], '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                return date.today() + timedelta(days=730)
+        return self.expiry_date or (date.today() + timedelta(days=730))
+
+    @property
     def is_expired(self):
-        return self.expiry_date <= date.today()
+        return self.expiry_date_obj <= date.today()
 
     @property
     def days_to_expiry(self):
-        return (self.expiry_date - date.today()).days
+        return (self.expiry_date_obj - date.today()).days
 
     @property
     def is_near_expiry(self):

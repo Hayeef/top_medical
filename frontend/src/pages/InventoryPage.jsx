@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Pill, 
   Search, 
@@ -22,13 +22,11 @@ import {
   Filter,
   DollarSign,
   Layers,
-  ArrowUpDown,
   Building2,
-  Hash,
-  Calendar,
   Zap,
   RefreshCw,
-  Edit3
+  Edit3,
+  Check
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { inventoryAPI } from '../api';
@@ -48,7 +46,7 @@ export default function InventoryPage({
   onReloadInventory,
   setActiveTab 
 }) {
-  // View mode: 'table' (Live Inline Editable Stock Table) | 'catalog' (Grouped Medicines View)
+  // View mode: 'table' (Live Inline Editable Stock Table) | 'catalog' (Grouped Drug Catalog)
   const [viewMode, setViewMode] = useState('table');
   
   // Search and Filters
@@ -59,12 +57,12 @@ export default function InventoryPage({
   const [filterRx, setFilterRx] = useState('');
   const [expandedMedId, setExpandedMedId] = useState(null);
 
-  // Live Stock Table Data (Fetched or flattened from medicines/batches)
-  const [batchesData, setBatchesData] = useState([]);
-  const [tableSummary, setTableSummary] = useState(null);
+  // Server-fetched Batches (with fallback to client-flattened medicines)
+  const [serverBatches, setServerBatches] = useState(null);
+  const [serverSummary, setServerSummary] = useState(null);
   const [loadingBatches, setLoadingBatches] = useState(false);
 
-  // Row Edit State Map: { [batchId]: { purchase_price, mrp, selling_price, pack_quantity, loose_quantity, expiry_date, rack_location, isDirty, isSaving, isSaved } }
+  // Row Edit State Map: { [batchId]: { purchase_price, mrp, selling_price, pack_quantity, loose_quantity, expiry_date, rack_location, batch_number, isDirty, isSaving, isSaved } }
   const [rowEdits, setRowEdits] = useState({});
   const [savingAll, setSavingAll] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
@@ -72,7 +70,58 @@ export default function InventoryPage({
   const isAdmin = user?.is_superuser || user?.is_staff || user?.email?.includes('admin');
   const currency = profile?.currency_symbol || '₹';
 
-  // Fetch batches for the Master Stock Table
+  // Client-side fallback flattened batches from medicines prop
+  const localBatches = useMemo(() => {
+    const list = [];
+    if (!medicines || medicines.length === 0) return list;
+
+    medicines.forEach(med => {
+      if (med.batches && med.batches.length > 0) {
+        med.batches.forEach(b => {
+          list.push({
+            ...b,
+            medicine_id: med.id,
+            medicine_name: med.name,
+            medicine_generic: med.generic_name,
+            dosage_form: med.dosage_form,
+            rack_location: med.rack_location || b.rack_location,
+            category_id: med.category,
+            category_name: med.category_name,
+            manufacturer: med.manufacturer,
+            requires_prescription: med.requires_prescription,
+            min_stock_alert: med.min_stock_alert || 10
+          });
+        });
+      } else {
+        // Medicine with 0 active batches yet
+        list.push({
+          id: `med-${med.id}`,
+          is_virtual: true,
+          medicine_id: med.id,
+          medicine_name: med.name,
+          medicine_generic: med.generic_name,
+          dosage_form: med.dosage_form,
+          rack_location: med.rack_location || '',
+          category_id: med.category,
+          category_name: med.category_name,
+          manufacturer: med.manufacturer,
+          requires_prescription: med.requires_prescription,
+          min_stock_alert: med.min_stock_alert || 10,
+          batch_number: 'UNASSIGNED',
+          expiry_date: new Date(Date.now() + 730 * 86400000).toISOString().split('T')[0],
+          supplier_name: 'Direct Wholesale',
+          purchase_price: 0,
+          mrp: 0,
+          selling_price: 0,
+          pack_quantity: 0,
+          loose_quantity: 0
+        });
+      }
+    });
+    return list;
+  }, [medicines]);
+
+  // Fetch batches from server endpoint
   const fetchStockTable = async () => {
     setLoadingBatches(true);
     try {
@@ -81,62 +130,79 @@ export default function InventoryPage({
       if (selectedCategory) params.append('category', selectedCategory);
       if (selectedSupplier) params.append('supplier', selectedSupplier);
       if (statusFilter !== 'all') params.append('status', statusFilter);
-      params.append('limit', '1500');
+      params.append('limit', '2000');
 
       const res = await inventoryAPI.getStockTable(params.toString());
-      if (res && res.results) {
-        setBatchesData(res.results);
-        setTableSummary(res.summary);
-      } else {
-        // Fallback: flatten from medicines
-        flattenBatchesFromMedicines();
+      if (res && Array.isArray(res.results)) {
+        setServerBatches(res.results);
+        setServerSummary(res.summary);
       }
     } catch (err) {
-      console.warn('Could not fetch stock_table endpoint, flattening local medicines:', err);
-      flattenBatchesFromMedicines();
+      console.warn('Could not fetch server stock_table, using client-flattened medicines:', err);
     } finally {
       setLoadingBatches(false);
     }
-  };
-
-  const flattenBatchesFromMedicines = () => {
-    const list = [];
-    medicines.forEach(med => {
-      (med.batches || []).forEach(b => {
-        list.push({
-          ...b,
-          medicine_name: med.name,
-          medicine_generic: med.generic_name,
-          dosage_form: med.dosage_form,
-          rack_location: med.rack_location,
-          category_id: med.category,
-          category_name: med.category_name,
-          manufacturer: med.manufacturer,
-          requires_prescription: med.requires_prescription,
-          min_stock_alert: med.min_stock_alert || 10
-        });
-      });
-    });
-    setBatchesData(list);
   };
 
   useEffect(() => {
     fetchStockTable();
   }, [search, selectedCategory, selectedSupplier, statusFilter]);
 
-  // When medicines prop updates, reload table if not actively editing
-  useEffect(() => {
-    if (Object.keys(rowEdits).length === 0) {
-      fetchStockTable();
+  // Master Active List of Batches (Server data prioritized, localBatches fallback)
+  const allBatches = useMemo(() => {
+    if (serverBatches && serverBatches.length > 0) {
+      return serverBatches;
     }
-  }, [medicines]);
+    return localBatches;
+  }, [serverBatches, localBatches]);
+
+  // Filtered Batches for Table View
+  const filteredBatches = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const thresholdDate = new Date();
+    thresholdDate.setDate(thresholdDate.getDate() + 90);
+    const thresholdStr = thresholdDate.toISOString().split('T')[0];
+
+    return allBatches.filter(b => {
+      const name = (b.medicine_name || '').toLowerCase();
+      const generic = (b.medicine_generic || '').toLowerCase();
+      const batchNo = (b.batch_number || '').toLowerCase();
+      const rack = (b.rack_location || '').toLowerCase();
+      const mfg = (b.manufacturer || '').toLowerCase();
+      const supp = (b.supplier_name || '').toLowerCase();
+      const q = search.toLowerCase().trim();
+
+      const matchesSearch = !q || name.includes(q) || generic.includes(q) || batchNo.includes(q) || rack.includes(q) || mfg.includes(q) || supp.includes(q);
+      const matchesCat = !selectedCategory || String(b.category_id || b.category) === String(selectedCategory);
+      const matchesSupp = !selectedSupplier || String(b.supplier) === String(selectedSupplier);
+      const matchesRx = !filterRx || (filterRx === 'true' ? b.requires_prescription : !b.requires_prescription);
+
+      const qty = parseInt(b.pack_quantity || 0);
+      const exp = b.expiry_date || '2099-12-31';
+
+      let matchesStatus = true;
+      if (statusFilter === 'low_stock') {
+        matchesStatus = qty <= (b.min_stock_alert || 10) && qty > 0;
+      } else if (statusFilter === 'out_of_stock') {
+        matchesStatus = qty === 0;
+      } else if (statusFilter === 'in_stock') {
+        matchesStatus = qty > 0;
+      } else if (statusFilter === 'expiring_soon') {
+        matchesStatus = exp > todayStr && exp <= thresholdStr && qty > 0;
+      } else if (statusFilter === 'expired') {
+        matchesStatus = exp <= todayStr && qty > 0;
+      }
+
+      return matchesSearch && matchesCat && matchesSupp && matchesRx && matchesStatus;
+    });
+  }, [allBatches, search, selectedCategory, selectedSupplier, filterRx, statusFilter]);
 
   const showToast = (msg, type = 'success') => {
     setToastMessage({ text: msg, type });
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Helper to get active editable value or fallback to original batch value
+  // Helper to read current cell value (either pending user edit or saved batch value)
   const getRowValue = (batch, field) => {
     if (rowEdits[batch.id] && rowEdits[batch.id][field] !== undefined) {
       return rowEdits[batch.id][field];
@@ -184,6 +250,12 @@ export default function InventoryPage({
 
   // Save Single Row
   const handleSaveRow = async (batch) => {
+    // If virtual batch without actual DB id, open create batch modal
+    if (batch.is_virtual) {
+      onOpenAddBatch?.(batch.medicine_id);
+      return;
+    }
+
     const edit = rowEdits[batch.id];
     if (!edit) return;
 
@@ -206,8 +278,9 @@ export default function InventoryPage({
 
       const res = await inventoryAPI.quickUpdateBatch(batch.id, payload);
 
-      // Update local batchesData
-      setBatchesData(prev => prev.map(b => b.id === batch.id ? { ...b, ...res.data, ...payload } : b));
+      if (serverBatches) {
+        setServerBatches(prev => prev.map(b => b.id === batch.id ? { ...b, ...res.data, ...payload } : b));
+      }
 
       setRowEdits(prev => ({
         ...prev,
@@ -243,17 +316,17 @@ export default function InventoryPage({
     });
   };
 
-  // Save All Modified Rows (Bulk Save)
+  // Bulk Save All Modified Rows
   const dirtyCount = Object.keys(rowEdits).filter(k => rowEdits[k]?.isDirty).length;
 
   const handleSaveAll = async () => {
-    const dirtyIds = Object.keys(rowEdits).filter(k => rowEdits[k]?.isDirty);
+    const dirtyIds = Object.keys(rowEdits).filter(k => rowEdits[k]?.isDirty && !String(k).startsWith('med-'));
     if (dirtyIds.length === 0) return;
 
     setSavingAll(true);
     const updates = dirtyIds.map(id => {
       const edit = rowEdits[id];
-      const orig = batchesData.find(b => b.id === parseInt(id)) || {};
+      const orig = allBatches.find(b => b.id === parseInt(id)) || {};
       return {
         id: parseInt(id),
         purchase_price: parseFloat(edit.purchase_price ?? orig.purchase_price),
@@ -271,8 +344,8 @@ export default function InventoryPage({
       await inventoryAPI.bulkQuickUpdateBatches(updates);
 
       confetti({
-        particleCount: 50,
-        spread: 60,
+        particleCount: 60,
+        spread: 70,
         origin: { y: 0.8 },
         colors: ['#0284c7', '#10b981', '#f59e0b']
       });
@@ -296,14 +369,12 @@ export default function InventoryPage({
 
   // Financial summary metrics
   const displaySummary = useMemo(() => {
-    if (tableSummary) return tableSummary;
-
     let totalCost = 0;
     let totalMRP = 0;
     let totalSelling = 0;
     let totalPacks = 0;
 
-    batchesData.forEach(b => {
+    filteredBatches.forEach(b => {
       const qty = parseInt(getRowValue(b, 'pack_quantity') || 0);
       const rate = parseFloat(getRowValue(b, 'purchase_price') || 0);
       const mrp = parseFloat(getRowValue(b, 'mrp') || 0);
@@ -319,7 +390,7 @@ export default function InventoryPage({
     const marginPct = totalSelling > 0 ? ((grossProfit / totalSelling) * 100).toFixed(1) : 0;
 
     return {
-      total_batches: batchesData.length,
+      total_batches: filteredBatches.length,
       total_packs: totalPacks,
       total_cost: totalCost,
       total_mrp: totalMRP,
@@ -327,22 +398,24 @@ export default function InventoryPage({
       gross_profit: grossProfit,
       margin_pct: marginPct
     };
-  }, [batchesData, rowEdits, tableSummary]);
+  }, [filteredBatches, rowEdits]);
 
-  // Grouped Catalog Filtered list
-  const filteredCatalogMedicines = medicines.filter(med => {
-    const matchesSearch = !search || 
-      med.name.toLowerCase().includes(search.toLowerCase()) ||
-      med.generic_name?.toLowerCase().includes(search.toLowerCase()) ||
-      med.manufacturer?.toLowerCase().includes(search.toLowerCase()) ||
-      med.rack_location?.toLowerCase().includes(search.toLowerCase()) ||
-      med.barcode?.includes(search);
+  // Grouped Drug Catalog Filtered List
+  const filteredCatalogMedicines = useMemo(() => {
+    return medicines.filter(med => {
+      const matchesSearch = !search || 
+        med.name.toLowerCase().includes(search.toLowerCase()) ||
+        med.generic_name?.toLowerCase().includes(search.toLowerCase()) ||
+        med.manufacturer?.toLowerCase().includes(search.toLowerCase()) ||
+        med.rack_location?.toLowerCase().includes(search.toLowerCase()) ||
+        med.barcode?.includes(search);
 
-    const matchesCategory = !selectedCategory || med.category === parseInt(selectedCategory);
-    const matchesRx = !filterRx || (filterRx === 'true' ? med.requires_prescription : !med.requires_prescription);
+      const matchesCategory = !selectedCategory || med.category === parseInt(selectedCategory);
+      const matchesRx = !filterRx || (filterRx === 'true' ? med.requires_prescription : !med.requires_prescription);
 
-    return matchesSearch && matchesCategory && matchesRx;
-  });
+      return matchesSearch && matchesCategory && matchesRx;
+    });
+  }, [medicines, search, selectedCategory, filterRx]);
 
   const toggleExpand = (id) => {
     setExpandedMedId(expandedMedId === id ? null : id);
@@ -389,7 +462,7 @@ export default function InventoryPage({
                 type="text"
                 className="input-field"
                 style={{ paddingLeft: '36px', height: '38px', fontSize: '13px', background: '#f8fafc', borderColor: '#cbd5e1' }}
-                placeholder="Search tablet, brand, composition, batch, rack..."
+                placeholder="Search tablet, brand, salt, batch, rack..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -416,7 +489,7 @@ export default function InventoryPage({
                 value={selectedSupplier}
                 onChange={(e) => setSelectedSupplier(e.target.value)}
               >
-                <option value="">All Distributors</option>
+                <option value="">All Wholesale Suppliers</option>
                 {suppliers.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
@@ -485,7 +558,7 @@ export default function InventoryPage({
               }}
             >
               <Layers size={14} />
-              <span>Drug Catalog View</span>
+              <span>Drug Master Catalog</span>
             </button>
           </div>
 
@@ -493,14 +566,14 @@ export default function InventoryPage({
 
         {/* Row 2: Status Quick Filter Pills */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#64748b' }}>Filter by Status:</span>
+          <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#64748b' }}>Quick Filters:</span>
           
           <button
             onClick={() => setStatusFilter('all')}
             className={`badge ${statusFilter === 'all' ? 'badge-cyan' : 'badge-secondary'}`}
             style={{ cursor: 'pointer', padding: '5px 12px', fontSize: '11.5px', border: 'none' }}
           >
-            All Stock Items
+            All Stock Items ({allBatches.length})
           </button>
 
           <button
@@ -532,7 +605,7 @@ export default function InventoryPage({
             className={`badge ${statusFilter === 'expired' ? 'badge-rose' : 'badge-secondary'}`}
             style={{ cursor: 'pointer', padding: '5px 12px', fontSize: '11.5px', border: 'none' }}
           >
-            Expired
+            Expired Batches
           </button>
 
           {(search || selectedCategory || selectedSupplier || statusFilter !== 'all' || filterRx) && (
@@ -599,7 +672,10 @@ export default function InventoryPage({
             </button>
           )}
           <button
-            onClick={fetchStockTable}
+            onClick={() => {
+              fetchStockTable();
+              onReloadInventory?.();
+            }}
             className="btn btn-secondary btn-sm"
             title="Refresh database records"
           >
@@ -632,10 +708,10 @@ export default function InventoryPage({
               Batches in View
             </div>
             <div style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-              {displaySummary.displayed_batches ?? batchesData.length} Batches
+              {filteredBatches.length} Batches
             </div>
             <div style={{ fontSize: '11px', color: '#64748b' }}>
-              Total {displaySummary.total_packs ?? 0} Packs In Stock
+              Total {displaySummary.total_packs} Packs In Stock
             </div>
           </div>
 
@@ -648,7 +724,7 @@ export default function InventoryPage({
                 {currency}{parseFloat(displaySummary.total_cost || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </div>
               <div style={{ fontSize: '11px', color: '#64748b' }}>
-                Purchase value
+                Wholesale purchase valuation
               </div>
             </div>
           )}
@@ -698,15 +774,15 @@ export default function InventoryPage({
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Edit3 size={16} color="#0284c7" />
               <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#0f172a' }}>
-                Interactive Batch Stock & Price Master Table ({batchesData.length} Batches)
+                Live Editable Batch Stock & Price Table ({filteredBatches.length} Items)
               </div>
               <span className="badge badge-cyan" style={{ fontSize: '10.5px' }}>
-                <Zap size={10} /> Live Inline Editing
+                <Zap size={10} /> Instant In-Place Updates
               </span>
             </div>
 
             <div style={{ fontSize: '11.5px', color: '#64748b' }}>
-              💡 Tip: Click any Price or Stock field to edit directly. Hit <kbd style={{ padding: '1px 5px', background: '#e2e8f0', borderRadius: '4px' }}>Enter</kbd> to save.
+              💡 Tip: Click Price or Stock to edit directly. Hit <kbd style={{ padding: '1px 5px', background: '#e2e8f0', borderRadius: '4px' }}>Enter</kbd> or click Save.
             </div>
           </div>
 
@@ -727,21 +803,14 @@ export default function InventoryPage({
                 </tr>
               </thead>
               <tbody>
-                {loadingBatches ? (
-                  <tr>
-                    <td colSpan={isAdmin ? 10 : 9} style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
-                      <RefreshCw size={24} className="spin-animation" style={{ margin: '0 auto 8px' }} />
-                      <div>Loading inventory stock batches...</div>
-                    </td>
-                  </tr>
-                ) : batchesData.length === 0 ? (
+                {filteredBatches.length === 0 ? (
                   <tr>
                     <td colSpan={isAdmin ? 10 : 9} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
-                      No stock batches found matching current filters.
+                      No stock batches match your search or filter criteria.
                     </td>
                   </tr>
                 ) : (
-                  batchesData.map((batch) => {
+                  filteredBatches.map((batch) => {
                     const dirty = isRowDirty(batch.id);
                     const rowEdit = rowEdits[batch.id] || {};
                     const isSaving = rowEdit.isSaving;
@@ -820,7 +889,7 @@ export default function InventoryPage({
                               fontWeight: 700,
                               background: dirty ? '#ffffff' : 'transparent'
                             }}
-                            value={expVal}
+                            value={expVal || ''}
                             onChange={(e) => handleCellChange(batch, 'expiry_date', e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSaveRow(batch)}
                           />
@@ -1062,12 +1131,18 @@ export default function InventoryPage({
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => onOpenStockAdjust(batch)}
+                                onClick={() => {
+                                  if (batch.is_virtual) {
+                                    onOpenAddBatch?.(batch.medicine_id);
+                                  } else {
+                                    onOpenStockAdjust?.(batch);
+                                  }
+                                }}
                                 className="btn btn-secondary btn-sm"
                                 style={{ padding: '2px 6px', fontSize: '10.5px', height: '24px' }}
-                                title="Audit / Stock Adjust Modal"
+                                title={batch.is_virtual ? "Create initial batch" : "Audit / Stock Adjust Modal"}
                               >
-                                <Sliders size={11} />
+                                {batch.is_virtual ? <Plus size={11} /> : <Sliders size={11} />}
                               </button>
                             )}
                           </div>
@@ -1082,7 +1157,7 @@ export default function InventoryPage({
 
           {/* Mobile Stock Cards */}
           <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
-            {batchesData.map((batch) => {
+            {filteredBatches.map((batch) => {
               const dirty = isRowDirty(batch.id);
               const isSaving = rowEdits[batch.id]?.isSaving;
 

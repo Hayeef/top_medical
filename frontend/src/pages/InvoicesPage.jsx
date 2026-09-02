@@ -14,9 +14,12 @@ import {
   QrCode,
   Sparkles,
   Users,
-  ClipboardList
+  ClipboardList,
+  Tag,
+  Percent
 } from 'lucide-react';
 import { billingAPI } from '../api';
+import UpdateDiscountModal from '../components/UpdateDiscountModal';
 
 export default function InvoicesPage({ profile, onOpenReceipt, onOpenDailyReport }) {
   const [invoices, setInvoices] = useState([]);
@@ -29,6 +32,7 @@ export default function InvoicesPage({ profile, onOpenReceipt, onOpenDailyReport
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [expandedInvoiceId, setExpandedInvoiceId] = useState(null);
+  const [discountModalInvoice, setDiscountModalInvoice] = useState(null);
 
   const currency = profile?.currency_symbol || '₹';
 
@@ -445,6 +449,26 @@ export default function InvoicesPage({ profile, onOpenReceipt, onOpenDailyReport
 
                         <td style={{ textAlign: 'right' }}>
                           <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                            {!isCancelled && (
+                              <button
+                                onClick={() => setDiscountModalInvoice(inv)}
+                                className="btn btn-secondary btn-sm"
+                                title="Apply Customer Bargain Discount"
+                                style={{
+                                  color: '#0284c7',
+                                  borderColor: '#bae6fd',
+                                  background: '#f0f9ff',
+                                  padding: '4px 8px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                <Tag size={12} />
+                                <span>Discount</span>
+                              </button>
+                            )}
+
                             <button
                               onClick={() => onOpenReceipt(inv)}
                               className="btn btn-secondary btn-sm"
@@ -593,6 +617,18 @@ export default function InvoicesPage({ profile, onOpenReceipt, onOpenDailyReport
                     </button>
 
                     <div style={{ display: 'flex', gap: '6px' }}>
+                      {!isCancelled && (
+                        <button
+                          onClick={() => setDiscountModalInvoice(inv)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '4px 8px', fontSize: '11px', color: '#0284c7', borderColor: '#bae6fd', background: '#f0f9ff' }}
+                          title="Apply Bargain Discount"
+                        >
+                          <Tag size={11} />
+                          <span>Discount</span>
+                        </button>
+                      )}
+
                       <button
                         onClick={() => onOpenReceipt(inv)}
                         className="btn btn-secondary btn-sm"
@@ -633,6 +669,18 @@ export default function InvoicesPage({ profile, onOpenReceipt, onOpenDailyReport
           )}
         </div>
       </div>
+
+      {/* Post-Generation Discount / Bargaining Modal */}
+      <UpdateDiscountModal
+        invoice={discountModalInvoice}
+        profile={profile}
+        isOpen={!!discountModalInvoice}
+        onClose={() => setDiscountModalInvoice(null)}
+        onUpdated={(updatedInv) => {
+          setInvoices(prev => prev.map(inv => inv.id === updatedInv.id ? { ...inv, ...updatedInv } : inv));
+          loadInvoicesAndStaff();
+        }}
+      />
     </div>
   );
 }

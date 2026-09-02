@@ -117,6 +117,10 @@ export const billingAPI = {
   getInvoices: (params = '') => request(`/billing/invoices/${params ? `?${params}` : ''}`),
   getInvoice: (id) => request(`/billing/invoices/${id}/`),
   createInvoice: (data) => request('/billing/invoices/', { method: 'POST', body: JSON.stringify(data) }),
+  updateInvoiceDiscount: (id, data) => request(`/billing/invoices/${id}/update_discount/`, {
+    method: 'POST',
+    body: JSON.stringify(data)
+  }),
   cancelInvoice: (id) => request(`/billing/invoices/${id}/cancel_invoice/`, { method: 'POST' }),
   getNextInvoiceNumber: () => request('/billing/invoices/next_number/'),
   getPaymentSummary: (params = '') => request(`/billing/invoices/payment_summary/${params ? `?${params}` : ''}`),

@@ -10,12 +10,20 @@ import {
   Download,
   Stethoscope,
   Building2,
-  Maximize2
+  Maximize2,
+  Tag
 } from 'lucide-react';
 import PharmacyLogo from './PharmacyLogo';
+import UpdateDiscountModal from './UpdateDiscountModal';
 
-export default function ReceiptModal({ invoice, profile, onClose }) {
+export default function ReceiptModal({ invoice: initialInvoice, profile, onClose }) {
+  const [invoice, setInvoice] = useState(initialInvoice);
   const [printFormat, setPrintFormat] = useState('thermal-80'); // 'thermal-80', 'thermal-58', 'a4'
+  const [isDiscountOpen, setIsDiscountOpen] = useState(false);
+
+  useEffect(() => {
+    setInvoice(initialInvoice);
+  }, [initialInvoice]);
 
   if (!invoice) return null;
 
@@ -300,6 +308,27 @@ export default function ReceiptModal({ invoice, profile, onClose }) {
                 A4 Tax Sheet
               </button>
             </div>
+
+            {/* Bargain / Discount Update Button */}
+            <button
+              type="button"
+              onClick={() => setIsDiscountOpen(true)}
+              className="btn btn-secondary btn-sm"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '6px 10px',
+                fontWeight: 800,
+                color: '#0284c7',
+                borderColor: '#bae6fd',
+                background: '#f0f9ff'
+              }}
+              title="Customer Bargain / Update Discount"
+            >
+              <Tag size={13} />
+              <span>Discount</span>
+            </button>
 
             {/* Print Button */}
             <button
@@ -698,6 +727,15 @@ export default function ReceiptModal({ invoice, profile, onClose }) {
           )}
         </div>
       </div>
+
+      {/* Post-Generation Bargain Discount Modal */}
+      <UpdateDiscountModal
+        invoice={invoice}
+        profile={profile}
+        isOpen={isDiscountOpen}
+        onClose={() => setIsDiscountOpen(false)}
+        onUpdated={(updated) => setInvoice(updated)}
+      />
     </div>
   );
 }

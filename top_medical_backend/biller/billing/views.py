@@ -250,3 +250,122 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
         return Response({"message": f"Invoice {invoice.invoice_number} cancelled and stock successfully restored."})
 
+    @action(detail=True, methods=['post', 'patch'], url_path='update_discount')
+    @transaction.atomic
+    def update_discount(self, request, pk=None):
+        """
+        Update post-generation discount on an existing bill (e.g., customer bargaining).
+        Recalculates item discounts, tax amounts, round off, and grand total.
+        """
+        invoice = self.get_object()
+        if invoice.payment_status in ['CANCELLED', 'REFUNDED']:
+            return Response(
+                {"error": f"Cannot modify discount on a {invoice.payment_status} invoice."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        data = request.data
+        discount_type = str(data.get('discount_type', 'PERCENT')).upper()
+        if discount_type not in ['PERCENT', 'FIXED']:
+            discount_type = 'PERCENT'
+
+        try:
+            discount_value = Decimal(str(data.get('discount_value', '0.00') or '0.00'))
+        except (ValueError, TypeError):
+            return Response({"error": "Invalid discount value provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if discount_value < Decimal('0.00'):
+            return Response({"error": "Discount value cannot be negative."}, status=status.HTTP_400_BAD_REQUEST)
+
+        items = list(invoice.items.all())
+        raw_gross = sum((item.unit_selling_price * Decimal(item.quantity)) for item in items)
+        subtotal = raw_gross if raw_gross > Decimal('0.00') else invoice.subtotal
+        if subtotal <= Decimal('0.00'):
+            subtotal = invoice.grand_total
+
+        if discount_type == 'PERCENT':
+            if discount_value > Decimal('100.0'):
+                return Response({"error": "Discount percentage cannot exceed 100%."}, status=status.HTTP_400_BAD_REQUEST)
+            discount_amount = round((subtotal * discount_value) / Decimal('100.0'), 2)
+        else:
+            if discount_value > subtotal:
+                return Response({"error": f"Discount amount (₹{discount_value}) cannot exceed subtotal (₹{subtotal})."}, status=status.HTTP_400_BAD_REQUEST)
+            discount_amount = round(discount_value, 2)
+
+        # Proportionally adjust items and their GST
+        effective_disc_pct = (discount_amount / subtotal * Decimal('100.0')) if subtotal > Decimal('0.00') else Decimal('0.00')
+        discount_ratio = (Decimal('1.0') - (discount_amount / subtotal)) if subtotal > Decimal('0.00') else Decimal('1.0')
+
+        total_tax = Decimal('0.00')
+        for item in items:
+            item_gross = item.unit_selling_price * Decimal(item.quantity)
+            item_net = round(item_gross * discount_ratio, 2)
+            item_gst_rate = item.gst_rate or Decimal('12.0')
+            item_taxable = round(item_net / (Decimal('1.0') + (item_gst_rate / Decimal('100.0'))), 2)
+            item_tax = round(item_net - item_taxable, 2)
+
+            item.discount_percent = round(effective_disc_pct, 2)
+            item.tax_amount = item_tax
+            item.total_amount = item_net
+            item.save()
+
+            total_tax += item_tax
+
+        cgst_amount = round(total_tax / Decimal('2.0'), 2)
+        sgst_amount = round(total_tax - cgst_amount, 2)
+
+        net_amount = subtotal - discount_amount
+        rounded_total = Decimal(str(round(float(net_amount))))
+        round_off = rounded_total - net_amount
+
+        old_grand_total = invoice.grand_total
+        old_paid = invoice.amount_paid
+
+        invoice.subtotal = subtotal
+        invoice.discount_type = discount_type
+        invoice.discount_value = discount_value
+        invoice.discount_amount = discount_amount
+        invoice.tax_amount = total_tax
+        invoice.cgst_amount = cgst_amount
+        invoice.sgst_amount = sgst_amount
+        invoice.round_off = round_off
+        invoice.grand_total = rounded_total
+
+        # Auto-adjust payments if invoice was already paid
+        if invoice.payment_status == 'PAID' or old_paid >= old_grand_total:
+            invoice.amount_paid = rounded_total
+            if invoice.payment_method == 'CASH':
+                invoice.cash_amount = rounded_total
+                invoice.upi_amount = Decimal('0.00')
+                invoice.card_amount = Decimal('0.00')
+            elif invoice.payment_method in ['UPI', 'GPAY']:
+                invoice.upi_amount = rounded_total
+                invoice.cash_amount = Decimal('0.00')
+                invoice.card_amount = Decimal('0.00')
+            elif invoice.payment_method == 'CARD':
+                invoice.card_amount = rounded_total
+                invoice.cash_amount = Decimal('0.00')
+                invoice.upi_amount = Decimal('0.00')
+            elif invoice.payment_method == 'MIXED':
+                if old_grand_total > Decimal('0.00'):
+                    scale = rounded_total / old_grand_total
+                    invoice.cash_amount = round(invoice.cash_amount * scale, 2)
+                    invoice.upi_amount = round(invoice.upi_amount * scale, 2)
+                    invoice.card_amount = max(Decimal('0.00'), rounded_total - invoice.cash_amount - invoice.upi_amount)
+                else:
+                    invoice.cash_amount = rounded_total
+        elif invoice.payment_method == 'CREDIT' or invoice.payment_status == 'DUE':
+            if invoice.customer:
+                old_due = max(Decimal('0.00'), old_grand_total - old_paid)
+                new_due = max(Decimal('0.00'), rounded_total - invoice.amount_paid)
+                invoice.customer.credit_balance = max(Decimal('0.00'), invoice.customer.credit_balance - old_due + new_due)
+                invoice.customer.save()
+
+        invoice.save()
+        serializer = self.get_serializer(invoice)
+        return Response({
+            "success": True,
+            "message": f"Successfully applied {discount_value}{'%' if discount_type == 'PERCENT' else ' ₹'} discount to Bill #{invoice.invoice_number}. New Grand Total: ₹{rounded_total:.2f}",
+            "invoice": serializer.data
+        }, status=status.HTTP_200_OK)
+

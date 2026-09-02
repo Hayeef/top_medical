@@ -269,6 +269,10 @@ export default function InventoryPage({
         isSaved: false
       };
 
+      if (field === 'mrp') {
+        updated.selling_price = val;
+      }
+
       return {
         ...prev,
         [batch.id]: updated
@@ -1060,7 +1064,7 @@ export default function InventoryPage({
                     setQuickAddForm({
                       ...quickAddForm,
                       mrp: val,
-                      selling_price: quickAddForm.selling_price || val
+                      selling_price: val
                     });
                   }}
                   style={{ height: '36px' }}

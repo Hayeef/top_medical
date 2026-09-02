@@ -216,7 +216,10 @@ export default function AddBatchModal({ medicines, suppliers, defaultMedicineId,
                   className="input-field mono"
                   placeholder="MRP"
                   value={formData.mrp}
-                  onChange={(e) => setFormData({ ...formData, mrp: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormData({ ...formData, mrp: val, selling_price: val });
+                  }}
                 />
               </div>
 

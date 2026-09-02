@@ -12,6 +12,7 @@ from .serializers import (
     BatchSerializer, StockMovementSerializer
 )
 from .bill_parser import extract_supplier_invoice
+from .medicine_matcher import find_existing_medicine
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
@@ -349,63 +350,79 @@ class MedicineViewSet(viewsets.ModelViewSet):
 
         inwarded_count = 0
         new_medicines_count = 0
+        existing_updated_count = 0
         total_inward_value = Decimal('0.00')
+        total_mrp_value = Decimal('0.00')
 
         for item in items:
             med_name = item.get('medicine_name', '').strip()
             if not med_name:
                 continue
 
-            category_name = item.get('category', 'General')
-            category, _ = Category.objects.get_or_create(name=category_name)
+            dosage_form = item.get('dosage_form', 'Tablet')
+            barcode = item.get('barcode')
 
-            medicine, created_med = Medicine.objects.get_or_create(
-                name=med_name,
-                defaults={
-                    "generic_name": item.get('generic_name', ''),
-                    "category": category,
-                    "dosage_form": item.get('dosage_form', 'Tablet'),
-                    "manufacturer": item.get('manufacturer', 'Pharma Co'),
-                    "hsn_code": item.get('hsn_code', '3004'),
-                    "rack_location": item.get('rack_location', 'Rack A-1'),
-                    "min_stock_alert": 10,
-                    "requires_prescription": item.get('requires_prescription', False),
-                    "gst_rate": Decimal(str(item.get('gst_rate', 12.0))),
-                }
-            )
-            if created_med:
+            # Intelligent deduplication: check if medicine already exists in database
+            medicine = find_existing_medicine(med_name, dosage_form=dosage_form, barcode=barcode)
+
+            if medicine:
+                existing_updated_count += 1
+                # Update auxiliary fields if missing
+                if item.get('generic_name') and not medicine.generic_name:
+                    medicine.generic_name = item.get('generic_name')
+                    medicine.save()
+                if item.get('rack_location') and not medicine.rack_location:
+                    medicine.rack_location = item.get('rack_location')
+                    medicine.save()
+            else:
+                category_name = item.get('category', 'General')
+                category, _ = Category.objects.get_or_create(name=category_name)
+                medicine = Medicine.objects.create(
+                    name=med_name,
+                    generic_name=item.get('generic_name', med_name),
+                    category=category,
+                    dosage_form=dosage_form,
+                    manufacturer=item.get('manufacturer', 'Pharma Co'),
+                    hsn_code=item.get('hsn_code', '3004'),
+                    rack_location=item.get('rack_location', 'Rack A-1'),
+                    min_stock_alert=10,
+                    requires_prescription=item.get('requires_prescription', False),
+                    gst_rate=Decimal(str(item.get('gst_rate', 12.0))),
+                )
                 new_medicines_count += 1
 
             batch_num = str(item.get('batch_number', f"B-{date.today().strftime('%y%m%d')}")).strip()
-            pack_qty = int(item.get('pack_quantity', 1))
-            pack_sz = int(item.get('pack_size', 10))
+            pack_qty = max(1, int(item.get('pack_quantity', 1)))
+            pack_sz = max(1, int(item.get('pack_size', 10)))
             purchase_pr = Decimal(str(item.get('purchase_price', 50.0)))
             mrp_pr = Decimal(str(item.get('mrp', 90.0)))
-            selling_pr = Decimal(str(item.get('selling_price', 80.0)))
+            selling_pr = Decimal(str(item.get('selling_price', mrp_pr)))
             exp_date = item.get('expiry_date') or (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
 
-            batch, created_batch = Batch.objects.get_or_create(
-                medicine=medicine,
-                batch_number=batch_num,
-                defaults={
-                    "supplier": supplier,
-                    "expiry_date": exp_date,
-                    "purchase_price": purchase_pr,
-                    "mrp": mrp_pr,
-                    "selling_price": selling_pr,
-                    "pack_size": pack_sz,
-                    "pack_quantity": pack_qty,
-                    "loose_quantity": 0,
-                }
-            )
-
-            if not created_batch:
+            # Find or create batch for this medicine
+            batch = Batch.objects.filter(medicine=medicine, batch_number__iexact=batch_num).first()
+            if batch:
+                # Update existing batch stock count and price
                 batch.pack_quantity += pack_qty
                 batch.purchase_price = purchase_pr
                 batch.mrp = mrp_pr
                 batch.selling_price = selling_pr
                 batch.expiry_date = exp_date
+                batch.supplier = supplier
                 batch.save()
+            else:
+                batch = Batch.objects.create(
+                    medicine=medicine,
+                    supplier=supplier,
+                    batch_number=batch_num,
+                    expiry_date=exp_date,
+                    purchase_price=purchase_pr,
+                    mrp=mrp_pr,
+                    selling_price=selling_pr,
+                    pack_size=pack_sz,
+                    pack_quantity=pack_qty,
+                    loose_quantity=0,
+                )
 
             StockMovement.objects.create(
                 batch=batch,
@@ -417,14 +434,17 @@ class MedicineViewSet(viewsets.ModelViewSet):
             )
 
             total_inward_value += (purchase_pr * Decimal(pack_qty))
+            total_mrp_value += (mrp_pr * Decimal(pack_qty))
             inwarded_count += 1
 
         return Response({
             "success": True,
-            "message": f"Successfully processed {inwarded_count} medicine batches from Excel ({new_medicines_count} new medicines created).",
+            "message": f"Successfully processed {inwarded_count} medicine batches ({existing_updated_count} existing medicines updated with added stock, {new_medicines_count} new medicines created).",
             "total_items_processed": inwarded_count,
+            "existing_medicines_updated": existing_updated_count,
             "new_medicines_created": new_medicines_count,
-            "total_inward_value": round(total_inward_value, 2)
+            "total_inward_value": round(total_inward_value, 2),
+            "total_mrp_value": round(total_mrp_value, 2)
         }, status=status.HTTP_201_CREATED)
 
 
@@ -778,6 +798,7 @@ class BatchViewSet(viewsets.ModelViewSet):
 
         inwarded_batches = []
         new_medicines_count = 0
+        existing_medicines_count = 0
         total_inwarded_value = Decimal('0.00')
         total_mrp_value = Decimal('0.00')
 
@@ -786,31 +807,33 @@ class BatchViewSet(viewsets.ModelViewSet):
             if not med_name:
                 continue
 
-            category_name = item.get('category', 'General Pharmaceuticals')
-            category, _ = Category.objects.get_or_create(name=category_name)
+            dosage_form = item.get('dosage_form', 'Tablet')
+            barcode = item.get('barcode')
 
-            # Get or create Medicine
-            medicine, med_created = Medicine.objects.get_or_create(
-                name=med_name,
-                defaults={
-                    "generic_name": item.get('generic_name', med_name),
-                    "category": category,
-                    "dosage_form": item.get('dosage_form', 'Tablet'),
-                    "manufacturer": item.get('manufacturer', 'Pharma Standard'),
-                    "hsn_code": item.get('hsn_code', '3004'),
-                    "rack_location": item.get('rack_location', 'Rack A-1'),
-                    "min_stock_alert": 10,
-                    "requires_prescription": item.get('requires_prescription', False),
-                    "gst_rate": Decimal(str(item.get('gst_rate', 12.0))),
-                }
-            )
-            if med_created:
-                new_medicines_count += 1
-            else:
-                # Update rack location or category if available
+            # Intelligent deduplication: check if medicine already exists
+            medicine = find_existing_medicine(med_name, dosage_form=dosage_form, barcode=barcode)
+
+            if medicine:
+                existing_medicines_count += 1
                 if item.get('rack_location') and not medicine.rack_location:
                     medicine.rack_location = item.get('rack_location')
                     medicine.save()
+            else:
+                category_name = item.get('category', 'General Pharmaceuticals')
+                category, _ = Category.objects.get_or_create(name=category_name)
+                medicine = Medicine.objects.create(
+                    name=med_name,
+                    generic_name=item.get('generic_name', med_name),
+                    category=category,
+                    dosage_form=dosage_form,
+                    manufacturer=item.get('manufacturer', 'Pharma Standard'),
+                    hsn_code=item.get('hsn_code', '3004'),
+                    rack_location=item.get('rack_location', 'Rack A-1'),
+                    min_stock_alert=10,
+                    requires_prescription=item.get('requires_prescription', False),
+                    gst_rate=Decimal(str(item.get('gst_rate', 12.0))),
+                )
+                new_medicines_count += 1
 
             # Create or update Batch
             batch_num = (item.get('batch_number') or f"B-{date.today().strftime('%y%m%d')}").strip()
@@ -818,25 +841,11 @@ class BatchViewSet(viewsets.ModelViewSet):
             pack_sz = max(1, int(item.get('pack_size', 10)))
             purchase_pr = Decimal(str(item.get('purchase_price', 100.0)))
             mrp_pr = Decimal(str(item.get('mrp', 150.0)))
-            selling_pr = Decimal(str(item.get('selling_price', mrp_pr * Decimal('0.92'))))
+            selling_pr = Decimal(str(item.get('selling_price', mrp_pr)))
             exp_date_str = item.get('expiry_date') or (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
 
-            batch, created = Batch.objects.get_or_create(
-                medicine=medicine,
-                batch_number=batch_num,
-                defaults={
-                    "supplier": supplier,
-                    "expiry_date": exp_date_str,
-                    "purchase_price": purchase_pr,
-                    "mrp": mrp_pr,
-                    "selling_price": selling_pr,
-                    "pack_size": pack_sz,
-                    "pack_quantity": pack_qty,
-                    "loose_quantity": 0,
-                }
-            )
-
-            if not created:
+            batch = Batch.objects.filter(medicine=medicine, batch_number__iexact=batch_num).first()
+            if batch:
                 # Add additional stock to existing batch
                 batch.pack_quantity += pack_qty
                 batch.purchase_price = purchase_pr
@@ -845,6 +854,19 @@ class BatchViewSet(viewsets.ModelViewSet):
                 batch.expiry_date = exp_date_str
                 batch.supplier = supplier
                 batch.save()
+            else:
+                batch = Batch.objects.create(
+                    medicine=medicine,
+                    supplier=supplier,
+                    batch_number=batch_num,
+                    expiry_date=exp_date_str,
+                    purchase_price=purchase_pr,
+                    mrp=mrp_pr,
+                    selling_price=selling_pr,
+                    pack_size=pack_sz,
+                    pack_quantity=pack_qty,
+                    loose_quantity=0,
+                )
 
             # Record Stock Movement
             StockMovement.objects.create(

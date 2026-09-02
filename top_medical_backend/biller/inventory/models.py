@@ -111,6 +111,11 @@ class Batch(models.Model):
         ordering = ['expiry_date', 'id']
         verbose_name_plural = "Batches"
 
+    def save(self, *args, **kwargs):
+        if self.selling_price is None or self.selling_price == 0:
+            self.selling_price = self.mrp
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.medicine.name} - Batch {self.batch_number} (Exp: {self.expiry_date})"
 

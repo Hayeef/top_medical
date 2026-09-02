@@ -212,6 +212,9 @@ export default function ScanSupplierBillModal({ onClose, onStockInwarded }) {
   const handleItemChange = (index, field, value) => {
     const updated = [...items];
     updated[index][field] = value;
+    if (field === 'mrp') {
+      updated[index]['selling_price'] = value;
+    }
     setItems(updated);
   };
 
@@ -243,7 +246,7 @@ export default function ScanSupplierBillModal({ onClose, onStockInwarded }) {
       pack_quantity: 10,
       purchase_price: 50.0,
       mrp: 90.0,
-      selling_price: 80.0,
+      selling_price: 90.0,
       gst_rate: 12.0,
       rack_location: 'Rack A-1',
       requires_prescription: false

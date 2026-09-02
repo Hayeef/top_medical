@@ -170,7 +170,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 25,
                     "purchase_price": 178.69,
                     "mrp": 223.36,
-                    "selling_price": 205.00,
+                    "selling_price": 223.36,
                     "gst_rate": 5.0,
                     "rack_location": "Rack A-1 (Antibiotics)",
                     "requires_prescription": True
@@ -188,7 +188,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 30,
                     "purchase_price": 138.82,
                     "mrp": 182.20,
-                    "selling_price": 165.00,
+                    "selling_price": 182.20,
                     "gst_rate": 5.0,
                     "rack_location": "Rack R-1 (Inhalers)",
                     "requires_prescription": True
@@ -206,7 +206,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 50,
                     "purchase_price": 28.12,
                     "mrp": 35.15,
-                    "selling_price": 32.00,
+                    "selling_price": 35.15,
                     "gst_rate": 5.0,
                     "rack_location": "Rack P-1 (Analgesics)",
                     "requires_prescription": False
@@ -224,7 +224,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 20,
                     "purchase_price": 240.64,
                     "mrp": 315.82,
-                    "selling_price": 285.00,
+                    "selling_price": 315.82,
                     "gst_rate": 5.0,
                     "rack_location": "Rack R-1 (Inhalers)",
                     "requires_prescription": True
@@ -242,7 +242,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 30,
                     "purchase_price": 138.67,
                     "mrp": 182.00,
-                    "selling_price": 165.00,
+                    "selling_price": 182.00,
                     "gst_rate": 5.0,
                     "rack_location": "Rack C-1 (Cardiac)",
                     "requires_prescription": True
@@ -273,7 +273,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 25,
                     "purchase_price": 102.86,
                     "mrp": 135.00,
-                    "selling_price": 122.00,
+                    "selling_price": 135.00,
                     "gst_rate": 5.0,
                     "rack_location": "Rack S-2 (Liquids)",
                     "requires_prescription": True
@@ -291,7 +291,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 40,
                     "purchase_price": 34.29,
                     "mrp": 45.00,
-                    "selling_price": 40.00,
+                    "selling_price": 45.00,
                     "gst_rate": 5.0,
                     "rack_location": "Rack S-2 (Liquids)",
                     "requires_prescription": False
@@ -309,7 +309,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 30,
                     "purchase_price": 118.50,
                     "mrp": 169.00,
-                    "selling_price": 152.00,
+                    "selling_price": 169.00,
                     "gst_rate": 12.0,
                     "rack_location": "Rack G-1 (Gastro)",
                     "requires_prescription": True
@@ -327,7 +327,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 35,
                     "purchase_price": 162.00,
                     "mrp": 235.00,
-                    "selling_price": 210.00,
+                    "selling_price": 235.00,
                     "gst_rate": 5.0,
                     "rack_location": "Rack C-1 (Cardiac)",
                     "requires_prescription": True
@@ -358,7 +358,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 25,
                     "purchase_price": 80.00,
                     "mrp": 145.00,
-                    "selling_price": 130.00,
+                    "selling_price": 145.00,
                     "gst_rate": 12.0,
                     "rack_location": "Rack SURG-1",
                     "requires_prescription": False
@@ -376,7 +376,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 30,
                     "purchase_price": 62.00,
                     "mrp": 85.00,
-                    "selling_price": 77.00,
+                    "selling_price": 85.00,
                     "gst_rate": 12.0,
                     "rack_location": "Rack O-1 (Topicals)",
                     "requires_prescription": False
@@ -394,7 +394,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 50,
                     "purchase_price": 12.00,
                     "mrp": 25.00,
-                    "selling_price": 22.00,
+                    "selling_price": 25.00,
                     "gst_rate": 12.0,
                     "rack_location": "Rack SURG-1",
                     "requires_prescription": False
@@ -412,7 +412,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 20,
                     "purchase_price": 25.00,
                     "mrp": 45.00,
-                    "selling_price": 40.00,
+                    "selling_price": 45.00,
                     "gst_rate": 18.0,
                     "rack_location": "Rack SURG-1",
                     "requires_prescription": False
@@ -443,7 +443,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 100,
                     "purchase_price": 22.80,
                     "mrp": 34.16,
-                    "selling_price": 31.00,
+                    "selling_price": 34.16,
                     "gst_rate": 12.0,
                     "rack_location": "Rack P-1 (Analgesics)",
                     "requires_prescription": False
@@ -461,7 +461,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 40,
                     "purchase_price": 95.00,
                     "mrp": 155.00,
-                    "selling_price": 140.00,
+                    "selling_price": 155.00,
                     "gst_rate": 12.0,
                     "rack_location": "Rack G-1 (Gastro)",
                     "requires_prescription": True
@@ -479,7 +479,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 30,
                     "purchase_price": 165.00,
                     "mrp": 248.00,
-                    "selling_price": 225.00,
+                    "selling_price": 248.00,
                     "gst_rate": 12.0,
                     "rack_location": "Rack R-1 (Inhalers)",
                     "requires_prescription": True
@@ -497,7 +497,7 @@ def get_preset_invoice(sample_type):
                     "pack_quantity": 35,
                     "purchase_price": 42.00,
                     "mrp": 62.50,
-                    "selling_price": 56.00,
+                    "selling_price": 62.50,
                     "gst_rate": 12.0,
                     "rack_location": "Rack V-1 (Vitamins)",
                     "requires_prescription": False
@@ -611,7 +611,7 @@ def parse_text_lines_to_invoice(raw_text):
                     
                 dosage, category, rx = infer_dosage_and_category(med_name)
                 pack_sz = parse_pack_size_from_name(med_name)
-                selling_price = round(mrp * 0.92, 2) if mrp > rate else round(rate * 1.25, 2)
+                selling_price = round(mrp, 2)
                 
                 items.append({
                     "medicine_name": med_name.strip(),
@@ -679,7 +679,7 @@ def call_gemini_vision_api_sync(image_bytes, mime_type="image/jpeg", api_key=Non
        - pack_quantity: Number of packs purchased
        - purchase_price: Cost/purchase rate per pack in INR
        - mrp: Maximum Retail Price per pack in INR
-       - selling_price: Suggested retail price per pack (defaults to MRP or 92% of MRP)
+       - selling_price: Retail selling price per pack (strictly equal to MRP)
        - gst_rate: GST % (e.g. 5.0, 12.0, 18.0)
        - rack_location: Suggested rack location e.g. Rack A-1, Rack R-1, Rack S-2
        - requires_prescription: boolean true/false

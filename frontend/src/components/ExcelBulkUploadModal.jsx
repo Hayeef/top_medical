@@ -87,7 +87,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
         pack_size: parseInt(row.pack_size || row.size || 10),
         purchase_price: parseFloat(row.purchase_price || row.cost || 50),
         mrp: parseFloat(row.mrp || 90),
-        selling_price: parseFloat(row.selling_price || row.sale_price || 80),
+        selling_price: parseFloat(row.selling_price || row.sale_price || row.mrp || 90),
         rack_location: row.rack_location || row.rack || 'Rack A-1'
       });
     }
@@ -97,14 +97,14 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
   const handleDownloadTemplate = () => {
     const csvContent = [
       'Medicine Name,Generic Name,Category,Dosage Form,Manufacturer,Batch Number,Expiry Date,Pack Size,Quantity,Purchase Price,MRP,Selling Price,GST Rate,Rack Location,Requires Prescription',
-      'Paracetamol 650mg,Paracetamol,Analgesics,Tablet,Micro Labs,B-PARA65,2028-10-31,15,50,18.50,34.00,30.00,12,Rack A-1,No',
-      'Amoxicillin 500mg,Amoxicillin,Antibiotics,Capsule,Cipla,B-AMOX50,2028-08-31,10,30,42.00,82.00,75.00,12,Rack B-2,Yes',
-      'Pantoprazole 40mg,Pantoprazole Sodium,Gastro,Tablet,Sun Pharma,B-PANT40,2028-12-31,10,40,32.00,68.00,60.00,12,Rack A-3,No',
-      'Metformin 500mg,Metformin HCl,Diabetes,Tablet,USV Ltd,B-METF50,2028-11-30,20,35,22.00,48.00,42.00,12,Rack C-1,Yes',
-      'Azithromycin 500mg,Azithromycin,Antibiotics,Tablet,Zydus,B-AZITH5,2028-09-30,3,60,45.00,89.00,80.00,12,Rack B-3,Yes',
-      'Telmisartan 40mg,Telmisartan,Cardiac,Tablet,Glenmark,B-TELM40,2028-12-31,15,25,38.00,74.00,68.00,12,Rack C-2,Yes',
-      'Cetirizine 10mg,Cetirizine HCl,Antiallergic,Tablet,Dr Reddys,B-CETR10,2028-10-31,10,45,12.00,26.00,22.00,12,Rack A-2,No',
-      'Montelukast Levocetirizine,Montelukast + Levocetirizine,Respiratory,Tablet,Mankind,B-MONT01,2028-07-31,10,30,55.00,115.00,105.00,12,Rack A-4,Yes'
+      'Paracetamol 650mg,Paracetamol,Analgesics,Tablet,Micro Labs,B-PARA65,2028-10-31,15,50,18.50,34.00,34.00,12,Rack A-1,No',
+      'Amoxicillin 500mg,Amoxicillin,Antibiotics,Capsule,Cipla,B-AMOX50,2028-08-31,10,30,42.00,82.00,82.00,12,Rack B-2,Yes',
+      'Pantoprazole 40mg,Pantoprazole Sodium,Gastro,Tablet,Sun Pharma,B-PANT40,2028-12-31,10,40,32.00,68.00,68.00,12,Rack A-3,No',
+      'Metformin 500mg,Metformin HCl,Diabetes,Tablet,USV Ltd,B-METF50,2028-11-30,20,35,22.00,48.00,48.00,12,Rack C-1,Yes',
+      'Azithromycin 500mg,Azithromycin,Antibiotics,Tablet,Zydus,B-AZITH5,2028-09-30,3,60,45.00,89.00,89.00,12,Rack B-3,Yes',
+      'Telmisartan 40mg,Telmisartan,Cardiac,Tablet,Glenmark,B-TELM40,2028-12-31,15,25,38.00,74.00,74.00,12,Rack C-2,Yes',
+      'Cetirizine 10mg,Cetirizine HCl,Antiallergic,Tablet,Dr Reddys,B-CETR10,2028-10-31,10,45,12.00,26.00,26.00,12,Rack A-2,No',
+      'Montelukast Levocetirizine,Montelukast + Levocetirizine,Respiratory,Tablet,Mankind,B-MONT01,2028-07-31,10,30,55.00,115.00,115.00,12,Rack A-4,Yes'
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -279,7 +279,25 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
         </div>
 
         {/* Body */}
-        <div style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          
+          {/* Smart Deduplication Notice */}
+          <div style={{
+            padding: '10px 14px',
+            background: 'rgba(5, 150, 105, 0.05)',
+            border: '1px solid rgba(5, 150, 105, 0.2)',
+            borderRadius: '10px',
+            fontSize: '12.5px',
+            color: '#065f46',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
+            <Database size={18} color="#059669" style={{ flexShrink: 0 }} />
+            <span>
+              <strong>Smart Deduplication Active:</strong> If a medicine already exists in the system, its stock count is automatically incremented. New medicines are registered automatically with zero duplicate names.
+            </span>
+          </div>
           
           {error && (
             <div style={{ padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecdd3', borderRadius: '10px', color: '#e11d48', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '10px' }}>

@@ -18,6 +18,8 @@ dist/
 # Heavy invoice photo datasets (keep local only)
 frontend/src/assets/data/
 frontend/src/assets/data2/
+frontend/src/assets/data3/
+frontend/src/assets/ak/
 frontend/src/assets/inventory/
 frontend/src/assets/data*/
 frontend/src/assets/inventory*/

@@ -49,11 +49,19 @@ export default function Sidebar({
     { id: 'contacts', label: 'Customers & Vendors', icon: Users },
     { id: 'settings', label: 'Pharmacy Settings', icon: Settings },
   ] : [
-    // Billing Staff Focused Menu
+    // Staff & Pharmacist Menu: Full Medicine Stock & Inventory Management Enabled
     { id: 'pos', label: 'POS Billing Terminal', icon: ShoppingCart, badge: 'F2', highlight: true },
-    { id: 'invoices', label: 'Sales & Past Bills', icon: FileText },
-    { id: 'inventory', label: 'Check Drug Stock', icon: Pill },
+    { id: 'inventory', label: 'Medicine Stock & Inventory', icon: Pill, badge: 'F3', highlight: true },
+    { id: 'invoices', label: 'Bills & Past Sales', icon: FileText },
+    { 
+      id: 'alerts', 
+      label: 'Alerts & Expiry', 
+      icon: AlertTriangle, 
+      count: (alertCounts?.expired_count || 0) + (alertCounts?.near_expiry_count || 0) + (alertCounts?.low_stock_count || 0),
+      alertColor: (alertCounts?.expired_count > 0) ? 'badge-rose' : 'badge-amber'
+    },
     { id: 'daily_report', label: 'Daily Sold Sheet', icon: ClipboardList, badge: 'PDF', isAction: true },
+    { id: 'contacts', label: 'Customers & Vendors', icon: Users },
   ];
 
   const handleSelectNav = (item) => {
@@ -97,7 +105,7 @@ export default function Sidebar({
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
               <span className="pulse-dot"></span>
               <span style={{ fontSize: '11px', color: isAdmin ? '#0284c7' : '#059669', fontWeight: 700 }}>
-                {isAdmin ? 'Admin Portal' : 'Billing Terminal'}
+                {isAdmin ? 'Admin Portal' : 'Staff / Pharmacist'}
               </span>
             </div>
           </div>
@@ -117,28 +125,26 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Admin Fast Supplier Inward Shortcut */}
-      {isAdmin && (
-        <div style={{ padding: '12px 12px 0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <button
-            type="button"
-            onClick={() => {
-              if (onCloseMobile) onCloseMobile();
-              onOpenScanBill();
-            }}
-            className="btn btn-emerald"
-            style={{ width: '100%', padding: '9px 12px', fontSize: '12.5px', justifyContent: 'center' }}
-          >
-            <Camera size={16} />
-            <span>📸 Scan Supplier Bill</span>
-          </button>
-        </div>
-      )}
+      {/* Fast Supplier Inward Shortcut (Available to All Staff) */}
+      <div style={{ padding: '12px 12px 0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <button
+          type="button"
+          onClick={() => {
+            if (onCloseMobile) onCloseMobile();
+            onOpenScanBill();
+          }}
+          className="btn btn-emerald"
+          style={{ width: '100%', padding: '9px 12px', fontSize: '12.5px', justifyContent: 'center' }}
+        >
+          <Camera size={16} />
+          <span>📸 Scan Supplier Bill</span>
+        </button>
+      </div>
 
       {/* Navigation Menu */}
       <div style={{ padding: '14px 10px', flex: 1, overflowY: 'auto' }}>
         <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-dim)', letterSpacing: '0.08em', padding: '0 8px 8px' }}>
-          {isAdmin ? 'Main Navigation' : 'Cashier Counter'}
+          {isAdmin ? 'Main Navigation' : 'Pharmacy Operations'}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           {navItems.map((item) => {

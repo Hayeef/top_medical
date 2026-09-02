@@ -158,42 +158,36 @@ export default function Header({
           </div>
         )}
 
-        {/* Admin Excel Bulk Upload (Desktop Only) */}
-        {isAdmin && (
-          <button
-            onClick={onOpenExcelUpload}
-            className="btn btn-secondary btn-sm desktop-only"
-            title="Bulk Import Inventory from Excel (.xlsx, .xls, .csv)"
-          >
-            <FileSpreadsheet size={14} color="#059669" />
-            <span>Excel</span>
-          </button>
-        )}
+        {/* Excel Bulk Upload (Desktop Only) */}
+        <button
+          onClick={onOpenExcelUpload}
+          className="btn btn-secondary btn-sm desktop-only"
+          title="Bulk Import Inventory from Excel (.xlsx, .xls, .csv)"
+        >
+          <FileSpreadsheet size={14} color="#059669" />
+          <span>Excel</span>
+        </button>
 
-        {/* Admin Quick Bill Scanner */}
-        {isAdmin && (
-          <button
-            onClick={onOpenScanBill}
-            className="btn btn-emerald btn-sm"
-            style={{ padding: '6px 10px' }}
-            title="Scan Wholesale Supplier Invoice with Camera or Upload"
-          >
-            <Camera size={14} />
-            <span className="desktop-only">Scan Bill</span>
-          </button>
-        )}
+        {/* Quick Bill Scanner */}
+        <button
+          onClick={onOpenScanBill}
+          className="btn btn-emerald btn-sm"
+          style={{ padding: '6px 10px' }}
+          title="Scan Wholesale Supplier Invoice with Camera or Upload"
+        >
+          <Camera size={14} />
+          <span className="desktop-only">Scan Bill</span>
+        </button>
 
-        {/* Admin Manual Stock Inward (Desktop Only) */}
-        {isAdmin && (
-          <button
-            onClick={onOpenAddBatch}
-            className="btn btn-secondary btn-sm desktop-only"
-            title="Manual Purchase Stock Batch Entry (F4)"
-          >
-            <PackagePlus size={14} color="#0284c7" />
-            <span>+ Batch</span>
-          </button>
-        )}
+        {/* Manual Stock Inward (Desktop Only) */}
+        <button
+          onClick={onOpenAddBatch}
+          className="btn btn-secondary btn-sm desktop-only"
+          title="Manual Purchase Stock Batch Entry (F4)"
+        >
+          <PackagePlus size={14} color="#0284c7" />
+          <span>+ Batch</span>
+        </button>
 
         {/* POS New Bill Button */}
         {activeTab !== 'pos' && (

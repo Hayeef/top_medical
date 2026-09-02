@@ -322,78 +322,80 @@ export default function App() {
       </div>
 
       {/* MODALS */}
-      {isExcelUploadOpen && (
-        <ExcelBulkUploadModal
-          onClose={() => setIsExcelUploadOpen(false)}
-          onStockInwarded={loadInitialData}
-        />
-      )}
+      <ErrorBoundary>
+        {isExcelUploadOpen && (
+          <ExcelBulkUploadModal
+            onClose={() => setIsExcelUploadOpen(false)}
+            onStockInwarded={loadInitialData}
+          />
+        )}
 
-      {isScanBillOpen && (
-        <ScanSupplierBillModal
-          onClose={() => setIsScanBillOpen(false)}
-          onStockInwarded={loadInitialData}
-        />
-      )}
+        {isScanBillOpen && (
+          <ScanSupplierBillModal
+            onClose={() => setIsScanBillOpen(false)}
+            onStockInwarded={loadInitialData}
+          />
+        )}
 
-      {receiptInvoice && (
-        <ReceiptModal
-          invoice={receiptInvoice}
-          profile={profile}
-          onClose={() => setReceiptInvoice(null)}
-        />
-      )}
+        {receiptInvoice && (
+          <ReceiptModal
+            invoice={receiptInvoice}
+            profile={profile}
+            onClose={() => setReceiptInvoice(null)}
+          />
+        )}
 
-      {isAddMedicineOpen && (
-        <AddMedicineModal
-          categories={categories}
-          onClose={() => setIsAddMedicineOpen(false)}
-          onCreated={handleMedicineCreated}
-        />
-      )}
+        {isAddMedicineOpen && (
+          <AddMedicineModal
+            categories={categories}
+            onClose={() => setIsAddMedicineOpen(false)}
+            onCreated={handleMedicineCreated}
+          />
+        )}
 
-      {isAddBatchOpen && (
-        <AddBatchModal
-          medicines={medicines}
-          suppliers={suppliers}
-          defaultMedicineId={batchPrefillMedId}
-          onClose={() => setIsAddBatchOpen(false)}
-          onCreated={handleBatchCreated}
-        />
-      )}
+        {isAddBatchOpen && (
+          <AddBatchModal
+            medicines={medicines}
+            suppliers={suppliers}
+            defaultMedicineId={batchPrefillMedId}
+            onClose={() => setIsAddBatchOpen(false)}
+            onCreated={handleBatchCreated}
+          />
+        )}
 
-      {isStockAdjustOpen && (
-        <StockAdjustModal
-          batch={batchToAdjust}
-          onClose={() => setIsStockAdjustOpen(false)}
-          onAdjusted={handleStockAdjusted}
-        />
-      )}
+        {isStockAdjustOpen && (
+          <StockAdjustModal
+            batch={batchToAdjust}
+            onClose={() => setIsStockAdjustOpen(false)}
+            onAdjusted={handleStockAdjusted}
+          />
+        )}
 
-      {isAddCustomerOpen && (
-        <CustomerModal
-          doctors={doctors}
-          onClose={() => setIsAddCustomerOpen(false)}
-          onCreated={handleCustomerCreated}
-        />
-      )}
+        {isAddCustomerOpen && (
+          <CustomerModal
+            doctors={doctors}
+            onClose={() => setIsAddCustomerOpen(false)}
+            onCreated={handleCustomerCreated}
+          />
+        )}
 
-      {isAddDoctorOpen && (
-        <DoctorModal
-          onClose={() => setIsAddDoctorOpen(false)}
-          onCreated={handleDoctorCreated}
-        />
-      )}
+        {isAddDoctorOpen && (
+          <DoctorModal
+            onClose={() => setIsAddDoctorOpen(false)}
+            onCreated={handleDoctorCreated}
+          />
+        )}
 
-      {isDailyReportOpen && (
-        <DailySoldReportModal
-          isOpen={isDailyReportOpen}
-          onClose={() => setIsDailyReportOpen(false)}
-          profile={profile}
-          suppliers={suppliers}
-          categories={categories}
-        />
-      )}
+        {isDailyReportOpen && (
+          <DailySoldReportModal
+            isOpen={isDailyReportOpen}
+            onClose={() => setIsDailyReportOpen(false)}
+            profile={profile}
+            suppliers={suppliers}
+            categories={categories}
+          />
+        )}
+      </ErrorBoundary>
     </div>
   );
 }

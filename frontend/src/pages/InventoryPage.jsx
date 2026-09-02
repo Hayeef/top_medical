@@ -95,6 +95,7 @@ export default function InventoryPage({
   // Row Edit State Map: { [batchId]: { purchase_price, mrp, selling_price, pack_quantity, loose_quantity, expiry_date, rack_location, batch_number, isDirty, isSaving, isSaved } }
   const [rowEdits, setRowEdits] = useState({});
   const [savingAll, setSavingAll] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
   const isAdmin = Boolean(
     user?.is_superuser || 
     user?.role === 'admin' || 

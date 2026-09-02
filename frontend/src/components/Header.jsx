@@ -36,8 +36,8 @@ export default function Header({
     user?.is_superuser || 
     user?.role === 'admin' || 
     user?.role === 'Owner' || 
-    (user?.email && (user.email.toLowerCase().includes('admin') || user.email.toLowerCase().includes('owner'))) || 
-    (user?.username && (user.username.toLowerCase().includes('admin') || user.username.toLowerCase().includes('owner')))
+    (typeof user?.email === 'string' && (user.email.toLowerCase().includes('admin') || user.email.toLowerCase().includes('owner'))) || 
+    (typeof user?.username === 'string' && (user.username.toLowerCase().includes('admin') || user.username.toLowerCase().includes('owner')))
   );
 
   useEffect(() => {

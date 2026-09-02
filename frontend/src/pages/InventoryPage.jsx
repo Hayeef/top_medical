@@ -99,8 +99,8 @@ export default function InventoryPage({
     user?.is_superuser || 
     user?.role === 'admin' || 
     user?.role === 'Owner' || 
-    (user?.email && (user.email.toLowerCase().includes('admin') || user.email.toLowerCase().includes('owner'))) || 
-    (user?.username && (user.username.toLowerCase().includes('admin') || user.username.toLowerCase().includes('owner')))
+    (typeof user?.email === 'string' && (user.email.toLowerCase().includes('admin') || user.email.toLowerCase().includes('owner'))) || 
+    (typeof user?.username === 'string' && (user.username.toLowerCase().includes('admin') || user.username.toLowerCase().includes('owner')))
   );
   const currency = profile?.currency_symbol || '₹';
 
@@ -799,45 +799,39 @@ export default function InventoryPage({
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
           
           {/* Prominent Quick Add Tablet Button */}
-          {isAdmin && (
-            <button 
-              onClick={() => setIsQuickAddOpen(!isQuickAddOpen)} 
-              className="btn btn-primary btn-sm"
-              style={{
-                background: isQuickAddOpen ? '#0f172a' : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-                boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
-                fontWeight: 800
-              }}
-            >
-              {isQuickAddOpen ? <X size={14} /> : <PlusCircle size={14} />}
-              <span>{isQuickAddOpen ? 'Close Add Form' : '+ Add New Tablet & Stock'}</span>
-            </button>
-          )}
+          <button 
+            onClick={() => setIsQuickAddOpen(!isQuickAddOpen)} 
+            className="btn btn-primary btn-sm"
+            style={{
+              background: isQuickAddOpen ? '#0f172a' : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+              boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)',
+              fontWeight: 800
+            }}
+          >
+            {isQuickAddOpen ? <X size={14} /> : <PlusCircle size={14} />}
+            <span>{isQuickAddOpen ? 'Close Add Form' : '+ Add New Tablet & Stock'}</span>
+          </button>
 
-          {isAdmin && (
-            <button onClick={onOpenScanBill} className="btn btn-emerald btn-sm">
-              <Camera size={14} />
-              <span>Scan Bill</span>
-            </button>
-          )}
-          {isAdmin && (
-            <button onClick={onOpenExcelUpload} className="btn btn-secondary btn-sm">
-              <FileSpreadsheet size={14} color="#059669" />
-              <span>Excel Import</span>
-            </button>
-          )}
-          {isAdmin && (
-            <button onClick={() => onOpenAddBatch(null)} className="btn btn-secondary btn-sm">
-              <PackagePlus size={14} color="#0284c7" />
-              <span>+ Batch (F4)</span>
-            </button>
-          )}
-          {isAdmin && (
-            <button onClick={onOpenAddMedicine} className="btn btn-secondary btn-sm">
-              <Plus size={14} />
-              <span>+ Medicine (F3)</span>
-            </button>
-          )}
+          <button onClick={onOpenScanBill} className="btn btn-emerald btn-sm">
+            <Camera size={14} />
+            <span>Scan Bill</span>
+          </button>
+
+          <button onClick={onOpenExcelUpload} className="btn btn-secondary btn-sm">
+            <FileSpreadsheet size={14} color="#059669" />
+            <span>Excel Import</span>
+          </button>
+
+          <button onClick={() => onOpenAddBatch(null)} className="btn btn-secondary btn-sm">
+            <PackagePlus size={14} color="#0284c7" />
+            <span>+ Batch (F4)</span>
+          </button>
+
+          <button onClick={onOpenAddMedicine} className="btn btn-secondary btn-sm">
+            <Plus size={14} />
+            <span>+ Medicine (F3)</span>
+          </button>
+
           {onOpenDailyReport && (
             <button 
               onClick={onOpenDailyReport} 
@@ -848,6 +842,7 @@ export default function InventoryPage({
               <span>Daily Sold Sheet (PDF)</span>
             </button>
           )}
+
           <button
             onClick={() => {
               fetchStockTable();
@@ -859,8 +854,9 @@ export default function InventoryPage({
             <RefreshCw size={13} className={loadingBatches ? 'spin-animation' : ''} />
             <span>Refresh</span>
           </button>
+
           {!isAdmin && setActiveTab && (
-            <button onClick={() => setActiveTab('pos')} className="btn btn-primary btn-sm">
+            <button onClick={() => setActiveTab('pos')} className="btn btn-secondary btn-sm">
               <ShoppingCart size={14} />
               <span>Open POS (F2)</span>
             </button>
@@ -871,7 +867,7 @@ export default function InventoryPage({
       {/* =========================================================================
           INLINE QUICK-ADD NEW TABLET & STOCK ACCORDION / FORM
           ========================================================================= */}
-      {isQuickAddOpen && isAdmin && (
+      {isQuickAddOpen && (
         <div style={{
           background: '#ffffff',
           border: '2px solid #0284c7',

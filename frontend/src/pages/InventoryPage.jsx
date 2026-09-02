@@ -104,6 +104,11 @@ export default function InventoryPage({
   );
   const currency = profile?.currency_symbol || '₹';
 
+  // Defensive array wrappers
+  const safeMedicines = useMemo(() => (Array.isArray(medicines) ? medicines : []), [medicines]);
+  const safeCategories = useMemo(() => (Array.isArray(categories) ? categories : []), [categories]);
+  const safeSuppliers = useMemo(() => (Array.isArray(suppliers) ? suppliers : []), [suppliers]);
+
   // Trigger search on button click or Enter key
   const handleSearchSubmit = (e) => {
     if (e) e.preventDefault();
@@ -113,9 +118,9 @@ export default function InventoryPage({
   // Client-side fallback flattened batches from medicines prop
   const localBatches = useMemo(() => {
     const list = [];
-    if (!medicines || medicines.length === 0) return list;
+    if (!safeMedicines || safeMedicines.length === 0) return list;
 
-    medicines.forEach(med => {
+    safeMedicines.forEach(med => {
       if (med.batches && med.batches.length > 0) {
         med.batches.forEach(b => {
           list.push({
@@ -159,7 +164,7 @@ export default function InventoryPage({
       }
     });
     return list;
-  }, [medicines]);
+  }, [safeMedicines]);
 
   // Fetch batches from server endpoint
   const fetchStockTable = async () => {
@@ -530,9 +535,9 @@ export default function InventoryPage({
   // Grouped Drug Catalog Filtered List
   const filteredCatalogMedicines = useMemo(() => {
     const q = (activeSearch || searchInput).toLowerCase().trim();
-    return medicines.filter(med => {
+    return safeMedicines.filter(med => {
       const matchesSearch = !q || 
-        med.name.toLowerCase().includes(q) ||
+        med.name?.toLowerCase().includes(q) ||
         med.generic_name?.toLowerCase().includes(q) ||
         med.manufacturer?.toLowerCase().includes(q) ||
         med.rack_location?.toLowerCase().includes(q) ||
@@ -543,7 +548,7 @@ export default function InventoryPage({
 
       return matchesSearch && matchesCategory && matchesRx;
     });
-  }, [medicines, activeSearch, searchInput, selectedCategory, filterRx]);
+  }, [safeMedicines, activeSearch, searchInput, selectedCategory, filterRx]);
 
   const toggleExpand = (id) => {
     setExpandedMedId(expandedMedId === id ? null : id);
@@ -635,13 +640,13 @@ export default function InventoryPage({
               onChange={(e) => setSelectedCategory(e.target.value)}
             >
               <option value="">All Categories</option>
-              {categories.map((c) => (
+              {safeCategories.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
 
             {/* Supplier Dropdown */}
-            {suppliers && suppliers.length > 0 && (
+            {safeSuppliers.length > 0 && (
               <select
                 className="input-field"
                 style={{ flex: '1 1 130px', height: '38px', fontSize: '12px' }}
@@ -649,7 +654,7 @@ export default function InventoryPage({
                 onChange={(e) => setSelectedSupplier(e.target.value)}
               >
                 <option value="">All Distributors</option>
-                {suppliers.map((s) => (
+                {safeSuppliers.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
@@ -967,7 +972,7 @@ export default function InventoryPage({
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, category: e.target.value })}
                 >
                   <option value="">General / Auto-Category</option>
-                  {categories.map((c) => (
+                  {safeCategories.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
@@ -1029,7 +1034,7 @@ export default function InventoryPage({
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, supplier: e.target.value })}
                 >
                   <option value="">Direct Wholesale</option>
-                  {suppliers.map((s) => (
+                  {safeSuppliers.map((s) => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>

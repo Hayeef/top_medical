@@ -21,6 +21,7 @@ import InvoicesPage from './pages/InvoicesPage';
 import ContactsPage from './pages/ContactsPage';
 import SettingsPage from './pages/SettingsPage';
 
+import ErrorBoundary from './components/ErrorBoundary';
 import { inventoryAPI, billingAPI, analyticsAPI } from './api';
 
 export default function App() {
@@ -224,89 +225,91 @@ export default function App() {
         />
 
         <main style={{ flex: 1, overflowY: 'auto' }}>
-          {activeTab === 'pos' && (
-            <PosBillingPage
-              profile={profile}
-              customers={customers}
-              doctors={doctors}
-              staffList={staffList}
-              onOpenAddCustomer={() => setIsAddCustomerOpen(true)}
-              onOpenAddDoctor={() => setIsAddDoctorOpen(true)}
-              onInvoiceCreated={handleInvoiceCreated}
-              onOpenReceipt={(inv) => setReceiptInvoice(inv)}
-            />
-          )}
+          <ErrorBoundary onReset={loadInitialData}>
+            {activeTab === 'pos' && (
+              <PosBillingPage
+                profile={profile}
+                customers={customers}
+                doctors={doctors}
+                staffList={staffList}
+                onOpenAddCustomer={() => setIsAddCustomerOpen(true)}
+                onOpenAddDoctor={() => setIsAddDoctorOpen(true)}
+                onInvoiceCreated={handleInvoiceCreated}
+                onOpenReceipt={(inv) => setReceiptInvoice(inv)}
+              />
+            )}
 
-          {activeTab === 'dashboard' && (
-            <DashboardPage
-              summary={summary}
-              salesTrend={salesTrend}
-              categoriesDist={categoriesDist}
-              topSelling={topSelling}
-              profile={profile}
-              user={authUser}
-              setActiveTab={setActiveTab}
-              onOpenAddMedicine={() => setIsAddMedicineOpen(true)}
-              onOpenAddBatch={() => handleOpenAddBatch(null)}
-              onOpenScanBill={() => setIsScanBillOpen(true)}
-              onOpenDailyReport={() => setIsDailyReportOpen(true)}
-            />
-          )}
+            {activeTab === 'dashboard' && (
+              <DashboardPage
+                summary={summary}
+                salesTrend={salesTrend}
+                categoriesDist={categoriesDist}
+                topSelling={topSelling}
+                profile={profile}
+                user={authUser}
+                setActiveTab={setActiveTab}
+                onOpenAddMedicine={() => setIsAddMedicineOpen(true)}
+                onOpenAddBatch={() => handleOpenAddBatch(null)}
+                onOpenScanBill={() => setIsScanBillOpen(true)}
+                onOpenDailyReport={() => setIsDailyReportOpen(true)}
+              />
+            )}
 
-          {activeTab === 'inventory' && (
-            <InventoryPage
-              medicines={medicines}
-              categories={categories}
-              suppliers={suppliers}
-              profile={profile}
-              user={authUser}
-              onOpenAddMedicine={() => setIsAddMedicineOpen(true)}
-              onOpenAddBatch={handleOpenAddBatch}
-              onOpenStockAdjust={handleOpenStockAdjust}
-              onOpenScanBill={() => setIsScanBillOpen(true)}
-              onOpenExcelUpload={() => setIsExcelUploadOpen(true)}
-              onOpenDailyReport={() => setIsDailyReportOpen(true)}
-              onReloadInventory={loadInitialData}
-              setActiveTab={setActiveTab}
-            />
-          )}
+            {activeTab === 'inventory' && (
+              <InventoryPage
+                medicines={medicines}
+                categories={categories}
+                suppliers={suppliers}
+                profile={profile}
+                user={authUser}
+                onOpenAddMedicine={() => setIsAddMedicineOpen(true)}
+                onOpenAddBatch={handleOpenAddBatch}
+                onOpenStockAdjust={handleOpenStockAdjust}
+                onOpenScanBill={() => setIsScanBillOpen(true)}
+                onOpenExcelUpload={() => setIsExcelUploadOpen(true)}
+                onOpenDailyReport={() => setIsDailyReportOpen(true)}
+                onReloadInventory={loadInitialData}
+                setActiveTab={setActiveTab}
+              />
+            )}
 
-          {activeTab === 'alerts' && (
-            <AlertsPage
-              profile={profile}
-              onOpenAddBatch={handleOpenAddBatch}
-              onOpenStockAdjust={handleOpenStockAdjust}
-            />
-          )}
+            {activeTab === 'alerts' && (
+              <AlertsPage
+                profile={profile}
+                onOpenAddBatch={handleOpenAddBatch}
+                onOpenStockAdjust={handleOpenStockAdjust}
+              />
+            )}
 
-          {activeTab === 'invoices' && (
-            <InvoicesPage
-              profile={profile}
-              user={authUser}
-              onOpenReceipt={(inv) => setReceiptInvoice(inv)}
-              onOpenDailyReport={() => setIsDailyReportOpen(true)}
-            />
-          )}
+            {activeTab === 'invoices' && (
+              <InvoicesPage
+                profile={profile}
+                user={authUser}
+                onOpenReceipt={(inv) => setReceiptInvoice(inv)}
+                onOpenDailyReport={() => setIsDailyReportOpen(true)}
+              />
+            )}
 
-          {activeTab === 'contacts' && (
-            <ContactsPage
-              customers={customers}
-              suppliers={suppliers}
-              doctors={doctors}
-              profile={profile}
-              onOpenAddCustomer={() => setIsAddCustomerOpen(true)}
-              onOpenAddDoctor={() => setIsAddDoctorOpen(true)}
-              onRefresh={loadInitialData}
-            />
-          )}
+            {activeTab === 'contacts' && (
+              <ContactsPage
+                customers={customers}
+                suppliers={suppliers}
+                doctors={doctors}
+                profile={profile}
+                onOpenAddCustomer={() => setIsAddCustomerOpen(true)}
+                onOpenAddDoctor={() => setIsAddDoctorOpen(true)}
+                onRefresh={loadInitialData}
+              />
+            )}
 
-          {activeTab === 'settings' && (
-            <SettingsPage
-              profile={profile}
-              onProfileUpdated={(updated) => setProfile(updated)}
-              onStaffUpdated={loadInitialData}
-            />
-          )}
+            {activeTab === 'settings' && (
+              <SettingsPage
+                profile={profile}
+                onProfileUpdated={(updated) => setProfile(updated)}
+                onStaffUpdated={loadInitialData}
+              />
+            )}
+          </ErrorBoundary>
         </main>
 
         {/* Mobile Fixed Bottom Navigation Bar */}

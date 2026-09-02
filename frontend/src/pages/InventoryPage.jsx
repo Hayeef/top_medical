@@ -1033,22 +1033,24 @@ export default function InventoryPage({
                 </select>
               </div>
 
-              {/* Cost Price */}
-              <div>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                  Cost Rate / Pack (₹)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="input-field mono"
-                  placeholder="0.00"
-                  value={quickAddForm.purchase_price}
-                  onChange={(e) => setQuickAddForm({ ...quickAddForm, purchase_price: e.target.value })}
-                  style={{ height: '36px' }}
-                />
-              </div>
+              {/* Cost Price (Admin Only) */}
+              {isAdmin && (
+                <div>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                    Cost Rate / Pack (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input-field mono"
+                    placeholder="0.00"
+                    value={quickAddForm.purchase_price}
+                    onChange={(e) => setQuickAddForm({ ...quickAddForm, purchase_price: e.target.value })}
+                    style={{ height: '36px' }}
+                  />
+                </div>
+              )}
 
               {/* MRP */}
               <div>
@@ -1161,8 +1163,8 @@ export default function InventoryPage({
         </div>
       )}
 
-      {/* Financial Metrics Summary Banner (for Stock Table) */}
-      {viewMode === 'table' && (
+      {/* Financial Metrics Summary Banner (for Stock Table - Admin Only) */}
+      {isAdmin && viewMode === 'table' && (
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
@@ -1185,19 +1187,17 @@ export default function InventoryPage({
             </div>
           </div>
 
-          {isAdmin && (
-            <div>
-              <div style={{ fontSize: '11px', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>
-                Total Inward Cost
-              </div>
-              <div style={{ fontSize: '18px', fontWeight: 800, color: '#047857', marginTop: '2px' }}>
-                {currency}{parseFloat(displaySummary.total_cost || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-              </div>
-              <div style={{ fontSize: '11px', color: '#64748b' }}>
-                Wholesale purchase valuation
-              </div>
+          <div>
+            <div style={{ fontSize: '11px', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>
+              Total Inward Cost
             </div>
-          )}
+            <div style={{ fontSize: '18px', fontWeight: 800, color: '#047857', marginTop: '2px' }}>
+              {currency}{parseFloat(displaySummary.total_cost || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </div>
+            <div style={{ fontSize: '11px', color: '#64748b' }}>
+              Wholesale purchase valuation
+            </div>
+          </div>
 
           <div>
             <div style={{ fontSize: '11px', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>
@@ -1466,9 +1466,11 @@ export default function InventoryPage({
                               onChange={(e) => handleCellChange(batch, 'selling_price', e.target.value)}
                               onKeyDown={(e) => e.key === 'Enter' && handleSaveRow(batch)}
                             />
-                            <span style={{ fontSize: '9.5px', color: '#0284c7', fontWeight: 700, marginTop: '1px' }}>
-                              {rowMarginPct > 0 ? `+${rowMarginPct}% margin` : ''}
-                            </span>
+                            {isAdmin && rowMarginPct > 0 && (
+                              <span style={{ fontSize: '9.5px', color: '#0284c7', fontWeight: 700, marginTop: '1px' }}>
+                                +{rowMarginPct}% margin
+                              </span>
+                            )}
                           </div>
                         </td>
 

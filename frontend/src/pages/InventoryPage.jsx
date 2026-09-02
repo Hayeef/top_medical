@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { inventoryAPI } from '../api';
+import QuickBillDiscountLookupModal from '../components/QuickBillDiscountLookupModal';
 
 export default function InventoryPage({ 
   medicines = [], 
@@ -63,6 +64,7 @@ export default function InventoryPage({
 
   // Quick Add Tablet Inline Form State
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [isQuickBillDiscountOpen, setIsQuickBillDiscountOpen] = useState(false);
   const [quickAddSubmitting, setQuickAddSubmitting] = useState(false);
   const [quickAddForm, setQuickAddForm] = useState({
     name: '',
@@ -1226,6 +1228,34 @@ export default function InventoryPage({
               + {currency}{parseFloat(displaySummary.gross_profit || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} potential profit
             </div>
           </div>
+
+          {/* Quick Bargain Bill Discount Action Button */}
+          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setIsQuickBillDiscountOpen(true)}
+              className="btn btn-emerald"
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                fontSize: '12px',
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 6px rgba(16, 185, 129, 0.25)',
+                borderRadius: '10px'
+              }}
+              title="Update discount on generated bills after customer bargaining to account for actual received cash/UPI"
+            >
+              <Tag size={14} />
+              <span>🏷️ Edit Bill Discount</span>
+            </button>
+            <div style={{ fontSize: '10px', color: '#166534', marginTop: '3px', fontWeight: 600, textAlign: 'center' }}>
+              Adjust post-bill discount & actual received amount
+            </div>
+          </div>
         </div>
       )}
 
@@ -2097,6 +2127,13 @@ export default function InventoryPage({
         </div>
       )}
 
+      {/* Quick Post-Generation Bill Discount Modal */}
+      <QuickBillDiscountLookupModal
+        isOpen={isQuickBillDiscountOpen}
+        onClose={() => setIsQuickBillDiscountOpen(false)}
+        profile={profile}
+        onReload={onReloadInventory}
+      />
     </div>
   );
 }

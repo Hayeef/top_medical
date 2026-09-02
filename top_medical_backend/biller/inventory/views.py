@@ -102,7 +102,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def quick_add_tablet_stock(self, request):
         """
-        One-stop direct creation of a new Tablet / Medicine with its initial Batch and stock movement.
+        One-stop direct creation or stock update of a Tablet / Medicine with its Batch, Pricing (SP=MRP), and Stock Movement.
         """
         data = request.data
         name = str(data.get('name', '')).strip().upper()
@@ -111,80 +111,124 @@ class MedicineViewSet(viewsets.ModelViewSet):
 
         generic_name = str(data.get('generic_name', '')).strip()
         dosage_form = str(data.get('dosage_form', 'Tablet')).strip()
-        category_id = data.get('category')
         manufacturer = str(data.get('manufacturer', 'Standard Pharma')).strip()
         hsn_code = str(data.get('hsn_code', '3004')).strip()
         rack_location = str(data.get('rack_location', 'Rack A-1')).strip()
-        min_stock_alert = int(data.get('min_stock_alert', 10))
-        requires_prescription = bool(data.get('requires_prescription', False))
-        gst_rate = Decimal(str(data.get('gst_rate', 12.0)))
+        
+        try:
+            min_stock_alert = int(data.get('min_stock_alert', 10))
+        except (ValueError, TypeError):
+            min_stock_alert = 10
 
-        # Category
+        # Parse prescription requirement boolean accurately
+        raw_rx = data.get('requires_prescription', False)
+        if isinstance(raw_rx, str):
+            requires_prescription = raw_rx.strip().lower() in ['true', '1', 'yes', 'y']
+        else:
+            requires_prescription = bool(raw_rx)
+
+        try:
+            gst_rate = Decimal(str(data.get('gst_rate', 12.0)))
+        except (ValueError, TypeError):
+            gst_rate = Decimal('12.0')
+
+        # Category resolution
         category = None
-        if category_id:
-            category = Category.objects.filter(id=category_id).first()
+        category_val = data.get('category')
+        if category_val and str(category_val).isdigit():
+            category = Category.objects.filter(id=int(category_val)).first()
         if not category:
-            cat_name = data.get('category_name') or 'General'
+            cat_name = str(data.get('category_name') or 'General').strip()
             category, _ = Category.objects.get_or_create(name=cat_name)
 
-        # Get or create Medicine
-        medicine, created_med = Medicine.objects.get_or_create(
-            name=name,
-            defaults={
-                "generic_name": generic_name,
-                "dosage_form": dosage_form,
-                "category": category,
-                "manufacturer": manufacturer,
-                "hsn_code": hsn_code,
-                "rack_location": rack_location,
-                "min_stock_alert": min_stock_alert,
-                "requires_prescription": requires_prescription,
-                "gst_rate": gst_rate,
-            }
-        )
+        # Intelligent deduplication: check if medicine already exists in system
+        medicine = find_existing_medicine(name, dosage_form=dosage_form)
 
-        if not created_med:
-            if generic_name and not medicine.generic_name:
+        if medicine:
+            created_med = False
+            medicine.requires_prescription = requires_prescription
+            if generic_name:
                 medicine.generic_name = generic_name
             if rack_location:
                 medicine.rack_location = rack_location
+            if category:
+                medicine.category = category
             medicine.save()
+        else:
+            medicine = Medicine.objects.create(
+                name=name,
+                generic_name=generic_name,
+                dosage_form=dosage_form,
+                category=category,
+                manufacturer=manufacturer,
+                hsn_code=hsn_code,
+                rack_location=rack_location,
+                min_stock_alert=min_stock_alert,
+                requires_prescription=requires_prescription,
+                gst_rate=gst_rate,
+            )
+            created_med = True
 
         # Batch fields
         batch_number = str(data.get('batch_number') or f"B-{date.today().strftime('%y%m%d')}").strip().upper()
-        pack_quantity = int(data.get('pack_quantity', 10))
-        pack_size = int(data.get('pack_size', 10))
-        purchase_price = Decimal(str(data.get('purchase_price', 50.0)))
-        mrp = Decimal(str(data.get('mrp', 90.0)))
-        selling_price = Decimal(str(data.get('selling_price', mrp)))
-        expiry_date = data.get('expiry_date') or (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
+        try:
+            pack_quantity = max(1, int(data.get('pack_quantity', 10)))
+        except (ValueError, TypeError):
+            pack_quantity = 10
 
-        # Supplier
+        try:
+            pack_size = max(1, int(data.get('pack_size', 10)))
+        except (ValueError, TypeError):
+            pack_size = 10
+
+        try:
+            purchase_price = Decimal(str(data.get('purchase_price', 50.0)))
+        except (ValueError, TypeError):
+            purchase_price = Decimal('50.0')
+
+        try:
+            mrp = Decimal(str(data.get('mrp', 90.0)))
+        except (ValueError, TypeError):
+            mrp = Decimal('90.0')
+
+        # Selling price strictly equals MRP by default
+        try:
+            raw_sp = data.get('selling_price')
+            selling_price = Decimal(str(raw_sp)) if raw_sp and float(raw_sp) > 0 else mrp
+        except (ValueError, TypeError):
+            selling_price = mrp
+
+        # Expiry date parsing
+        raw_exp = str(data.get('expiry_date', '')).strip()
+        if raw_exp:
+            try:
+                if '/' in raw_exp:
+                    parts = raw_exp.split('/')
+                    if len(parts) == 3: # DD/MM/YYYY
+                        expiry_date = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+                    elif len(parts) == 2: # MM/YY
+                        expiry_date = f"20{parts[1]}-{parts[0].zfill(2)}-28"
+                    else:
+                        expiry_date = (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
+                else:
+                    expiry_date = raw_exp.split('T')[0]
+            except Exception:
+                expiry_date = (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
+        else:
+            expiry_date = (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
+
+        # Supplier resolution
         supplier = None
-        supplier_id = data.get('supplier')
+        supplier_val = data.get('supplier')
         supplier_name = data.get('supplier_name')
-        if supplier_id:
-            supplier = Supplier.objects.filter(id=supplier_id).first()
-        elif supplier_name:
+        if supplier_val and str(supplier_val).isdigit():
+            supplier = Supplier.objects.filter(id=int(supplier_val)).first()
+        elif supplier_name and str(supplier_name).strip():
             supplier, _ = Supplier.objects.get_or_create(name=str(supplier_name).strip())
 
         # Create or update Batch
-        batch, created_batch = Batch.objects.get_or_create(
-            medicine=medicine,
-            batch_number=batch_number,
-            defaults={
-                "supplier": supplier,
-                "expiry_date": expiry_date,
-                "purchase_price": purchase_price,
-                "mrp": mrp,
-                "selling_price": selling_price,
-                "pack_size": pack_size,
-                "pack_quantity": pack_quantity,
-                "loose_quantity": 0,
-            }
-        )
-
-        if not created_batch:
+        batch = Batch.objects.filter(medicine=medicine, batch_number__iexact=batch_number).first()
+        if batch:
             batch.pack_quantity += pack_quantity
             batch.purchase_price = purchase_price
             batch.mrp = mrp
@@ -193,15 +237,30 @@ class MedicineViewSet(viewsets.ModelViewSet):
             if supplier:
                 batch.supplier = supplier
             batch.save()
+            created_batch = False
+        else:
+            batch = Batch.objects.create(
+                medicine=medicine,
+                supplier=supplier,
+                batch_number=batch_number,
+                expiry_date=expiry_date,
+                purchase_price=purchase_price,
+                mrp=mrp,
+                selling_price=selling_price,
+                pack_size=pack_size,
+                pack_quantity=pack_quantity,
+                loose_quantity=0,
+            )
+            created_batch = True
 
-        # Stock Movement
+        # Stock Movement Record
         StockMovement.objects.create(
             batch=batch,
             movement_type='PURCHASE',
             quantity_packs=pack_quantity,
             quantity_loose=0,
             reference_id=f"QUICK-ADD-{batch.batch_number}",
-            notes=f"Quick add from table by Admin ({pack_quantity} packs)"
+            notes=f"Quick add manual stock entry by Pharmacist ({pack_quantity} packs)"
         )
 
         batch_serializer = BatchSerializer(batch)
@@ -209,7 +268,9 @@ class MedicineViewSet(viewsets.ModelViewSet):
 
         return Response({
             "success": True,
-            "message": f"Successfully added {medicine.name} (Batch #{batch.batch_number}) with {pack_quantity} packs to stock.",
+            "message": f"Successfully {'added' if created_med else 'updated'} {medicine.name} (Batch #{batch.batch_number}) with {pack_quantity} packs in stock.",
+            "is_new_medicine": created_med,
+            "is_new_batch": created_batch,
             "medicine": medicine_serializer.data,
             "batch": batch_serializer.data
         }, status=status.HTTP_201_CREATED)

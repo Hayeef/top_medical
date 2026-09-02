@@ -611,6 +611,11 @@ class BatchViewSet(viewsets.ModelViewSet):
                 pass
         if 'batch_number' in data and data['batch_number']:
             batch.batch_number = str(data['batch_number']).strip().upper()
+        if 'pack_size' in data and data['pack_size'] is not None:
+            try:
+                batch.pack_size = max(1, int(data['pack_size']))
+            except (ValueError, TypeError):
+                pass
 
         new_pack_qty = int(data['pack_quantity']) if 'pack_quantity' in data else old_pack_qty
         new_loose_qty = int(data['loose_quantity']) if 'loose_quantity' in data else old_loose_qty
@@ -686,6 +691,11 @@ class BatchViewSet(viewsets.ModelViewSet):
                     pass
             if 'batch_number' in item and item['batch_number']:
                 batch.batch_number = str(item['batch_number']).strip().upper()
+            if 'pack_size' in item and item['pack_size'] is not None:
+                try:
+                    batch.pack_size = max(1, int(item['pack_size']))
+                except (ValueError, TypeError):
+                    pass
 
             new_pack_qty = int(item['pack_quantity']) if 'pack_quantity' in item else old_pack_qty
             new_loose_qty = int(item['loose_quantity']) if 'loose_quantity' in item else old_loose_qty

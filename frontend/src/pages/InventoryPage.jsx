@@ -256,6 +256,7 @@ export default function InventoryPage({
         mrp: batch.mrp,
         selling_price: batch.selling_price,
         pack_quantity: batch.pack_quantity,
+        pack_size: batch.pack_size || 10,
         loose_quantity: batch.loose_quantity || 0,
         expiry_date: batch.expiry_date,
         rack_location: batch.rack_location || '',
@@ -308,6 +309,7 @@ export default function InventoryPage({
         mrp: parseFloat(edit.mrp ?? batch.mrp),
         selling_price: parseFloat(edit.selling_price ?? batch.selling_price),
         pack_quantity: parseInt(edit.pack_quantity ?? batch.pack_quantity),
+        pack_size: parseInt(edit.pack_size ?? batch.pack_size ?? 10),
         loose_quantity: parseInt(edit.loose_quantity ?? batch.loose_quantity ?? 0),
         expiry_date: edit.expiry_date || batch.expiry_date,
         batch_number: edit.batch_number || batch.batch_number,
@@ -371,6 +373,7 @@ export default function InventoryPage({
         mrp: parseFloat(edit.mrp ?? orig.mrp),
         selling_price: parseFloat(edit.selling_price ?? orig.selling_price),
         pack_quantity: parseInt(edit.pack_quantity ?? orig.pack_quantity),
+        pack_size: parseInt(edit.pack_size ?? orig.pack_size ?? 10),
         loose_quantity: parseInt(edit.loose_quantity ?? orig.loose_quantity ?? 0),
         expiry_date: edit.expiry_date || orig.expiry_date,
         batch_number: edit.batch_number || orig.batch_number,
@@ -1257,22 +1260,23 @@ export default function InventoryPage({
             <table className="data-table">
               <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f8fafc' }}>
                 <tr>
-                  <th style={{ width: '22%' }}>Medicine & Formulation</th>
-                  <th style={{ width: '10%' }}>Batch #</th>
-                  <th style={{ width: '10%' }}>Expiry Date</th>
-                  <th style={{ width: '12%' }}>Supplier / Distributor</th>
-                  <th style={{ width: '9%' }}>Rack Location</th>
-                  {isAdmin && <th style={{ width: '8%', textAlign: 'right' }}>Cost Price (₹)</th>}
-                  <th style={{ width: '8%', textAlign: 'right' }}>MRP (₹)</th>
-                  <th style={{ width: '9%', textAlign: 'right' }}>Selling Price (₹)</th>
-                  <th style={{ width: '12%', textAlign: 'center' }}>Stock (Packs)</th>
+                  <th style={{ width: '20%' }}>Medicine & Formulation</th>
+                  <th style={{ width: '9%' }}>Batch #</th>
+                  <th style={{ width: '9%' }}>Expiry Date</th>
+                  <th style={{ width: '11%' }}>Supplier / Distributor</th>
+                  <th style={{ width: '8%' }}>Rack Location</th>
+                  {isAdmin && <th style={{ width: '7%', textAlign: 'right' }}>Cost Price (₹)</th>}
+                  <th style={{ width: '7%', textAlign: 'right' }}>MRP (₹)</th>
+                  <th style={{ width: '8%', textAlign: 'right' }}>Selling Price (₹)</th>
+                  <th style={{ width: '8%', textAlign: 'center' }}>Pack Size (Strip)</th>
+                  <th style={{ width: '13%', textAlign: 'center' }}>Stock (Packs)</th>
                   <th style={{ width: '7%', textAlign: 'center' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredBatches.length === 0 ? (
                   <tr>
-                    <td colSpan={isAdmin ? 10 : 9} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                    <td colSpan={isAdmin ? 11 : 10} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
                       No stock batches match your search or filter criteria.
                     </td>
                   </tr>
@@ -1287,6 +1291,7 @@ export default function InventoryPage({
                     const mrpVal = getRowValue(batch, 'mrp');
                     const sellVal = getRowValue(batch, 'selling_price');
                     const packQtyVal = getRowValue(batch, 'pack_quantity');
+                    const packSizeVal = getRowValue(batch, 'pack_size') ?? (batch.pack_size || 10);
                     const expVal = getRowValue(batch, 'expiry_date');
                     const rackVal = getRowValue(batch, 'rack_location');
                     const batchNumVal = getRowValue(batch, 'batch_number');
@@ -1467,6 +1472,32 @@ export default function InventoryPage({
                           </div>
                         </td>
 
+                        {/* Pack Size (Units per Strip / Box) */}
+                        <td style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            <input
+                              type="number"
+                              min="1"
+                              className="input-field mono"
+                              style={{
+                                height: '28px',
+                                width: '48px',
+                                textAlign: 'center',
+                                fontWeight: 700,
+                                fontSize: '12px',
+                                padding: '2px',
+                                borderColor: dirty ? '#f59e0b' : '#e2e8f0',
+                                background: dirty ? '#ffffff' : 'transparent'
+                              }}
+                              value={packSizeVal}
+                              onChange={(e) => handleCellChange(batch, 'pack_size', e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && handleSaveRow(batch)}
+                              title="Number of tablets/capsules per strip (e.g. 10, 15, 1)"
+                            />
+                            <span style={{ fontSize: '9px', color: '#64748b', fontWeight: 600 }}>units/pk</span>
+                          </div>
+                        </td>
+
                         {/* Stock Packs (Interactive Stepper & Booster Chips) */}
                         <td style={{ textAlign: 'center' }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
@@ -1632,6 +1663,7 @@ export default function InventoryPage({
               const mrpVal = getRowValue(batch, 'mrp');
               const sellVal = getRowValue(batch, 'selling_price');
               const packQtyVal = getRowValue(batch, 'pack_quantity');
+              const packSizeVal = getRowValue(batch, 'pack_size') ?? (batch.pack_size || 10);
 
               return (
                 <div
@@ -1660,8 +1692,8 @@ export default function InventoryPage({
                     </span>
                   </div>
 
-                  {/* Mobile Price Inputs */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                  {/* Mobile Price & Pack Size Inputs */}
+                  <div style={{ display: 'grid', gridTemplateColumns: isAdmin ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: '6px' }}>
                     {isAdmin && (
                       <div>
                         <label style={{ fontSize: '10px', color: '#64748b', fontWeight: 700 }}>Cost (₹)</label>
@@ -1695,6 +1727,17 @@ export default function InventoryPage({
                         style={{ height: '30px', fontSize: '12px', fontWeight: 800, color: '#059669' }}
                         value={sellVal}
                         onChange={(e) => handleCellChange(batch, 'selling_price', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '10px', color: '#0284c7', fontWeight: 700 }}>Pack Sz</label>
+                      <input
+                        type="number"
+                        min="1"
+                        className="input-field mono"
+                        style={{ height: '30px', fontSize: '12px', fontWeight: 800, color: '#0284c7', textAlign: 'center' }}
+                        value={packSizeVal}
+                        onChange={(e) => handleCellChange(batch, 'pack_size', e.target.value)}
                       />
                     </div>
                   </div>

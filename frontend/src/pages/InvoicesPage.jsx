@@ -21,7 +21,7 @@ import {
 import { billingAPI } from '../api';
 import UpdateDiscountModal from '../components/UpdateDiscountModal';
 
-export default function InvoicesPage({ profile, onOpenReceipt, onOpenDailyReport }) {
+export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDailyReport }) {
   const [invoices, setInvoices] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,6 +33,14 @@ export default function InvoicesPage({ profile, onOpenReceipt, onOpenDailyReport
   const [endDate, setEndDate] = useState('');
   const [expandedInvoiceId, setExpandedInvoiceId] = useState(null);
   const [discountModalInvoice, setDiscountModalInvoice] = useState(null);
+
+  const isAdmin = Boolean(
+    user?.is_superuser || 
+    user?.role === 'admin' || 
+    user?.role === 'Owner' || 
+    (typeof user?.email === 'string' && (user.email.toLowerCase().includes('admin') || user.email.toLowerCase().includes('owner'))) || 
+    (typeof user?.username === 'string' && (user.username.toLowerCase().includes('admin') || user.username.toLowerCase().includes('owner')))
+  );
 
   const currency = profile?.currency_symbol || '₹';
 
@@ -118,130 +126,134 @@ export default function InvoicesPage({ profile, onOpenReceipt, onOpenDailyReport
   return (
     <div className="main-page-wrapper">
       
-      {/* 1. Daily Account & Drawer Settlement Summary Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-        
-        {/* Cash in Counter Drawer */}
-        <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #10b981', background: '#f0fdf4' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Cash in Drawer
-            </span>
-            <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Banknote size={17} color="#059669" />
-            </div>
-          </div>
-          <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#065f46', marginTop: '6px' }}>
-            {currency}{totalCashCollected.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-          </div>
-          <div style={{ fontSize: '11px', color: '#16a34a', marginTop: '2px', fontWeight: 600 }}>
-            Physical cash collected
-          </div>
-        </div>
-
-        {/* UPI / GPay in Account */}
-        <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #0284c7', background: '#f0f9ff' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              UPI / GPay in Account
-            </span>
-            <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <QrCode size={17} color="#0284c7" />
-            </div>
-          </div>
-          <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#0369a1', marginTop: '6px' }}>
-            {currency}{totalUpiCollected.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-          </div>
-          <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '2px', fontWeight: 600 }}>
-            Digital QR / VPA receipts
-          </div>
-        </div>
-
-        {/* Total Invoiced Sales */}
-        <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #6366f1', background: '#eef2ff' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', fontWeight: 800, color: '#4f46e5', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Total Filtered Sales
-            </span>
-            <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <DollarSign size={17} color="#4f46e5" />
-            </div>
-          </div>
-          <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#3730a3', marginTop: '6px' }}>
-            {currency}{totalInvoiced.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-          </div>
-          <div style={{ fontSize: '11px', color: '#6366f1', marginTop: '2px', fontWeight: 600 }}>
-            {activeInvoices.length} active bills
-          </div>
-        </div>
-
-        {/* Unpaid / Credit Dues */}
-        {totalDueAmount > 0 && (
-          <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #e11d48', background: '#fff1f2' }}>
+      {/* 1. Daily Account & Drawer Settlement Summary Cards (Admin Only) */}
+      {isAdmin && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+          
+          {/* Cash in Counter Drawer */}
+          <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #10b981', background: '#f0fdf4' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 800, color: '#e11d48', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Credit Dues
+              <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Cash in Drawer
               </span>
-              <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Users size={17} color="#e11d48" />
+              <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Banknote size={17} color="#059669" />
               </div>
             </div>
-            <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#9f1239', marginTop: '6px' }}>
-              {currency}{totalDueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#065f46', marginTop: '6px' }}>
+              {currency}{totalCashCollected.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </div>
-            <div style={{ fontSize: '11px', color: '#e11d48', marginTop: '2px', fontWeight: 600 }}>
-              Unpaid patient balances
+            <div style={{ fontSize: '11px', color: '#16a34a', marginTop: '2px', fontWeight: 600 }}>
+              Physical cash collected
             </div>
           </div>
-        )}
-      </div>
 
-      {/* Staff Performance Snapshot Bar */}
-      <div className="mobile-scroll-pills" style={{ display: 'flex', gap: '10px' }}>
-        {(staffList.length > 0 ? staffList : [
-          { charge_code: 'SC-101', name: 'Ahmed (Staff 1)' },
-          { charge_code: 'SC-102', name: 'Fatima (Staff 2)' },
-          { charge_code: 'SC-103', name: 'Bilal (Staff 3)' },
-        ]).map((stf) => {
-          const stats = staffSalesSummary[stf.charge_code] || { count: 0, revenue: 0, cash: 0, upi: 0 };
-          const isSelected = staffFilter === stf.charge_code;
-          return (
-            <div 
-              key={stf.charge_code}
-              onClick={() => setStaffFilter(isSelected ? '' : stf.charge_code)}
-              className="glass-panel glass-card-interactive"
-              style={{
-                padding: '12px 16px',
-                cursor: 'pointer',
-                border: isSelected ? '2px solid #0284c7' : '1px solid #e2e8f0',
-                background: isSelected ? '#f0f9ff' : '#ffffff',
-                minWidth: '200px',
-                flex: '1 0 auto'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span className="mono" style={{ background: '#0284c7', color: '#ffffff', padding: '1px 5px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 800 }}>
-                    {stf.charge_code}
-                  </span>
-                  <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#0f172a' }}>{stf.name}</span>
-                </div>
-                <span className="badge badge-cyan" style={{ fontSize: '10px' }}>{stats.count} Bills</span>
-              </div>
-              <div style={{ marginTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <span style={{ fontSize: '11px', color: '#64748b' }}>Billed:</span>
-                <span className="mono" style={{ fontSize: '14px', fontWeight: 800, color: '#059669' }}>
-                  {currency}{stats.revenue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div style={{ marginTop: '4px', fontSize: '10.5px', display: 'flex', justifyContent: 'space-between', color: '#64748b', borderTop: '1px dashed #e2e8f0', paddingTop: '4px' }}>
-                <span style={{ color: '#059669' }}>Cash: {currency}{stats.cash.toFixed(0)}</span>
-                <span style={{ color: '#0284c7' }}>UPI: {currency}{stats.upi.toFixed(0)}</span>
+          {/* UPI / GPay in Account */}
+          <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #0284c7', background: '#f0f9ff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                UPI / GPay in Account
+              </span>
+              <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <QrCode size={17} color="#0284c7" />
               </div>
             </div>
-          );
-        })}
-      </div>
+            <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#0369a1', marginTop: '6px' }}>
+              {currency}{totalUpiCollected.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </div>
+            <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '2px', fontWeight: 600 }}>
+              Digital QR / VPA receipts
+            </div>
+          </div>
+
+          {/* Total Invoiced Sales */}
+          <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #6366f1', background: '#eef2ff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: '#4f46e5', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Total Filtered Sales
+              </span>
+              <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <DollarSign size={17} color="#4f46e5" />
+              </div>
+            </div>
+            <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#3730a3', marginTop: '6px' }}>
+              {currency}{totalInvoiced.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </div>
+            <div style={{ fontSize: '11px', color: '#6366f1', marginTop: '2px', fontWeight: 600 }}>
+              {activeInvoices.length} active bills
+            </div>
+          </div>
+
+          {/* Unpaid / Credit Dues */}
+          {totalDueAmount > 0 && (
+            <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #e11d48', background: '#fff1f2' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#e11d48', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Credit Dues
+                </span>
+                <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Users size={17} color="#e11d48" />
+                </div>
+              </div>
+              <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#9f1239', marginTop: '6px' }}>
+                {currency}{totalDueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+              <div style={{ fontSize: '11px', color: '#e11d48', marginTop: '2px', fontWeight: 600 }}>
+                Unpaid patient balances
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Staff Performance Snapshot Bar (Admin Only) */}
+      {isAdmin && (
+        <div className="mobile-scroll-pills" style={{ display: 'flex', gap: '10px' }}>
+          {(staffList.length > 0 ? staffList : [
+            { charge_code: 'SC-101', name: 'Ahmed (Staff 1)' },
+            { charge_code: 'SC-102', name: 'Fatima (Staff 2)' },
+            { charge_code: 'SC-103', name: 'Bilal (Staff 3)' },
+          ]).map((stf) => {
+            const stats = staffSalesSummary[stf.charge_code] || { count: 0, revenue: 0, cash: 0, upi: 0 };
+            const isSelected = staffFilter === stf.charge_code;
+            return (
+              <div 
+                key={stf.charge_code}
+                onClick={() => setStaffFilter(isSelected ? '' : stf.charge_code)}
+                className="glass-panel glass-card-interactive"
+                style={{
+                  padding: '12px 16px',
+                  cursor: 'pointer',
+                  border: isSelected ? '2px solid #0284c7' : '1px solid #e2e8f0',
+                  background: isSelected ? '#f0f9ff' : '#ffffff',
+                  minWidth: '200px',
+                  flex: '1 0 auto'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="mono" style={{ background: '#0284c7', color: '#ffffff', padding: '1px 5px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 800 }}>
+                      {stf.charge_code}
+                    </span>
+                    <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#0f172a' }}>{stf.name}</span>
+                  </div>
+                  <span className="badge badge-cyan" style={{ fontSize: '10px' }}>{stats.count} Bills</span>
+                </div>
+                <div style={{ marginTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>Billed:</span>
+                  <span className="mono" style={{ fontSize: '14px', fontWeight: 800, color: '#059669' }}>
+                    {currency}{stats.revenue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div style={{ marginTop: '4px', fontSize: '10.5px', display: 'flex', justifyContent: 'space-between', color: '#64748b', borderTop: '1px dashed #e2e8f0', paddingTop: '4px' }}>
+                  <span style={{ color: '#059669' }}>Cash: {currency}{stats.cash.toFixed(0)}</span>
+                  <span style={{ color: '#0284c7' }}>UPI: {currency}{stats.upi.toFixed(0)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Search & Filter Bar */}
       <div className="glass-panel" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>

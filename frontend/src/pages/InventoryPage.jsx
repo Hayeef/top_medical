@@ -93,9 +93,13 @@ export default function InventoryPage({
   // Row Edit State Map: { [batchId]: { purchase_price, mrp, selling_price, pack_quantity, loose_quantity, expiry_date, rack_location, batch_number, isDirty, isSaving, isSaved } }
   const [rowEdits, setRowEdits] = useState({});
   const [savingAll, setSavingAll] = useState(false);
-  const [toastMessage, setToastMessage] = useState(null);
-
-  const isAdmin = user?.is_superuser || user?.is_staff || user?.email?.includes('admin');
+  const isAdmin = Boolean(
+    user?.is_superuser || 
+    user?.role === 'admin' || 
+    user?.role === 'Owner' || 
+    (user?.email && (user.email.toLowerCase().includes('admin') || user.email.toLowerCase().includes('owner'))) || 
+    (user?.username && (user.username.toLowerCase().includes('admin') || user.username.toLowerCase().includes('owner')))
+  );
   const currency = profile?.currency_symbol || '₹';
 
   // Trigger search on button click or Enter key

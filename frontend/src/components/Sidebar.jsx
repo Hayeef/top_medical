@@ -30,7 +30,13 @@ export default function Sidebar({
   isMobileOpen = false,
   onCloseMobile
 }) {
-  const isAdmin = user?.is_superuser || user?.is_staff || user?.email?.includes('admin');
+  const isAdmin = Boolean(
+    user?.is_superuser || 
+    user?.role === 'admin' || 
+    user?.role === 'Owner' || 
+    (user?.email && (user.email.toLowerCase().includes('admin') || user.email.toLowerCase().includes('owner'))) || 
+    (user?.username && (user.username.toLowerCase().includes('admin') || user.username.toLowerCase().includes('owner')))
+  );
 
   // Menu items based on role
   const navItems = isAdmin ? [

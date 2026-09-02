@@ -37,6 +37,7 @@ class LoginAPIView(APIView):
                     {"error": "Account is disabled. Please contact administrator."},
                     status=status.HTTP_403_FORBIDDEN
                 )
+            is_admin_user = bool(user.is_superuser or 'admin' in user.username.lower() or (user.email and 'admin' in user.email.lower()))
             return Response({
                 "success": True,
                 "token": f"session_token_{user.id}_{int(timezone.now().timestamp())}",
@@ -45,6 +46,7 @@ class LoginAPIView(APIView):
                     "username": user.username,
                     "email": user.email,
                     "name": user.get_full_name() or user.username,
+                    "role": "admin" if is_admin_user else "staff",
                     "is_staff": user.is_staff,
                     "is_superuser": user.is_superuser
                 },

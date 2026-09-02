@@ -32,7 +32,13 @@ export default function Header({
   const [currentTime, setCurrentTime] = useState(new Date());
   const [theme, setTheme] = useState(localStorage.getItem('tm_theme') || 'light');
 
-  const isAdmin = user?.is_superuser || user?.is_staff || user?.email?.includes('admin');
+  const isAdmin = Boolean(
+    user?.is_superuser || 
+    user?.role === 'admin' || 
+    user?.role === 'Owner' || 
+    (user?.email && (user.email.toLowerCase().includes('admin') || user.email.toLowerCase().includes('owner'))) || 
+    (user?.username && (user.username.toLowerCase().includes('admin') || user.username.toLowerCase().includes('owner')))
+  );
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);

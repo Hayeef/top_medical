@@ -24,11 +24,11 @@ def seed():
             "is_superuser": True
         }
     )
-    admin_user.set_password("AdminTopMedical11@")
+    admin_user.set_password("Admintopmedical123@")
     admin_user.is_staff = True
     admin_user.is_superuser = True
     admin_user.save()
-    print("  [+] Admin user: admin@topmedical.com / AdminTopMedical11@")
+    print("  [+] Admin user: admin@topmedical.com / Admintopmedical123@")
 
     staff_user, created = User.objects.get_or_create(
         username="topmedicalnatekal@gmail.com",

@@ -279,117 +279,233 @@ class MedicineViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def bulk_upload_excel(self, request):
         """
-        Bulk Upload Inventory from Excel (.xlsx, .xls) or CSV spreadsheet.
-        Creates/updates medicines, inward batches, and records stock movements.
+        Bulk Upload Inventory from Excel (.xlsx, .xls) or CSV spreadsheet or direct JSON payload.
+        Intelligently increases stock count if the medicine/tablet already exists,
+        or creates a new medicine record if it does not exist.
         """
+        # 1. Direct JSON items payload
+        items_payload = request.data.get('items') if isinstance(request.data, dict) else None
+        if items_payload and isinstance(items_payload, list) and len(items_payload) > 0:
+            normalized_items = [self._normalize_excel_row(it) if isinstance(it, dict) else it for it in items_payload]
+            return self._process_bulk_items(normalized_items, source_name="Spreadsheet Table Preview")
+
+        # 2. File upload via FormData
         uploaded_file = request.FILES.get('excel_file') or request.FILES.get('file')
         if not uploaded_file:
-            # Check if JSON items sent directly from frontend parser
-            items_payload = request.data.get('items')
-            if items_payload and isinstance(items_payload, list):
-                return self._process_bulk_items(items_payload, source_name="Direct Excel Table")
-            return Response({"error": "No Excel or CSV file provided."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "No Excel, CSV file, or valid medicine items provided."}, status=status.HTTP_400_BAD_REQUEST)
 
         file_name = uploaded_file.name.lower()
         items_to_process = []
 
         try:
-            if file_name.endswith('.xlsx') or file_name.endswith('.xls'):
+            if file_name.endswith('.xlsx') or file_name.endswith('.xlsm') or file_name.endswith('.xltx'):
                 import openpyxl
                 wb = openpyxl.load_workbook(uploaded_file, data_only=True)
                 sheet = wb.active
+                
+                # Scan first 15 rows to find the actual header row
+                header_row_idx = None
                 headers = []
-                for row_idx, row in enumerate(sheet.iter_rows(values_only=True)):
-                    if row_idx == 0:
-                        headers = [str(cell).strip().lower() if cell is not None else '' for cell in row]
+                all_rows = list(sheet.iter_rows(values_only=True))
+                
+                header_keywords = {'medicine', 'name', 'item', 'drug', 'particulars', 'product', 'batch', 'exp', 'qty', 'rate', 'mrp', 'pack', 'cost'}
+                for idx, row in enumerate(all_rows[:15]):
+                    if not any(row):
                         continue
+                    row_strs = [str(cell).strip().lower() for cell in row if cell is not None]
+                    matches = sum(1 for kw in header_keywords if any(kw in s for s in row_strs))
+                    if matches >= 2:
+                        header_row_idx = idx
+                        headers = [str(cell).strip().lower() if cell is not None else '' for cell in row]
+                        break
+                
+                if header_row_idx is None and all_rows:
+                    header_row_idx = 0
+                    headers = [str(cell).strip().lower() if cell is not None else '' for cell in all_rows[0]]
+
+                for row in all_rows[header_row_idx + 1:]:
                     if not any(row):
                         continue
                     row_dict = {}
                     for col_idx, val in enumerate(row):
                         if col_idx < len(headers) and headers[col_idx]:
                             row_dict[headers[col_idx]] = val
-                    items_to_process.append(self._normalize_excel_row(row_dict))
+                    norm = self._normalize_excel_row(row_dict)
+                    if norm.get('medicine_name'):
+                        items_to_process.append(norm)
             else:
                 import csv
                 import io
                 decoded_file = uploaded_file.read().decode('utf-8-sig', errors='replace')
-                reader = csv.DictReader(io.StringIO(decoded_file))
+                lines = [l for l in decoded_file.splitlines() if l.strip()]
+                
+                # Auto detect header row
+                header_idx = 0
+                header_keywords = {'medicine', 'name', 'item', 'drug', 'particulars', 'product', 'batch', 'exp', 'qty', 'rate', 'mrp', 'pack', 'cost'}
+                for i, line in enumerate(lines[:15]):
+                    line_lower = line.lower()
+                    if sum(1 for kw in header_keywords if kw in line_lower) >= 2:
+                        header_idx = i
+                        break
+                
+                csv_content = '\n'.join(lines[header_idx:])
+                reader = csv.DictReader(io.StringIO(csv_content))
                 for row in reader:
-                    normalized_row = {k.strip().lower(): v for k, v in row.items() if k}
-                    items_to_process.append(self._normalize_excel_row(normalized_row))
+                    normalized_row = {str(k).strip().lower(): v for k, v in row.items() if k}
+                    norm = self._normalize_excel_row(normalized_row)
+                    if norm.get('medicine_name'):
+                        items_to_process.append(norm)
         except Exception as err:
-            return Response({"error": f"Failed to parse Excel file: {str(err)}"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": f"Failed to parse spreadsheet file: {str(err)}"}, status=status.HTTP_400_BAD_REQUEST)
 
         if not items_to_process:
-            return Response({"error": "No valid medicine rows found in the uploaded file."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "No valid medicine rows found in the uploaded file. Please verify column headers."}, status=status.HTTP_400_BAD_REQUEST)
 
         return self._process_bulk_items(items_to_process, source_name=uploaded_file.name)
 
+    def _parse_flexible_date(self, val):
+        default_date = (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
+        if not val:
+            return default_date
+        if isinstance(val, (datetime, date)):
+            return val.strftime('%Y-%m-%d')
+        if isinstance(val, (int, float)):
+            try:
+                base_date = datetime(1899, 12, 30)
+                parsed = base_date + timedelta(days=float(val))
+                return parsed.strftime('%Y-%m-%d')
+            except Exception:
+                pass
+        
+        val_str = str(val).strip()
+        if not val_str:
+            return default_date
+            
+        if re.match(r'^\d{4}-\d{1,2}-\d{1,2}$', val_str):
+            parts = val_str.split('-')
+            return f"{parts[0]}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
+            
+        if re.match(r'^\d{1,2}[/-]\d{1,2}[/-]\d{4}$', val_str):
+            delim = '/' if '/' in val_str else '-'
+            parts = val_str.split(delim)
+            return f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+
+        if re.match(r'^\d{1,2}[/-]\d{2}$', val_str):
+            delim = '/' if '/' in val_str else '-'
+            parts = val_str.split(delim)
+            return f"20{parts[1]}-{parts[0].zfill(2)}-28"
+
+        if re.match(r'^\d{1,2}[/-]\d{4}$', val_str):
+            delim = '/' if '/' in val_str else '-'
+            parts = val_str.split(delim)
+            return f"{parts[1]}-{parts[0].zfill(2)}-28"
+
+        month_names = {'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+                       'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12}
+        for m_name, m_num in month_names.items():
+            if m_name in val_str.lower():
+                years = re.findall(r'\b(20\d{2}|\d{2})\b', val_str)
+                if years:
+                    y = years[0]
+                    if len(y) == 2:
+                        y = f"20{y}"
+                    return f"{y}-{str(m_num).zfill(2)}-28"
+
+        return default_date
+
     def _normalize_excel_row(self, d):
         def get_val(*keys, default=''):
+            # 1. Exact match
             for k in keys:
                 for actual_k, v in d.items():
-                    if k in actual_k:
-                        return v if v is not None else default
+                    if str(actual_k).strip().lower() == k.strip().lower() and v is not None and str(v).strip() != '':
+                        return v
+            # 2. Substring match
+            for k in keys:
+                for actual_k, v in d.items():
+                    if k.strip().lower() in str(actual_k).strip().lower() and v is not None and str(v).strip() != '':
+                        return v
             return default
 
-        name = str(get_val('medicine', 'drug', 'name', 'product')).strip()
-        generic = str(get_val('generic', 'composition', 'salt')).strip()
-        category = str(get_val('category', 'dept', default='General')).strip()
-        form = str(get_val('form', 'type', 'dosage', default='Tablet')).strip()
-        mfg = str(get_val('manufacturer', 'company', 'mfg', 'brand', default='Pharma Co')).strip()
-        hsn = str(get_val('hsn', default='3004')).strip()
-        batch_no = str(get_val('batch', default=f"EX-{date.today().strftime('%y%m')}1")).strip()
-        
-        # Expiry date parsing
-        raw_exp = get_val('expiry', 'exp', default='')
-        if isinstance(raw_exp, datetime) or isinstance(raw_exp, date):
-            exp_date_str = raw_exp.strftime('%Y-%m-%d')
-        elif raw_exp:
-            exp_str = str(raw_exp).strip()
-            if '/' in exp_str:
-                parts = exp_str.split('/')
-                if len(parts) == 2:  # MM/YY
-                    exp_date_str = f"20{parts[1]}-{parts[0].zfill(2)}-28"
-                elif len(parts) == 3:  # DD/MM/YYYY
-                    exp_date_str = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
-                else:
-                    exp_date_str = (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
-            elif '-' in exp_str and len(exp_str) == 10:
-                exp_date_str = exp_str
-            else:
-                exp_date_str = (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
-        else:
-            exp_date_str = (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
+        name = str(get_val(
+            'medicine_name', 'medicine', 'med_name', 'drug_name', 'drug', 'item_name', 
+            'particulars', 'product_name', 'product', 'brand_name', 'brand', 
+            'description', 'item', 'name', 'tablet_name', 'tablet'
+        )).strip()
 
-        try: pack_sz = int(get_val('size', 'pack_size', default=10))
-        except: pack_sz = 10
-        
-        try: pack_qty = int(get_val('quantity', 'qty', 'stock', 'packs', default=10))
-        except: pack_qty = 10
+        generic = str(get_val(
+            'generic_name', 'generic', 'composition', 'salt', 'molecule', 'formula'
+        )).strip()
 
-        try: purchase_pr = float(get_val('purchase', 'cost', 'rate', default=50.0))
-        except: purchase_pr = 50.0
+        category = str(get_val(
+            'category_name', 'category', 'dept', 'department', 'group', 'class', default='General'
+        )).strip()
 
-        try: mrp_pr = float(get_val('mrp', default=purchase_pr * 1.4))
-        except: mrp_pr = purchase_pr * 1.4
+        form = str(get_val(
+            'dosage_form', 'dosage', 'form', 'type', default=''
+        )).strip()
+        if not form:
+            name_upper = name.upper()
+            if 'TAB' in name_upper: form = 'Tablet'
+            elif 'CAP' in name_upper: form = 'Capsule'
+            elif 'SYP' in name_upper or 'SYRUP' in name_upper or 'SUSP' in name_upper: form = 'Syrup'
+            elif 'INJ' in name_upper: form = 'Injection'
+            elif 'DROP' in name_upper: form = 'Drops'
+            elif 'OINT' in name_upper or 'CREAM' in name_upper or 'GEL' in name_upper: form = 'Ointment'
+            else: form = 'Tablet'
 
-        try: selling_pr = float(get_val('selling', 'sell', 'sp', default=mrp_pr * 0.9))
-        except: selling_pr = mrp_pr * 0.9
+        mfg = str(get_val('manufacturer', 'mfg_by', 'mfg', 'company', 'brand', 'marketed_by', 'make', default='Standard Pharma')).strip()
+        hsn = str(get_val('hsn_code', 'hsn/sac', 'hsn', 'sac', default='3004')).strip()
+        batch_no = str(get_val('batch_number', 'batch_no', 'batch_num', 'batch', 'b.no', 'b.no.', 'b_no', 'bno', 'lot_no', 'lot', default=f"EX-{date.today().strftime('%y%m')}1")).strip()
 
-        try: gst_val = float(get_val('gst', 'tax', default=12.0))
-        except: gst_val = 12.0
+        raw_exp = get_val('expiry_date', 'expiry', 'exp_date', 'exp_dt', 'exp_date_str', 'exp', 'validity', 'exp.')
+        exp_date_str = self._parse_flexible_date(raw_exp)
 
-        rack = str(get_val('rack', 'shelf', 'location', default='Rack A-1')).strip()
-        rx_val = str(get_val('prescription', 'rx', default='no')).lower() in ['yes', 'true', '1', 'y']
+        try:
+            raw_sz = get_val('pack_size', 'pack_sz', 'size', 'pkg', 'packing', 'pack', 'units_per_pack', 'strip_size', default=10)
+            pack_sz = max(1, int(float(str(raw_sz).replace(',', ''))))
+        except Exception:
+            pack_sz = 10
+
+        try:
+            raw_qty = get_val('pack_quantity', 'quantity', 'qty', 'packs', 'stock', 'bill_qty', 'b_qty', 'tot_qty', 'total_qty', 'nos', 'count', 'inward_qty', default=10)
+            pack_qty = max(1, int(float(str(raw_qty).replace(',', ''))))
+        except Exception:
+            pack_qty = 10
+
+        try:
+            raw_purchase = get_val('purchase_price', 'purchase_rate', 'purchase', 'cost_price', 'cost', 'ptr', 'rate', 'p_rate', 'net_rate', 'p.rate', default=50.0)
+            purchase_pr = float(str(raw_purchase).replace(',', '').replace('₹', '').replace('$', ''))
+        except Exception:
+            purchase_pr = 50.0
+
+        try:
+            raw_mrp = get_val('mrp', 'm.r.p', 'm.r.p.', 'max_retail_price', 'retail_price', default=purchase_pr * 1.4)
+            mrp_pr = float(str(raw_mrp).replace(',', '').replace('₹', '').replace('$', ''))
+        except Exception:
+            mrp_pr = purchase_pr * 1.4
+
+        try:
+            raw_selling = get_val('selling_price', 'selling_rate', 'sale_price', 'sale_rate', 'sell', 'sp', 's_rate', 's.rate', default=mrp_pr)
+            selling_pr = float(str(raw_selling).replace(',', '').replace('₹', '').replace('$', ''))
+        except Exception:
+            selling_pr = mrp_pr
+
+        try:
+            raw_gst = get_val('gst_rate', 'gst%', 'gst', 'tax%', 'tax_rate', 'tax', 'igst', 'cgst', default=12.0)
+            gst_val = float(str(raw_gst).replace('%', '').strip())
+        except Exception:
+            gst_val = 12.0
+
+        rack = str(get_val('rack_location', 'rack_no', 'rack', 'shelf_no', 'shelf', 'location', 'bin', default='Rack A-1')).strip()
+        rx_val = str(get_val('requires_prescription', 'prescription', 'rx', 'schedule_h', 'schedule', default='no')).lower() in ['yes', 'true', '1', 'y']
 
         return {
             "medicine_name": name,
             "generic_name": generic,
             "category": category or 'General',
             "dosage_form": form or 'Tablet',
-            "manufacturer": mfg or 'Pharma Co',
+            "manufacturer": mfg or 'Standard Pharma',
             "hsn_code": hsn or '3004',
             "batch_number": batch_no,
             "expiry_date": exp_date_str,
@@ -423,36 +539,37 @@ class MedicineViewSet(viewsets.ModelViewSet):
             dosage_form = item.get('dosage_form', 'Tablet')
             barcode = item.get('barcode')
 
-            # Intelligent deduplication: check if medicine already exists in database
+            # Intelligent deduplication: check if tablet/medicine already exists in database
             medicine = find_existing_medicine(med_name, dosage_form=dosage_form, barcode=barcode)
 
             if medicine:
                 existing_updated_count += 1
-                # Update auxiliary fields if missing
+                # Update auxiliary fields if currently blank
                 if item.get('generic_name') and not medicine.generic_name:
                     medicine.generic_name = item.get('generic_name')
-                    medicine.save()
                 if item.get('rack_location') and not medicine.rack_location:
                     medicine.rack_location = item.get('rack_location')
-                    medicine.save()
+                if item.get('manufacturer') and (not medicine.manufacturer or medicine.manufacturer in ['Pharma Co', 'Standard Pharma']):
+                    medicine.manufacturer = item.get('manufacturer')
+                medicine.save()
             else:
                 category_name = item.get('category', 'General')
                 category, _ = Category.objects.get_or_create(name=category_name)
                 medicine = Medicine.objects.create(
                     name=med_name,
-                    generic_name=item.get('generic_name', med_name),
+                    generic_name=item.get('generic_name') or med_name,
                     category=category,
                     dosage_form=dosage_form,
-                    manufacturer=item.get('manufacturer', 'Pharma Co'),
-                    hsn_code=item.get('hsn_code', '3004'),
-                    rack_location=item.get('rack_location', 'Rack A-1'),
+                    manufacturer=item.get('manufacturer') or 'Standard Pharma',
+                    hsn_code=item.get('hsn_code') or '3004',
+                    rack_location=item.get('rack_location') or 'Rack A-1',
                     min_stock_alert=10,
                     requires_prescription=item.get('requires_prescription', False),
                     gst_rate=Decimal(str(item.get('gst_rate', 12.0))),
                 )
                 new_medicines_count += 1
 
-            batch_num = str(item.get('batch_number', f"B-{date.today().strftime('%y%m%d')}")).strip()
+            batch_num = str(item.get('batch_number') or f"B-{date.today().strftime('%y%m%d')}").strip()
             pack_qty = max(1, int(item.get('pack_quantity', 1)))
             pack_sz = max(1, int(item.get('pack_size', 10)))
             purchase_pr = Decimal(str(item.get('purchase_price', 50.0)))
@@ -460,10 +577,13 @@ class MedicineViewSet(viewsets.ModelViewSet):
             selling_pr = Decimal(str(item.get('selling_price', mrp_pr)))
             exp_date = item.get('expiry_date') or (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
 
-            # Find or create batch for this medicine
+            # Check if matching batch exists, or if batch was generic, find active batch for medicine
             batch = Batch.objects.filter(medicine=medicine, batch_number__iexact=batch_num).first()
+            if not batch and medicine and not item.get('batch_number'):
+                batch = Batch.objects.filter(medicine=medicine, expiry_date__gte=date.today()).order_by('-id').first()
+
             if batch:
-                # Update existing batch stock count and price
+                # Tablet already exists: ONLY increase the count (and sync latest inward pricing)
                 batch.pack_quantity += pack_qty
                 batch.purchase_price = purchase_pr
                 batch.mrp = mrp_pr
@@ -472,6 +592,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
                 batch.supplier = supplier
                 batch.save()
             else:
+                # Create batch record for new stock
                 batch = Batch.objects.create(
                     medicine=medicine,
                     supplier=supplier,
@@ -814,16 +935,18 @@ class BatchViewSet(viewsets.ModelViewSet):
         and extracts line items, batch numbers, expiry dates, quantities, and rates.
         """
         uploaded_file = request.FILES.get('bill_image') or request.FILES.get('file')
-        sample_invoice_type = request.data.get('sample_type', 'standard')
+        sample_invoice_type = request.data.get('sample_type')
         image_base64 = request.data.get('image_base64')
         custom_key = request.data.get('gemini_api_key')
+        ocr_text = request.data.get('ocr_text')
 
         try:
             extracted_data = extract_supplier_invoice(
                 uploaded_file=uploaded_file,
                 sample_type=sample_invoice_type,
                 image_base64=image_base64,
-                custom_api_key=custom_key
+                custom_api_key=custom_key,
+                ocr_text=ocr_text
             )
             return Response(extracted_data, status=status.HTTP_200_OK)
         except Exception as e:

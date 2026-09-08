@@ -423,6 +423,8 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                 <tbody>
                   {invoice.items?.map((item, idx) => {
                     const expFormatted = item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('en-GB', { month: '2-digit', year: '2-digit' }) : '-';
+                    const unitMrp = parseFloat(item.unit_mrp || 0);
+                    const totalAmt = parseFloat(item.total_amount || 0);
                     return (
                       <tr key={idx} style={{ borderBottom: '1px dotted #000000' }}>
                         <td style={{ padding: '4px 0' }}>
@@ -430,7 +432,7 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                             {item.medicine_name}
                           </div>
                           <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000' }}>
-                            B:{item.batch_number} {item.is_loose ? `(Loose ${item.quantity} tabs @ ${currency}${parseFloat(item.unit_mrp).toFixed(2)}/tab)` : `(${item.pack_size || 10}s/strip)`}
+                            B:{item.batch_number} {item.is_loose ? `(Loose ${item.quantity} tabs @ ${currency}${unitMrp.toFixed(2)}/tab)` : `(${item.pack_size || 10}s/strip)`}
                           </div>
                         </td>
                         <td style={{ padding: '4px 0', textAlign: 'center', fontSize: '11.5px', fontWeight: 700 }}>
@@ -440,7 +442,7 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                           {item.quantity}{item.is_loose ? ' tabs' : ' pk'}
                         </td>
                         <td style={{ padding: '4px 0', textAlign: 'right', fontSize: '13px', fontWeight: 800 }}>
-                          {parseFloat(item.total_amount).toFixed(2)}
+                          {totalAmt.toFixed(2)}
                         </td>
                       </tr>
                     );
@@ -452,13 +454,13 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
               <div style={{ borderTop: '1.5px solid #000000', paddingTop: '6px', fontSize: '12px', fontWeight: 700, display: 'flex', flexDirection: 'column', gap: '2px', color: '#000000' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Gross Subtotal:</span>
-                  <span style={{ fontWeight: 800 }}>{currency}{parseFloat(invoice.subtotal).toFixed(2)}</span>
+                  <span style={{ fontWeight: 800 }}>{currency}{parseFloat(invoice.subtotal || invoice.grand_total || 0).toFixed(2)}</span>
                 </div>
 
-                {parseFloat(invoice.discount_amount) > 0 && (
+                {parseFloat(invoice.discount_amount || 0) > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800 }}>
                     <span>Discount ({invoice.discount_type === 'PERCENT' ? `${invoice.discount_value}%` : 'Flat'}):</span>
-                    <span>-{currency}{parseFloat(invoice.discount_amount).toFixed(2)}</span>
+                    <span>-{currency}{parseFloat(invoice.discount_amount || 0).toFixed(2)}</span>
                   </div>
                 )}
 
@@ -467,10 +469,10 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                   <span>{currency}{parseFloat(invoice.tax_amount || 0).toFixed(2)}</span>
                 </div>
 
-                {parseFloat(invoice.round_off) !== 0 && (
+                {parseFloat(invoice.round_off || 0) !== 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
                     <span>Round Off:</span>
-                    <span>{parseFloat(invoice.round_off) > 0 ? `+${invoice.round_off}` : invoice.round_off}</span>
+                    <span>{parseFloat(invoice.round_off || 0) > 0 ? `+${invoice.round_off}` : invoice.round_off}</span>
                   </div>
                 )}
 
@@ -488,7 +490,7 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                   color: '#000000'
                 }}>
                   <span>NET TOTAL:</span>
-                  <span>{currency}{parseFloat(invoice.grand_total).toFixed(2)}</span>
+                  <span>{currency}{parseFloat(invoice.grand_total || 0).toFixed(2)}</span>
                 </div>
 
                 {/* Payment Breakdown */}
@@ -496,7 +498,7 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                   <div style={{ fontSize: '11.5px', borderBottom: '1px dashed #000000', paddingBottom: '4px', marginBottom: '4px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800 }}>
                       <span>Split Payment Paid:</span>
-                      <span>{currency}{parseFloat(invoice.amount_paid).toFixed(2)}</span>
+                      <span>{currency}{parseFloat(invoice.amount_paid || invoice.grand_total || 0).toFixed(2)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '8px' }}>
                       <span>• Cash Tendered:</span>
@@ -510,14 +512,14 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                 ) : (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 800 }}>
                     <span>PAID VIA {invoice.payment_method === 'UPI' ? 'UPI / GPAY' : invoice.payment_method}:</span>
-                    <span>{currency}{parseFloat(invoice.amount_paid).toFixed(2)}</span>
+                    <span>{currency}{parseFloat(invoice.amount_paid || invoice.grand_total || 0).toFixed(2)}</span>
                   </div>
                 )}
 
-                {parseFloat(invoice.change_due) > 0 && (
+                {parseFloat(invoice.change_due || 0) > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 800 }}>
                     <span>Change Returned:</span>
-                    <span>{currency}{parseFloat(invoice.change_due).toFixed(2)}</span>
+                    <span>{currency}{parseFloat(invoice.change_due || 0).toFixed(2)}</span>
                   </div>
                 )}
               </div>
@@ -622,31 +624,35 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                   </tr>
                 </thead>
                 <tbody>
-                  {invoice.items?.map((item, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#fcfdfe' }}>
-                      <td style={{ padding: '6px 8px' }}>{idx + 1}</td>
-                      <td style={{ padding: '6px 10px' }}>
-                        <div style={{ fontWeight: 800, color: '#0f172a' }}>{item.medicine_name}</div>
-                        {item.is_loose ? (
-                          <div style={{ fontSize: '10.5px', color: '#0284c7', fontWeight: 600 }}>
-                            Loose {item.quantity} tabs @ {currency}{parseFloat(item.unit_mrp).toFixed(2)}/tab (Strip: {currency}{parseFloat(item.unit_mrp * (item.pack_size || 10)).toFixed(2)} / {item.pack_size || 10}s)
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: '10px', color: '#64748b' }}>Strip of {item.pack_size || 10} tablets</div>
-                        )}
-                      </td>
-                      <td style={{ padding: '6px 8px', color: '#64748b' }}>{item.hsn_code || '3004'}</td>
-                      <td style={{ padding: '6px 8px', fontWeight: 700 }} className="mono">{item.batch_number}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                        {item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('en-GB', { month: '2-digit', year: 'numeric' }) : '-'}
-                      </td>
-                      <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 800 }}>
-                        {item.quantity}{item.is_loose ? ' tabs' : ' pk'}
-                      </td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>{currency}{parseFloat(item.unit_mrp).toFixed(2)}</td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 800 }}>{currency}{parseFloat(item.total_amount).toFixed(2)}</td>
-                    </tr>
-                  ))}
+                  {invoice.items?.map((item, idx) => {
+                    const unitMrp = parseFloat(item.unit_mrp || 0);
+                    const totalAmt = parseFloat(item.total_amount || 0);
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#fcfdfe' }}>
+                        <td style={{ padding: '6px 8px' }}>{idx + 1}</td>
+                        <td style={{ padding: '6px 10px' }}>
+                          <div style={{ fontWeight: 800, color: '#0f172a' }}>{item.medicine_name}</div>
+                          {item.is_loose ? (
+                            <div style={{ fontSize: '10.5px', color: '#0284c7', fontWeight: 600 }}>
+                              Loose {item.quantity} tabs @ {currency}{unitMrp.toFixed(2)}/tab (Strip: {currency}{(unitMrp * (item.pack_size || 10)).toFixed(2)} / {item.pack_size || 10}s)
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '10px', color: '#64748b' }}>Strip of {item.pack_size || 10} tablets</div>
+                          )}
+                        </td>
+                        <td style={{ padding: '6px 8px', color: '#64748b' }}>{item.hsn_code || '3004'}</td>
+                        <td style={{ padding: '6px 8px', fontWeight: 700 }} className="mono">{item.batch_number}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                          {item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('en-GB', { month: '2-digit', year: 'numeric' }) : '-'}
+                        </td>
+                        <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 800 }}>
+                          {item.quantity}{item.is_loose ? ' tabs' : ' pk'}
+                        </td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>{currency}{unitMrp.toFixed(2)}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 800 }}>{currency}{totalAmt.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 
@@ -671,15 +677,15 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                 <div style={{ fontSize: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
                     <span>Items Gross Total:</span>
-                    <span style={{ fontWeight: 700 }}>{currency}{parseFloat(invoice.subtotal).toFixed(2)}</span>
+                    <span style={{ fontWeight: 700 }}>{currency}{parseFloat(invoice.subtotal || invoice.grand_total || 0).toFixed(2)}</span>
                   </div>
-                  {parseFloat(invoice.discount_amount) > 0 && (
+                  {parseFloat(invoice.discount_amount || 0) > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#dc2626', fontWeight: 700 }}>
                       <span>Discount ({invoice.discount_type === 'PERCENT' ? `${invoice.discount_value}%` : 'Flat'}):</span>
-                      <span>-{currency}{parseFloat(invoice.discount_amount).toFixed(2)}</span>
+                      <span>-{currency}{parseFloat(invoice.discount_amount || 0).toFixed(2)}</span>
                     </div>
                   )}
-                  {parseFloat(invoice.round_off) !== 0 && (
+                  {parseFloat(invoice.round_off || 0) !== 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#64748b' }}>
                       <span>Round Off:</span>
                       <span>{invoice.round_off}</span>
@@ -697,11 +703,11 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                     color: '#0369a1'
                   }}>
                     <span>GRAND TOTAL:</span>
-                    <span>{currency}{parseFloat(invoice.grand_total).toFixed(2)}</span>
+                    <span>{currency}{parseFloat(invoice.grand_total || 0).toFixed(2)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '11.5px', fontWeight: 700 }}>
                     <span>Paid via {invoice.payment_method === 'UPI' ? 'UPI / GPay' : invoice.payment_method}:</span>
-                    <span>{currency}{parseFloat(invoice.amount_paid).toFixed(2)}</span>
+                    <span>{currency}{parseFloat(invoice.amount_paid || invoice.grand_total || 0).toFixed(2)}</span>
                   </div>
                 </div>
               </div>

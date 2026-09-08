@@ -95,15 +95,18 @@ export const inventoryAPI = {
   }),
 
   // Excel Bulk Inventory Upload
-  uploadExcel: async (formData) => {
+  uploadExcel: async (payload) => {
     const url = `${API_BASE_URL}/inventory/medicines/bulk_upload_excel/`;
+    const isFormData = payload instanceof FormData;
     const res = await fetch(url, {
       method: 'POST',
-      body: formData,
+      headers: isFormData ? {} : { 'Content-Type': 'application/json' },
+      body: isFormData ? payload : JSON.stringify(payload),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Failed to upload Excel file' }));
-      throw new Error(err.error || err.detail || 'Excel bulk upload failed.');
+      const msg = err.error || err.detail || (typeof err === 'object' ? Object.entries(err).map(([k, v]) => `${k}: ${v}`).join(', ') : 'Excel bulk upload failed.');
+      throw new Error(msg);
     }
     return await res.json();
   },
@@ -124,6 +127,30 @@ export const billingAPI = {
   cancelInvoice: (id) => request(`/billing/invoices/${id}/cancel_invoice/`, { method: 'POST' }),
   getNextInvoiceNumber: () => request('/billing/invoices/next_number/'),
   getPaymentSummary: (params = '') => request(`/billing/invoices/payment_summary/${params ? `?${params}` : ''}`),
+  exportBillsExcel: async (params = '') => {
+    const url = `${API_BASE_URL}/billing/invoices/export_excel/${params ? `?${params}` : ''}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to download Excel report' }));
+      throw new Error(err.error || err.detail || 'Failed to download Excel report.');
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    let filename = `TopMedical_Bills_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    if (match && match[1]) {
+      filename = match[1];
+    }
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(blobUrl);
+    return { success: true, filename };
+  },
 
   // Customers
   getCustomers: (search = '') => request(`/billing/customers/${search ? `?search=${encodeURIComponent(search)}` : ''}`),

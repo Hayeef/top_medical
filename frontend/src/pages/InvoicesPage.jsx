@@ -16,10 +16,13 @@ import {
   Users,
   ClipboardList,
   Tag,
-  Percent
+  Percent,
+  FileSpreadsheet,
+  Download
 } from 'lucide-react';
 import { billingAPI } from '../api';
 import UpdateDiscountModal from '../components/UpdateDiscountModal';
+import BillsExcelExportModal from '../components/BillsExcelExportModal';
 
 export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDailyReport }) {
   const [invoices, setInvoices] = useState([]);
@@ -33,6 +36,27 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
   const [endDate, setEndDate] = useState('');
   const [expandedInvoiceId, setExpandedInvoiceId] = useState(null);
   const [discountModalInvoice, setDiscountModalInvoice] = useState(null);
+  const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
+  const [quickDownloading, setQuickDownloading] = useState(false);
+
+  const handleQuickExportCurrentView = async () => {
+    setQuickDownloading(true);
+    try {
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (staffFilter) params.append('staff_code', staffFilter);
+      if (statusFilter) params.append('status', statusFilter);
+      if (paymentFilter) params.append('payment_method', paymentFilter);
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+      params.append('export_type', 'full');
+      await billingAPI.exportBillsExcel(params.toString());
+    } catch (err) {
+      alert(`Export failed: ${err.message}`);
+    } finally {
+      setQuickDownloading(false);
+    }
+  };
 
   const isAdmin = Boolean(
     user?.is_superuser || 
@@ -338,16 +362,63 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
             </button>
           )}
 
-          {onOpenDailyReport && (
+          {/* Excel Export & Report Action Buttons */}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <button
-              onClick={onOpenDailyReport}
+              type="button"
+              onClick={handleQuickExportCurrentView}
+              disabled={quickDownloading}
               className="btn btn-secondary btn-sm"
-              style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '5px', borderColor: '#0284c7', color: '#0284c7', background: '#f0f9ff' }}
+              title="Download currently filtered table data directly to Excel"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                borderColor: '#10b981',
+                color: '#059669',
+                background: '#f0fdf4',
+                fontSize: '11.5px',
+                fontWeight: 700
+              }}
             >
-              <ClipboardList size={13} />
-              <span>Daily Sold Sheet (PDF)</span>
+              {quickDownloading ? (
+                <div className="spinner" style={{ width: '12px', height: '12px', borderColor: '#059669', borderTopColor: 'transparent' }} />
+              ) : (
+                <Download size={13} color="#059669" />
+              )}
+              <span>{quickDownloading ? 'Exporting...' : 'Quick Export (.xlsx)'}</span>
             </button>
-          )}
+
+            <button
+              type="button"
+              onClick={() => setIsExcelModalOpen(true)}
+              className="btn btn-primary btn-sm"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                fontSize: '12px',
+                fontWeight: 800,
+                boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)'
+              }}
+            >
+              <FileSpreadsheet size={14} />
+              <span>📊 Download Excel Reports</span>
+            </button>
+
+            {onOpenDailyReport && (
+              <button
+                type="button"
+                onClick={onOpenDailyReport}
+                className="btn btn-secondary btn-sm"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', borderColor: '#cbd5e1', color: '#475569', fontSize: '11.5px' }}
+              >
+                <ClipboardList size={13} />
+                <span>Daily Sheet (PDF)</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -359,14 +430,37 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: '#f8fafc'
+          background: '#f8fafc',
+          flexWrap: 'wrap',
+          gap: '8px'
         }}>
-          <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>
-            Invoices Ledger Archive ({invoices.length} entries)
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>
+              Invoices Ledger Archive ({invoices.length} entries)
+            </div>
+            <span style={{ fontSize: '11px', color: '#64748b' }}>
+              Official pharmacy GST billing log
+            </span>
           </div>
-          <span style={{ fontSize: '11px', color: '#64748b' }}>
-            Official pharmacy GST billing log
-          </span>
+
+          <button
+            type="button"
+            onClick={() => setIsExcelModalOpen(true)}
+            className="btn btn-secondary btn-sm"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '11.5px',
+              fontWeight: 700,
+              borderColor: '#0284c7',
+              color: '#0284c7',
+              background: '#f0f9ff'
+            }}
+          >
+            <FileSpreadsheet size={13} />
+            <span>Monthly & Custom Excel Export</span>
+          </button>
         </div>
 
         {/* 1. DESKTOP DATA TABLE */}
@@ -691,6 +785,22 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
         onUpdated={(updatedInv) => {
           setInvoices(prev => prev.map(inv => inv.id === updatedInv.id ? { ...inv, ...updatedInv } : inv));
           loadInvoicesAndStaff();
+        }}
+      />
+
+      {/* Monthly & Custom History Excel Export Modal */}
+      <BillsExcelExportModal
+        isOpen={isExcelModalOpen}
+        onClose={() => setIsExcelModalOpen(false)}
+        profile={profile}
+        staffList={staffList}
+        currentFilters={{
+          startDate,
+          endDate,
+          staffFilter,
+          paymentFilter,
+          statusFilter,
+          search
         }}
       />
     </div>

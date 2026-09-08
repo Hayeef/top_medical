@@ -2,6 +2,7 @@ from rest_framework import viewsets, status, filters
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.http import HttpResponse
 from django.db import transaction
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
@@ -14,6 +15,7 @@ from .serializers import (
     PharmacyProfileSerializer, StaffMemberSerializer, DoctorSerializer, CustomerSerializer,
     InvoiceSerializer, InvoiceItemSerializer
 )
+from .excel_export import generate_bills_excel
 from inventory.models import Batch, StockMovement
 
 class LoginAPIView(APIView):
@@ -127,6 +129,106 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         """Get the auto-generated next invoice number."""
         next_num = Invoice.generate_next_invoice_number()
         return Response({"next_invoice_number": next_num})
+
+    @action(detail=False, methods=['get'], url_path='export_excel')
+    def export_excel(self, request):
+        """
+        Export Bills and Sales to a professionally formatted Excel spreadsheet (.xlsx).
+        Supports:
+        - Monthly bills: ?month=9&year=2026
+        - Custom date ranges: ?start_date=2026-08-01&end_date=2026-09-08
+        - Filters: staff_code, payment_method, status, search, include_cancelled
+        - Export types: full (Summary + Ledger + Items), ledger, items
+        """
+        qs = Invoice.objects.all().select_related('customer', 'doctor', 'staff').prefetch_related('items__medicine', 'items__batch')
+        
+        # Determine Period & Scope
+        month = request.query_params.get('month')
+        year = request.query_params.get('year')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        staff_code = request.query_params.get('staff_code')
+        payment_method = request.query_params.get('payment_method')
+        status_param = request.query_params.get('status')
+        search = request.query_params.get('search')
+        export_type = request.query_params.get('export_type', 'full').lower()
+
+        filter_parts = []
+
+        if month:
+            try:
+                m_int = int(month)
+                y_int = int(year) if year else timezone.now().year
+                qs = qs.filter(created_at__year=y_int, created_at__month=m_int)
+                month_dt = datetime(y_int, m_int, 1)
+                month_name = month_dt.strftime('%B %Y')
+                report_title = f"MONTHLY BILLS ({month_name.upper()})"
+                file_name = f"TopMedical_Bills_Monthly_{month_dt.strftime('%b_%Y')}.xlsx"
+                filter_parts.append(f"Month: {month_name}")
+            except (ValueError, TypeError):
+                m_int = timezone.now().month
+                y_int = timezone.now().year
+                qs = qs.filter(created_at__year=y_int, created_at__month=m_int)
+                report_title = "MONTHLY BILLS"
+                file_name = f"TopMedical_Bills_Monthly_{y_int}_{m_int}.xlsx"
+                filter_parts.append("Current Month")
+        elif start_date or end_date:
+            if start_date:
+                qs = qs.filter(created_at__date__gte=start_date)
+            if end_date:
+                qs = qs.filter(created_at__date__lte=end_date)
+            date_range_str = f"{start_date or 'Beginning'} to {end_date or 'Present'}"
+            report_title = f"BILL HISTORY ({date_range_str})"
+            file_name = f"TopMedical_BillHistory_{start_date or 'Start'}_to_{end_date or 'Now'}.xlsx"
+            filter_parts.append(f"Date Range: {date_range_str}")
+        else:
+            report_title = "ALL-TIME BILL HISTORY"
+            file_name = f"TopMedical_BillHistory_All_{timezone.now().strftime('%Y%m%d')}.xlsx"
+            filter_parts.append("All Time")
+
+        if staff_code:
+            qs = qs.filter(staff_code=staff_code)
+            filter_parts.append(f"Staff: {staff_code}")
+
+        if payment_method:
+            qs = qs.filter(payment_method=payment_method)
+            filter_parts.append(f"Payment: {payment_method}")
+
+        if status_param:
+            qs = qs.filter(payment_status=status_param)
+            filter_parts.append(f"Status: {status_param}")
+
+        if search:
+            qs = qs.filter(
+                Q(invoice_number__icontains=search) |
+                Q(customer_name__icontains=search) |
+                Q(customer_phone__icontains=search) |
+                Q(doctor_name__icontains=search) |
+                Q(staff_name__icontains=search)
+            )
+            filter_parts.append(f"Search: '{search}'")
+
+        # Chronological order for audit ledger
+        qs = qs.order_by('created_at')
+
+        profile = PharmacyProfile.get_settings()
+        filter_summary_text = "  |  ".join(filter_parts) if filter_parts else "All Recorded Invoices"
+
+        excel_buffer = generate_bills_excel(
+            invoices_qs=qs,
+            profile=profile,
+            filter_info=filter_summary_text,
+            report_title=report_title,
+            export_type=export_type
+        )
+
+        response = HttpResponse(
+            excel_buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+        response['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        return response
 
     @action(detail=False, methods=['get'])
     def payment_summary(self, request):

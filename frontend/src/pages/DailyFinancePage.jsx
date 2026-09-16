@@ -482,25 +482,43 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   const handleChangeDate = async (newDate) => {
     setFormData(prev => ({ ...prev, date: newDate }));
     
-    // Check if a record already exists for this date
+    // 1. Check if a record already exists in local records state
     const existing = records.find(r => r.date === newDate);
     if (existing) {
       handleOpenEdit(existing, false);
-    } else {
-      setEditingRecord(null);
-      await triggerAutoFetch(newDate, true);
+      showToast(`📂 Loaded existing accounts for ${newDate} (${existing.payment_details?.length || 0} vouchers)`);
+      return;
     }
+    
+    // 2. Fetch from backend auto_fetch_pos_day (which returns has_existing_record and existing_record if already made)
+    await triggerAutoFetch(newDate, true);
   };
 
-  // Open Edit Mode
+  // Open Edit Mode (Loads all incomes, firm balances, and all expense vouchers into the form)
   const handleOpenEdit = (record, switchView = true) => {
     setEditingRecord(record);
+    const defaultDue = computeDueDate(record.date, 21);
     const details = Array.isArray(record.payment_details) && record.payment_details.length > 0 
-      ? record.payment_details 
+      ? record.payment_details.map((p, idx) => ({
+          id: p.id || (Date.now() + idx),
+          type: (p.type || 'VENDOR').toUpperCase(),
+          recipient: p.recipient || '',
+          staff_id: p.staff_id || '',
+          staff_name: p.staff_name || '',
+          charge_code: p.charge_code || '',
+          purpose: p.purpose || '',
+          vehicle_info: p.vehicle_info || '',
+          category: p.category || '',
+          amount: (p.amount !== undefined && p.amount !== null && p.amount !== '') ? p.amount.toString() : '',
+          payment_mode: (p.payment_mode || 'CASH').toUpperCase(),
+          credit_days: p.credit_days !== undefined ? p.credit_days : 21,
+          due_date: p.due_date || computeDueDate(record.date, p.credit_days || 21),
+          note: p.note || ''
+        }))
       : [{
           id: Date.now(),
           type: 'VENDOR',
-          recipient: '',
+          recipient: suppliers.length > 0 ? suppliers[0].name : '',
           staff_id: '',
           staff_name: '',
           charge_code: '',
@@ -509,21 +527,23 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
           category: '',
           amount: '',
           payment_mode: 'CASH',
+          credit_days: 21,
+          due_date: defaultDue,
           note: ''
         }];
 
     setFormData({
       date: record.date,
-      daily_sales: record.daily_sales?.toString() || '',
-      cash_earned: record.cash_earned?.toString() || '',
-      upi_earned: record.upi_earned?.toString() || '',
-      supplier_payments: record.supplier_payments?.toString() || '',
-      staff_expenses: record.staff_expenses?.toString() || '',
-      vehicle_expenses: record.vehicle_expenses?.toString() || '',
-      expenses: record.expenses?.toString() || '',
-      other_outflow: record.other_outflow?.toString() || '',
-      total_paid: record.total_paid?.toString() || '',
-      opening_balance: record.opening_balance?.toString() || '',
+      daily_sales: (record.daily_sales !== undefined && record.daily_sales !== null) ? record.daily_sales.toString() : '',
+      cash_earned: (record.cash_earned !== undefined && record.cash_earned !== null) ? record.cash_earned.toString() : '',
+      upi_earned: (record.upi_earned !== undefined && record.upi_earned !== null) ? record.upi_earned.toString() : '',
+      supplier_payments: (record.supplier_payments !== undefined && record.supplier_payments !== null) ? record.supplier_payments.toString() : '',
+      staff_expenses: (record.staff_expenses !== undefined && record.staff_expenses !== null) ? record.staff_expenses.toString() : '',
+      vehicle_expenses: (record.vehicle_expenses !== undefined && record.vehicle_expenses !== null) ? record.vehicle_expenses.toString() : '',
+      expenses: (record.expenses !== undefined && record.expenses !== null) ? record.expenses.toString() : '',
+      other_outflow: (record.other_outflow !== undefined && record.other_outflow !== null) ? record.other_outflow.toString() : '',
+      total_paid: (record.total_paid !== undefined && record.total_paid !== null) ? record.total_paid.toString() : '',
+      opening_balance: (record.opening_balance !== undefined && record.opening_balance !== null) ? record.opening_balance.toString() : '',
       notes: record.notes || '',
       payment_details: details
     });
@@ -538,9 +558,26 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   const handleOpenNewEntry = async (targetDate = null) => {
     const target = targetDate || new Date().toISOString().slice(0, 10);
     setEditingRecord(null);
+    const defaultDue = computeDueDate(target, 21);
     setFormData({
       ...initialFormState,
-      date: target
+      date: target,
+      payment_details: [{
+        id: Date.now(),
+        type: 'VENDOR',
+        recipient: suppliers.length > 0 ? suppliers[0].name : '',
+        staff_id: '',
+        staff_name: '',
+        charge_code: '',
+        purpose: '',
+        vehicle_info: '',
+        category: '',
+        amount: '',
+        payment_mode: 'CASH',
+        credit_days: 21,
+        due_date: defaultDue,
+        note: ''
+      }]
     });
     setActiveViewMode('register');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -553,17 +590,48 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
     try {
       const data = await dailyFinanceAPI.autoFetchDay(targetDate);
       if (data) {
-        setFormData(prev => {
-          return {
+        if (data.has_existing_record && data.existing_record) {
+          handleOpenEdit(data.existing_record, false);
+          if (showNotification) {
+            showToast(`📂 Loaded existing accounts for ${targetDate} (${data.existing_record.payment_details?.length || 0} vouchers)`);
+          }
+        } else {
+          setEditingRecord(null);
+          const defaultDue = computeDueDate(targetDate, 21);
+          setFormData(prev => ({
             ...prev,
+            date: targetDate,
             daily_sales: (data.pos_daily_sales || 0).toString(),
             cash_earned: (data.pos_cash_earned || 0).toString(),
             upi_earned: (data.pos_upi_earned || 0).toString(),
-            opening_balance: prev.opening_balance !== '' ? prev.opening_balance : (data.suggested_opening_balance || 0).toString(),
-          };
-        });
-        if (showNotification && data.invoices_count > 0) {
-          showToast(`⚡ Filled ${data.invoices_count} bills: Cash ₹${data.pos_cash_earned} | UPI ₹${data.pos_upi_earned}`, 'info');
+            supplier_payments: '',
+            staff_expenses: '',
+            vehicle_expenses: '',
+            expenses: '',
+            other_outflow: '',
+            total_paid: '',
+            opening_balance: (data.suggested_opening_balance || 0).toString(),
+            notes: '',
+            payment_details: [{
+              id: Date.now(),
+              type: 'VENDOR',
+              recipient: suppliers.length > 0 ? suppliers[0].name : '',
+              staff_id: '',
+              staff_name: '',
+              charge_code: '',
+              purpose: '',
+              vehicle_info: '',
+              category: '',
+              amount: '',
+              payment_mode: 'CASH',
+              credit_days: 21,
+              due_date: defaultDue,
+              note: ''
+            }]
+          }));
+          if (showNotification && data.invoices_count > 0) {
+            showToast(`⚡ Filled ${data.invoices_count} POS bills: Cash ₹${data.pos_cash_earned} | UPI ₹${data.pos_upi_earned}`, 'info');
+          }
         }
       }
     } catch (err) {
@@ -835,8 +903,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
         payment_details: validDetails
       };
 
-      if (editingRecord) {
-        await dailyFinanceAPI.updateRecord(editingRecord.id, payload);
+      const existing = editingRecord || records.find(r => r.date === formData.date);
+
+      if (existing && existing.id) {
+        await dailyFinanceAPI.updateRecord(existing.id, payload);
         showToast(`✅ Saved & Updated Accounts for ${formData.date}`);
       } else {
         await dailyFinanceAPI.createRecord(payload);
@@ -947,10 +1017,209 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
       <style>{`
         .df-page-wrapper {
           padding: 16px 20px 60px 20px;
+          max-width: 1320px;
+          margin: 0 auto;
         }
+
+        /* Glass Cards & Modern Elevation */
+        .df-card {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 16px;
+          box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .df-card:hover {
+          box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
+        }
+
+        /* Header & Tabs */
+        .df-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 16px;
+          padding-bottom: 16px;
+          border-bottom: 1.5px solid #e2e8f0;
+        }
+
+        .df-tabs {
+          display: flex;
+          background: #f1f5f9;
+          padding: 4px;
+          border-radius: 12px;
+          border: 1px solid #e2e8f0;
+          gap: 4px;
+        }
+
+        .df-tab-btn {
+          padding: 9px 16px;
+          border-radius: 9px;
+          border: none;
+          font-weight: 800;
+          font-size: 13px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          transition: all 0.18s ease;
+          background: transparent;
+          color: #64748b;
+        }
+
+        .df-tab-btn:hover:not(.active) {
+          color: #1e293b;
+          background: rgba(255, 255, 255, 0.6);
+        }
+
+        .df-tab-btn.active {
+          background: #0284c7;
+          color: #ffffff;
+          box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
+        }
+
+        .df-tab-btn.active-purple {
+          background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+          color: #ffffff;
+          box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+        }
+
+        /* KPI Cards Grid */
+        .df-status-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 12px;
+          margin-top: 16px;
+        }
+
+        .df-kpi-card {
+          padding: 14px 16px;
+          border-radius: 14px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          border: 1.5px solid #e2e8f0;
+          background: #ffffff;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+          transition: transform 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .df-kpi-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+        }
+
+        /* Mobile Expense Card Voucher */
+        .df-mobile-voucher {
+          background: #ffffff;
+          border-radius: 14px;
+          border: 1.5px solid #e2e8f0;
+          padding: 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          box-shadow: 0 3px 12px rgba(15, 23, 42, 0.04);
+          position: relative;
+          transition: all 0.2s ease;
+        }
+
+        .df-mobile-voucher.vendor-theme {
+          border-left: 4.5px solid #9333ea;
+        }
+        .df-mobile-voucher.staff-theme {
+          border-left: 4.5px solid #0284c7;
+        }
+        .df-mobile-voucher.vehicle-theme {
+          border-left: 4.5px solid #d97706;
+        }
+        .df-mobile-voucher.shop-theme {
+          border-left: 4.5px solid #e11d48;
+        }
+        .df-mobile-voucher.other-theme {
+          border-left: 4.5px solid #64748b;
+        }
+        .df-mobile-voucher.credit-active {
+          border-color: #f59e0b;
+          border-left: 4.5px solid #d97706;
+          background: linear-gradient(180deg, #fffdfa 0%, #ffffff 100%);
+          box-shadow: 0 4px 14px rgba(217, 119, 6, 0.08);
+        }
+
+        /* Mode Selector Chips */
+        .df-mode-pill-group {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 4px;
+          background: #f1f5f9;
+          padding: 3px;
+          border-radius: 9px;
+          border: 1px solid #e2e8f0;
+        }
+
+        .df-mode-pill {
+          padding: 6px 4px;
+          border-radius: 7px;
+          border: none;
+          font-size: 11.5px;
+          font-weight: 800;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 3px;
+          transition: all 0.15s ease;
+          background: transparent;
+          color: #64748b;
+        }
+
+        .df-mode-pill.selected-cash {
+          background: #059669;
+          color: #ffffff;
+          box-shadow: 0 2px 6px rgba(5, 150, 105, 0.3);
+        }
+
+        .df-mode-pill.selected-upi {
+          background: #0284c7;
+          color: #ffffff;
+          box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3);
+        }
+
+        .df-mode-pill.selected-credit {
+          background: #d97706;
+          color: #ffffff;
+          box-shadow: 0 2px 6px rgba(217, 119, 6, 0.35);
+        }
+
+        /* Embedded Golden Credit Terms Drawer */
+        .df-credit-drawer {
+          background: #fffbeb;
+          border: 1.5px solid #fde68a;
+          border-radius: 10px;
+          padding: 10px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          animation: dfFadeIn 0.2s ease-in-out;
+        }
+
+        @keyframes dfFadeIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        .df-active-row {
+          background: #f0f9ff !important;
+          border-left: 4px solid #0284c7 !important;
+        }
+
+        /* =========================================================================
+           RESPONSIVE BREAKPOINTS (Mobile < 768px & Tablet < 1024px)
+           ========================================================================= */
         @media (max-width: 768px) {
           .df-page-wrapper {
-            padding: 10px 10px 80px 10px !important;
+            padding: 10px 10px 90px 10px !important;
           }
           .df-header {
             flex-direction: column !important;
@@ -964,8 +1233,9 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
           .df-tab-btn {
             flex: 1 !important;
             justify-content: center !important;
-            padding: 10px 6px !important;
-            font-size: 12.5px !important;
+            padding: 9px 4px !important;
+            font-size: 12px !important;
+            gap: 4px !important;
           }
           .df-status-grid {
             grid-template-columns: repeat(2, 1fr) !important;
@@ -975,10 +1245,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             grid-column: span 2 !important;
           }
           .df-top-bar {
-            padding: 14px !important;
+            padding: 12px !important;
             flex-direction: column !important;
             align-items: stretch !important;
-            gap: 14px !important;
+            gap: 12px !important;
           }
           .df-date-group {
             flex-direction: column !important;
@@ -1010,8 +1280,8 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
           }
           .df-date-buttons-row button {
             flex: 1 !important;
-            padding: 9px 6px !important;
-            font-size: 12px !important;
+            padding: 9px 4px !important;
+            font-size: 11.5px !important;
             justify-content: center !important;
             border-radius: 8px !important;
           }
@@ -1027,12 +1297,12 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
           }
           .df-inflows-grid {
             grid-template-columns: 1fr !important;
-            gap: 12px !important;
+            gap: 10px !important;
           }
           .df-section-header {
             flex-direction: column !important;
             align-items: flex-start !important;
-            gap: 10px !important;
+            gap: 8px !important;
           }
           .df-total-badge {
             width: 100% !important;
@@ -1044,8 +1314,8 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
           }
           .df-quick-btn {
             flex: 1 1 calc(50% - 6px) !important;
-            padding: 8px 8px !important;
-            font-size: 11.5px !important;
+            padding: 8px 6px !important;
+            font-size: 11px !important;
             justify-content: center !important;
           }
           .df-quick-btn-blank {
@@ -1089,6 +1359,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             max-width: 100% !important;
           }
         }
+
         @media (min-width: 769px) {
           .df-cards-mobile {
             display: none !important;
@@ -1106,10 +1377,6 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             align-items: center !important;
             gap: 6px !important;
           }
-        }
-        .df-active-row {
-          background: #f0f9ff !important;
-          border-left: 4px solid #0284c7 !important;
         }
       `}</style>
 
@@ -1471,6 +1738,66 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
               </div>
 
             </div>
+
+            {/* EDITING RECORD ACTIVE BANNER */}
+            {editingRecord && (
+              <div style={{
+                background: 'linear-gradient(135deg, #eff6ff 0%, #e0f2fe 100%)',
+                border: '2px solid #0284c7',
+                borderRadius: '14px',
+                padding: '14px 18px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px',
+                boxShadow: '0 4px 16px rgba(2, 132, 199, 0.12)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '10px',
+                    background: '#0284c7',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 900,
+                    fontSize: '16px',
+                    flexShrink: 0
+                  }}>
+                    ✏️
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 900, color: '#0369a1' }}>
+                      Editing Accounts Record for {new Date(formData.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#0284c7', marginTop: '1px' }}>
+                      All {formData.payment_details?.length || 0} expense vouchers & earnings loaded. You can add new expenses below or adjust existing numbers.
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleAddExpenseRow('VENDOR')}
+                    className="btn btn-secondary btn-sm"
+                    style={{ background: '#ffffff', border: '1.5px solid #0284c7', color: '#0284c7', fontWeight: 800, borderRadius: '8px', padding: '6px 12px' }}
+                  >
+                    + Add Vendor Payout
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenNewEntry()}
+                    className="btn btn-secondary btn-sm"
+                    style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', color: '#475569', fontWeight: 700, borderRadius: '8px', padding: '6px 12px' }}
+                  >
+                    + New Blank Day Entry
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* =========================================================================
                 SECTION 1: MONEY COMING IN (CASH & UPI INFLOWS)
@@ -2438,57 +2765,62 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   const isOther = row.type === 'OTHER';
                   const isCredit = row.payment_mode === 'CREDIT';
 
-                  return (
-                    <div key={row.id || index} style={{
-                      background: isCredit ? '#fffdf7' : '#ffffff',
-                      borderRadius: '12px',
-                      border: isCredit ? '2px solid #f59e0b' : ('1.5px solid ' + (isVendor ? '#d8b4fe' : (isStaff ? '#7dd3fc' : (isVehicle ? '#fde68a' : '#fecdd3')))),
-                      padding: '12px 14px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '10px',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
-                    }}>
-                      {/* Top Row: Index, Category Dropdown, Delete Button */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{
-                          width: '26px',
-                          height: '26px',
-                          borderRadius: '8px',
-                          background: isCredit ? '#fef3c7' : '#f1f5f9',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '12px',
-                          fontWeight: 900,
-                          color: isCredit ? '#92400e' : '#475569',
-                          flexShrink: 0
-                        }}>
-                          #{index + 1}
-                        </span>
+                  const themeClass = isVendor ? 'vendor-theme' : (isStaff ? 'staff-theme' : (isVehicle ? 'vehicle-theme' : (isShop ? 'shop-theme' : 'other-theme')));
 
+                  return (
+                    <div
+                      key={row.id || index}
+                      className={`df-mobile-voucher ${themeClass} ${isCredit ? 'credit-active' : ''}`}
+                    >
+                      {/* Top Row: Index Badge, Category Dropdown, Delete Button */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                        
+                        {/* Index Pill */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '8px',
+                            background: isCredit ? '#fef3c7' : (isVendor ? '#f3e8ff' : (isStaff ? '#e0f2fe' : (isVehicle ? '#fef3c7' : '#ffe4e6'))),
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '12.5px',
+                            fontWeight: 900,
+                            color: isCredit ? '#b45309' : (isVendor ? '#7e22ce' : (isStaff ? '#0369a1' : (isVehicle ? '#b45309' : '#be123c'))),
+                            flexShrink: 0
+                          }}>
+                            #{index + 1}
+                          </span>
+                          <span style={{ fontSize: '12px', fontWeight: 800, color: '#475569' }}>
+                            {isVendor ? '🏢 Vendor' : (isStaff ? '👤 Staff' : (isVehicle ? '🚗 Vehicle' : (isShop ? '☕ Shop' : '📦 Other')))}
+                          </span>
+                        </div>
+
+                        {/* Category Selector */}
                         <select
                           value={row.type}
                           onChange={(e) => handleUpdateExpenseRow(row.id, 'type', e.target.value)}
                           style={{
-                            flex: 1,
-                            padding: '8px 10px',
+                            padding: '6px 10px',
                             borderRadius: '8px',
-                            border: '1px solid #cbd5e1',
+                            border: '1.5px solid ' + (isVendor ? '#d8b4fe' : (isStaff ? '#7dd3fc' : (isVehicle ? '#fde68a' : '#fecdd3'))),
                             background: isVendor ? '#faf5ff' : (isStaff ? '#f0f9ff' : (isVehicle ? '#fffbeb' : '#fff1f2')),
                             fontWeight: 800,
-                            fontSize: '12.5px',
+                            fontSize: '12px',
                             color: isVendor ? '#6b21a8' : (isStaff ? '#0369a1' : (isVehicle ? '#92400e' : '#be123c')),
-                            outline: 'none'
+                            outline: 'none',
+                            cursor: 'pointer'
                           }}
                         >
-                          <option value="VENDOR">🏢 Vendor Payout</option>
+                          <option value="VENDOR">🏢 Vendor</option>
                           <option value="STAFF">👤 Staff Pay</option>
                           <option value="VEHICLE">🚗 Petrol / Vehicle</option>
                           <option value="SHOP">☕ Shop Expense</option>
-                          <option value="OTHER">📦 Other Expense</option>
+                          <option value="OTHER">📦 Other</option>
                         </select>
 
+                        {/* Delete Button */}
                         <button
                           type="button"
                           onClick={() => handleRemoveExpenseRow(row.id)}
@@ -2496,7 +2828,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                             background: '#fef2f2',
                             border: '1px solid #fecdd3',
                             color: '#ef4444',
-                            padding: '8px',
+                            padding: '7px 9px',
                             borderRadius: '8px',
                             cursor: 'pointer',
                             display: 'flex',
@@ -2504,161 +2836,206 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                             justifyContent: 'center',
                             flexShrink: 0
                           }}
+                          title="Delete line"
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={15} />
                         </button>
                       </div>
 
-                      {/* Middle: Name / Details */}
+                      {/* Middle: Recipient / Details */}
                       <div>
                         {isVendor && (
                           suppliers.length > 0 ? (
-                            <select
-                              value={row.recipient || ''}
-                              onChange={(e) => handleUpdateExpenseRow(row.id, 'recipient', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '8px 10px',
-                                borderRadius: '8px',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '13px',
-                                fontWeight: 700,
-                                background: '#ffffff',
-                                outline: 'none'
-                              }}
-                            >
-                              <option value="">-- Select Supplier / Wholesaler --</option>
-                              {suppliers.map(s => (
-                                <option key={s.id} value={s.name}>{s.name}</option>
-                              ))}
-                            </select>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#7e22ce', marginBottom: '3px' }}>
+                                🏢 Supplier / Wholesaler:
+                              </label>
+                              <select
+                                value={row.recipient || ''}
+                                onChange={(e) => handleUpdateExpenseRow(row.id, 'recipient', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '9px 11px',
+                                  borderRadius: '8px',
+                                  border: '1.5px solid #d8b4fe',
+                                  fontSize: '13.5px',
+                                  fontWeight: 800,
+                                  background: '#ffffff',
+                                  color: '#1e293b',
+                                  outline: 'none'
+                                }}
+                              >
+                                <option value="">-- Select Supplier / Wholesaler --</option>
+                                {suppliers.map(s => (
+                                  <option key={s.id} value={s.name}>{s.name}</option>
+                                ))}
+                              </select>
+                            </div>
                           ) : (
-                            <input
-                              type="text"
-                              placeholder="Type Supplier Name"
-                              value={row.recipient || ''}
-                              onChange={(e) => handleUpdateExpenseRow(row.id, 'recipient', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '8px 10px',
-                                borderRadius: '8px',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '13px',
-                                outline: 'none'
-                              }}
-                            />
+                            <div>
+                              <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#7e22ce', marginBottom: '3px' }}>
+                                🏢 Supplier Name:
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Type Supplier Name"
+                                value={row.recipient || ''}
+                                onChange={(e) => handleUpdateExpenseRow(row.id, 'recipient', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '9px 11px',
+                                  borderRadius: '8px',
+                                  border: '1.5px solid #cbd5e1',
+                                  fontSize: '13.5px',
+                                  fontWeight: 700,
+                                  outline: 'none'
+                                }}
+                              />
+                            </div>
                           )
                         )}
 
                         {isStaff && (
                           staffList.length > 0 ? (
-                            <select
-                              value={row.staff_id || ''}
-                              onChange={(e) => handleUpdateExpenseRow(row.id, 'staff_id', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '8px 10px',
-                                borderRadius: '8px',
-                                border: '1.5px solid #7dd3fc',
-                                fontSize: '13px',
-                                fontWeight: 800,
-                                color: '#0369a1',
-                                background: '#ffffff',
-                                outline: 'none'
-                              }}
-                            >
-                              <option value="">-- Select Staff Member --</option>
-                              {staffList.map(st => (
-                                <option key={st.id} value={st.id}>
-                                  [{st.charge_code}] {st.name} ({st.role})
-                                </option>
-                              ))}
-                            </select>
+                            <div>
+                              <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#0369a1', marginBottom: '3px' }}>
+                                👤 Staff Member & Charge Code:
+                              </label>
+                              <select
+                                value={row.staff_id || ''}
+                                onChange={(e) => handleUpdateExpenseRow(row.id, 'staff_id', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '9px 11px',
+                                  borderRadius: '8px',
+                                  border: '1.5px solid #7dd3fc',
+                                  fontSize: '13.5px',
+                                  fontWeight: 800,
+                                  color: '#0369a1',
+                                  background: '#ffffff',
+                                  outline: 'none'
+                                }}
+                              >
+                                <option value="">-- Select Staff Member --</option>
+                                {staffList.map(st => (
+                                  <option key={st.id} value={st.id}>
+                                    [{st.charge_code}] {st.name} ({st.role})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           ) : (
-                            <input
-                              type="text"
-                              placeholder="Staff Person Name"
-                              value={row.staff_name || ''}
-                              onChange={(e) => handleUpdateExpenseRow(row.id, 'staff_name', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '8px 10px',
-                                borderRadius: '8px',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '13px',
-                                outline: 'none'
-                              }}
-                            />
+                            <div>
+                              <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#0369a1', marginBottom: '3px' }}>
+                                👤 Staff Person Name:
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Staff Person Name"
+                                value={row.staff_name || ''}
+                                onChange={(e) => handleUpdateExpenseRow(row.id, 'staff_name', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '9px 11px',
+                                  borderRadius: '8px',
+                                  border: '1.5px solid #cbd5e1',
+                                  fontSize: '13.5px',
+                                  fontWeight: 700,
+                                  outline: 'none'
+                                }}
+                              />
+                            </div>
                           )
                         )}
 
                         {isVehicle && (
-                          <input
-                            type="text"
-                            placeholder="Delivery Bike / Driver / Vehicle details"
-                            value={row.vehicle_info || ''}
-                            onChange={(e) => handleUpdateExpenseRow(row.id, 'vehicle_info', e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '8px 10px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '13px',
-                              outline: 'none'
-                            }}
-                          />
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#b45309', marginBottom: '3px' }}>
+                              🚗 Vehicle / Delivery Details:
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Delivery Bike / Driver / Vehicle details"
+                              value={row.vehicle_info || ''}
+                              onChange={(e) => handleUpdateExpenseRow(row.id, 'vehicle_info', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '9px 11px',
+                                borderRadius: '8px',
+                                border: '1.5px solid #cbd5e1',
+                                fontSize: '13.5px',
+                                fontWeight: 700,
+                                outline: 'none'
+                              }}
+                            />
+                          </div>
                         )}
 
                         {isShop && (
-                          <input
-                            type="text"
-                            placeholder="Details (e.g. Tea & snacks / Cleaning)"
-                            value={row.note || ''}
-                            onChange={(e) => handleUpdateExpenseRow(row.id, 'note', e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '8px 10px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '13px',
-                              outline: 'none'
-                            }}
-                          />
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#be123c', marginBottom: '3px' }}>
+                              ☕ Expense Details & Description:
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Details (e.g. Tea & snacks / Cleaning supplies)"
+                              value={row.note || ''}
+                              onChange={(e) => handleUpdateExpenseRow(row.id, 'note', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '9px 11px',
+                                borderRadius: '8px',
+                                border: '1.5px solid #cbd5e1',
+                                fontSize: '13.5px',
+                                fontWeight: 700,
+                                outline: 'none'
+                              }}
+                            />
+                          </div>
                         )}
 
                         {isOther && (
-                          <input
-                            type="text"
-                            placeholder="Expense description"
-                            value={row.note || ''}
-                            onChange={(e) => handleUpdateExpenseRow(row.id, 'note', e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '8px 10px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '13px',
-                              outline: 'none'
-                            }}
-                          />
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#475569', marginBottom: '3px' }}>
+                              📦 Other Expense Description:
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Expense description"
+                              value={row.note || ''}
+                              onChange={(e) => handleUpdateExpenseRow(row.id, 'note', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '9px 11px',
+                                borderRadius: '8px',
+                                border: '1.5px solid #cbd5e1',
+                                fontSize: '13.5px',
+                                fontWeight: 700,
+                                outline: 'none'
+                              }}
+                            />
+                          </div>
                         )}
                       </div>
 
-                      {/* Purpose & Charge code */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '6px' }}>
+                      {/* Purpose & Charge Code Row */}
+                      <div>
                         {isStaff && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             {row.charge_code && (
                               <span style={{
-                                padding: '3px 6px',
+                                padding: '5px 8px',
                                 background: '#e0f2fe',
                                 color: '#0369a1',
                                 borderRadius: '6px',
-                                fontWeight: 800,
-                                fontSize: '11px',
-                                border: '1px solid #bae6fd'
+                                fontWeight: 900,
+                                fontSize: '11.5px',
+                                border: '1px solid #bae6fd',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
                               }}>
-                                Code: {row.charge_code}
+                                <Tag size={12} /> {row.charge_code}
                               </span>
                             )}
                             <select
@@ -2666,11 +3043,13 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                               onChange={(e) => handleUpdateExpenseRow(row.id, 'purpose', e.target.value)}
                               style={{
                                 flex: 1,
-                                padding: '6px 8px',
-                                borderRadius: '6px',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '12px',
+                                padding: '7px 10px',
+                                borderRadius: '8px',
+                                border: '1.5px solid #cbd5e1',
+                                fontSize: '12.5px',
                                 fontWeight: 700,
+                                color: '#0369a1',
+                                background: '#ffffff',
                                 outline: 'none'
                               }}
                             >
@@ -2692,10 +3071,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                             onChange={(e) => handleUpdateExpenseRow(row.id, 'note', e.target.value)}
                             style={{
                               width: '100%',
-                              padding: '6px 8px',
-                              borderRadius: '6px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '12px',
+                              padding: '7px 10px',
+                              borderRadius: '8px',
+                              border: '1.5px solid #cbd5e1',
+                              fontSize: '12.5px',
                               outline: 'none'
                             }}
                           />
@@ -2707,10 +3086,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                             onChange={(e) => handleUpdateExpenseRow(row.id, 'purpose', e.target.value)}
                             style={{
                               width: '100%',
-                              padding: '6px 8px',
-                              borderRadius: '6px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '12px',
+                              padding: '7px 10px',
+                              borderRadius: '8px',
+                              border: '1.5px solid #cbd5e1',
+                              fontSize: '12.5px',
                               fontWeight: 700,
                               outline: 'none'
                             }}
@@ -2728,10 +3107,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                             onChange={(e) => handleUpdateExpenseRow(row.id, 'category', e.target.value)}
                             style={{
                               width: '100%',
-                              padding: '6px 8px',
-                              borderRadius: '6px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '12px',
+                              padding: '7px 10px',
+                              borderRadius: '8px',
+                              border: '1.5px solid #cbd5e1',
+                              fontSize: '12.5px',
                               fontWeight: 700,
                               outline: 'none'
                             }}
@@ -2746,90 +3125,102 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                         )}
                       </div>
 
-                      {/* Bottom Row: Amount + Payment Mode */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '8px', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ position: 'relative' }}>
-                            <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px', fontWeight: 900, color: isCredit ? '#b45309' : '#e11d48' }}>
-                              {currency}
-                            </span>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              placeholder="0.00"
-                              value={row.amount || ''}
-                              onChange={(e) => handleUpdateExpenseRow(row.id, 'amount', e.target.value)}
-                              className="mono"
-                              style={{
-                                width: '100%',
-                                padding: '8px 8px 8px 24px',
-                                borderRadius: '8px',
-                                border: '1.5px solid ' + (isCredit ? '#f59e0b' : '#f87171'),
-                                fontSize: '16px',
-                                fontWeight: 900,
-                                color: isCredit ? '#b45309' : '#be123c',
-                                textAlign: 'right',
-                                background: isCredit ? '#fffbeb' : '#ffffff',
-                                outline: 'none'
-                              }}
-                            />
-                          </div>
-                          <div style={{ fontSize: '10px', fontWeight: 800, marginTop: '2px', textAlign: 'right' }}>
-                            {isCredit ? (
-                              <span style={{ color: '#b45309' }}>⏳ Credit (Yet to Pay)</span>
-                            ) : (
-                              <span style={{ color: '#059669' }}>💸 Paid Out Today</span>
-                            )}
-                          </div>
-                        </div>
+                      {/* Payment Mode Segmented Selector (3 Buttons) */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
+                          💳 Payment Mode:
+                        </label>
+                        <div className="df-mode-pill-group">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateExpenseRow(row.id, 'payment_mode', 'CASH')}
+                            className={`df-mode-pill ${row.payment_mode === 'CASH' ? 'selected-cash' : ''}`}
+                          >
+                            <Banknote size={13} />
+                            <span>CASH</span>
+                          </button>
 
-                        <select
-                          value={row.payment_mode || 'CASH'}
-                          onChange={(e) => handleUpdateExpenseRow(row.id, 'payment_mode', e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '8px',
-                            borderRadius: '8px',
-                            border: '1.5px solid ' + (row.payment_mode === 'CREDIT' ? '#f59e0b' : (row.payment_mode === 'UPI' ? '#93c5fd' : '#86efac')),
-                            fontSize: '12px',
-                            fontWeight: 800,
-                            color: row.payment_mode === 'CREDIT' ? '#b45309' : (row.payment_mode === 'UPI' ? '#0284c7' : '#059669'),
-                            background: row.payment_mode === 'CREDIT' ? '#fffbeb' : (row.payment_mode === 'UPI' ? '#f0f9ff' : '#f0fdf4'),
-                            outline: 'none'
-                          }}
-                        >
-                          <option value="CASH">💵 CASH</option>
-                          <option value="UPI">📱 UPI</option>
-                          <option value="CREDIT">⏳ CREDIT</option>
-                        </select>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateExpenseRow(row.id, 'payment_mode', 'UPI')}
+                            className={`df-mode-pill ${row.payment_mode === 'UPI' ? 'selected-upi' : ''}`}
+                          >
+                            <QrCode size={13} />
+                            <span>UPI</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateExpenseRow(row.id, 'payment_mode', 'CREDIT')}
+                            className={`df-mode-pill ${row.payment_mode === 'CREDIT' ? 'selected-credit' : ''}`}
+                          >
+                            <Clock size={13} />
+                            <span>CREDIT</span>
+                          </button>
+                        </div>
                       </div>
 
-                      {/* If CREDIT Mode: Mobile Due Date picker & countdown */}
+                      {/* Amount Field */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: isCredit ? '#b45309' : '#be123c', marginBottom: '3px' }}>
+                          💰 Amount ({currency}) *
+                        </label>
+                        <div style={{ position: 'relative' }}>
+                          <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '16px', fontWeight: 900, color: isCredit ? '#b45309' : '#e11d48' }}>
+                            {currency}
+                          </span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            value={row.amount || ''}
+                            onChange={(e) => handleUpdateExpenseRow(row.id, 'amount', e.target.value)}
+                            className="mono"
+                            style={{
+                              width: '100%',
+                              padding: '9px 12px 9px 28px',
+                              borderRadius: '9px',
+                              border: '2px solid ' + (isCredit ? '#f59e0b' : '#f87171'),
+                              fontSize: '18px',
+                              fontWeight: 900,
+                              color: isCredit ? '#b45309' : '#be123c',
+                              textAlign: 'right',
+                              background: isCredit ? '#fffbeb' : '#ffffff',
+                              outline: 'none'
+                            }}
+                          />
+                        </div>
+                        <div style={{ fontSize: '11px', fontWeight: 800, marginTop: '4px', textAlign: 'right' }}>
+                          {isCredit ? (
+                            <span style={{ color: '#b45309', background: '#fef3c7', padding: '2px 6px', borderRadius: '4px' }}>
+                              ⏳ Credit: Bill yet to be paid (Logged for tracking)
+                            </span>
+                          ) : (
+                            <span style={{ color: '#059669' }}>
+                              💸 Paid today ({row.payment_mode === 'UPI' ? 'via QR / soundbox' : 'from cash drawer'})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Embedded Golden Credit Terms Drawer (when CREDIT selected) */}
                       {isCredit && (
-                        <div style={{
-                          background: '#fffbeb',
-                          border: '1.5px solid #fde68a',
-                          borderRadius: '8px',
-                          padding: '8px 10px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '6px'
-                        }}>
+                        <div className="df-credit-drawer">
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                            <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#92400e', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <Calendar size={13} /> Due Date:
+                            <span style={{ fontSize: '12px', fontWeight: 900, color: '#92400e', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Calendar size={14} /> Due Date:
                             </span>
                             <input
                               type="date"
                               value={row.due_date || computeDueDate(formData.date, row.credit_days || 21)}
                               onChange={(e) => handleUpdateExpenseRow(row.id, 'due_date', e.target.value)}
                               style={{
-                                padding: '4px 8px',
-                                fontSize: '12px',
+                                padding: '5px 8px',
+                                fontSize: '13px',
                                 fontWeight: 800,
                                 borderRadius: '6px',
-                                border: '1px solid #f59e0b',
+                                border: '1.5px solid #f59e0b',
                                 color: '#92400e',
                                 background: '#ffffff',
                                 outline: 'none'
@@ -2849,11 +3240,11 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                                     handleUpdateExpenseRow(row.id, 'due_date', newDue);
                                   }}
                                   style={{
-                                    padding: '3px 6px',
-                                    borderRadius: '5px',
+                                    padding: '4px 8px',
+                                    borderRadius: '6px',
                                     fontSize: '11px',
-                                    fontWeight: 800,
-                                    border: (parseInt(row.credit_days) === days) ? '1px solid #b45309' : '1px solid #fde68a',
+                                    fontWeight: 900,
+                                    border: (parseInt(row.credit_days) === days) ? '1.5px solid #b45309' : '1px solid #fde68a',
                                     background: (parseInt(row.credit_days) === days) ? '#fef3c7' : '#ffffff',
                                     color: '#92400e',
                                     cursor: 'pointer'
@@ -2870,10 +3261,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                               const isToday = daysLeft === 0;
                               return (
                                 <span style={{
-                                  fontSize: '11px',
+                                  fontSize: '11.5px',
                                   fontWeight: 900,
-                                  padding: '2px 8px',
-                                  borderRadius: '5px',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
                                   background: isOverdue ? '#fee2e2' : (isToday ? '#fef3c7' : '#ecfdf5'),
                                   color: isOverdue ? '#b91c1c' : (isToday ? '#b45309' : '#047857'),
                                   border: '1px solid ' + (isOverdue ? '#fca5a5' : (isToday ? '#fde68a' : '#a7f3d0'))
@@ -3294,12 +3685,15 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                         return (
                           <tr
                             key={r.id || idx}
+                            onClick={() => handleOpenEdit(r, true)}
                             className={isSelectedDate ? 'df-active-row' : ''}
                             style={{
                               background: isSelectedDate ? '#f0f9ff' : (idx % 2 === 0 ? '#ffffff' : '#fcfcfd'),
                               borderBottom: '1px solid #e2e8f0',
-                              transition: 'background 0.15s'
+                              transition: 'background 0.15s',
+                              cursor: 'pointer'
                             }}
+                            title="Click row to load all income & expense vouchers for this date"
                           >
                             {/* Date */}
                             <td style={{ padding: '10px 10px', fontWeight: 800, whiteSpace: 'nowrap' }}>
@@ -3398,7 +3792,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                                 <button
                                   type="button"
-                                  onClick={() => handleOpenEdit(r, true)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenEdit(r, true);
+                                  }}
                                   className="btn btn-secondary btn-sm"
                                   style={{ padding: '5px 8px', color: '#0284c7', background: '#f0f9ff', border: '1px solid #bae6fd', fontWeight: 800 }}
                                   title="Edit in Register"
@@ -3407,7 +3804,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setViewingRecord(r)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setViewingRecord(r);
+                                  }}
                                   className="btn btn-secondary btn-sm"
                                   style={{ padding: '5px 8px', color: '#475569', fontWeight: 700 }}
                                   title="View Statement Voucher"
@@ -3416,7 +3816,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleDeleteRecord(r)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteRecord(r);
+                                  }}
                                   className="btn btn-secondary btn-sm"
                                   style={{ padding: '5px 8px', color: '#ef4444', background: '#fef2f2', border: '1px solid #fecdd3' }}
                                   title="Delete Record"
@@ -3968,10 +4371,16 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                     const rowBg = index % 2 === 0 ? '#ffffff' : '#fcfcfd';
 
                     return (
-                      <tr key={b.id || index} style={{
-                        background: isOverdue && !isFullyPaid ? '#fff1f2' : rowBg,
-                        borderBottom: '1px solid #e2e8f0'
-                      }}>
+                      <tr
+                        key={b.id || index}
+                        onClick={() => handleOpenBillHistory(b)}
+                        style={{
+                          background: isOverdue && !isFullyPaid ? '#fff1f2' : rowBg,
+                          borderBottom: '1px solid #e2e8f0',
+                          cursor: 'pointer'
+                        }}
+                        title="Click to view payment installments history"
+                      >
                         {/* 1. Index */}
                         <td style={{ textAlign: 'center', fontWeight: 800, color: '#64748b', padding: '12px 4px' }}>
                           {index + 1}
@@ -4135,7 +4544,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                             {!isFullyPaid ? (
                               <button
                                 type="button"
-                                onClick={() => handleOpenRecordPayment(b)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenRecordPayment(b);
+                                }}
                                 style={{
                                   background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                                   color: '#ffffff',
@@ -4163,7 +4575,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                             {/* View History Ledger */}
                             <button
                               type="button"
-                              onClick={() => handleOpenBillHistory(b)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenBillHistory(b);
+                              }}
                               className="btn btn-secondary btn-sm"
                               style={{ padding: '5px 7px', color: '#7c3aed', background: '#faf5ff', border: '1px solid #d8b4fe' }}
                               title="View payment installments history"
@@ -4174,7 +4589,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                             {/* Edit Bill */}
                             <button
                               type="button"
-                              onClick={() => handleOpenEditBill(b)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenEditBill(b);
+                              }}
                               className="btn btn-secondary btn-sm"
                               style={{ padding: '5px 7px', color: '#0284c7' }}
                               title="Edit Bill Details"
@@ -4185,7 +4603,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                             {/* Delete Bill */}
                             <button
                               type="button"
-                              onClick={() => handleDeleteBill(b)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteBill(b);
+                              }}
                               className="btn btn-secondary btn-sm"
                               style={{ padding: '5px 7px', color: '#dc2626', background: '#fef2f2', border: '1px solid #fecdd3' }}
                               title="Delete Bill"
@@ -4569,7 +4990,12 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                       const vehicleCount = details.filter(d => d.type === 'VEHICLE').length;
 
                       return (
-                        <tr key={r.id}>
+                        <tr
+                          key={r.id}
+                          onClick={() => handleOpenEdit(r, true)}
+                          style={{ cursor: 'pointer' }}
+                          title="Click row to edit accounts for this date"
+                        >
                           {/* Date */}
                           <td style={{ fontWeight: 800, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -4669,7 +5095,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                           <td style={{ textAlign: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                               <button
-                                onClick={() => setViewingRecord(r)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewingRecord(r);
+                                }}
                                 className="btn btn-secondary btn-sm"
                                 style={{ padding: '4px 6px' }}
                                 title="View Statement Voucher"
@@ -4677,7 +5106,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                                 <Eye size={13} color="#0284c7" />
                               </button>
                               <button
-                                onClick={() => handleOpenEdit(r, true)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenEdit(r, true);
+                                }}
                                 className="btn btn-secondary btn-sm"
                                 style={{ padding: '4px 6px' }}
                                 title="Edit in Table Register"
@@ -4685,7 +5117,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                                 <Edit3 size={13} color="#059669" />
                               </button>
                               <button
-                                onClick={() => handleDeleteRecord(r)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteRecord(r);
+                                }}
                                 className="btn btn-secondary btn-sm"
                                 style={{ padding: '4px 6px', color: '#dc2626' }}
                                 title="Delete Record"

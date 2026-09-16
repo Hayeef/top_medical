@@ -342,9 +342,11 @@ class VendorBill(models.Model):
         self.paid_amount = Decimal(str(self.paid_amount or '0.00'))
         self.balance_due = max(Decimal('0.00'), self.total_amount - self.paid_amount)
         
-        # Calculate due_date if not explicitly provided or if credit_days is changed
-        if self.bill_date and (not self.due_date or self.credit_days is not None):
+        # Calculate due_date if not explicitly provided
+        if self.bill_date and not self.due_date:
             self.due_date = self.bill_date + timedelta(days=int(self.credit_days or 21))
+        elif self.bill_date and self.due_date and not self.credit_days:
+            self.credit_days = max(0, (self.due_date - self.bill_date).days)
             
         # Update status
         if self.balance_due <= Decimal('0.00'):

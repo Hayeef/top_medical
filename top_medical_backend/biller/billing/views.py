@@ -524,7 +524,7 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
         """
         Auto-sync vendor line items from daily register to VendorBill:
         - CREDIT -> Created or updated as PENDING wholesale credit bills with due dates & remaining days.
-        - CASH / UPI -> Created or updated as PAID / CLEARED bills.
+        - CASH / UPI -> Created or updated with full payment history, paid amounts, and PAID/PARTIAL status.
         """
         details = daily_record.payment_details or []
         for idx, item in enumerate(details):
@@ -567,28 +567,49 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
                         notes=f"Auto-logged from Daily Register ({daily_record.date})"
                     )
                 else:
-                    bill.bill_date = daily_record.date
                     bill.credit_days = credit_days
                     bill.due_date = due_date_val
-                    bill.total_amount = amt
+                    if bill.total_amount < amt:
+                        bill.total_amount = amt
 
                 if mode == 'CREDIT':
-                    bill.paid_amount = Decimal('0.00')
-                    bill.status = 'PENDING'
+                    if bill.paid_amount == Decimal('0.00'):
+                        bill.status = 'PENDING'
                 else:
-                    bill.paid_amount = amt
-                    bill.status = 'PAID'
-                    if not bill.payment_history:
-                        bill.payment_history = [{
-                            "id": 1,
-                            "date": daily_record.date.isoformat(),
-                            "amount": float(amt),
-                            "payment_mode": mode,
-                            "reference_number": "Daily Register Payout",
-                            "notes": f"Paid via Daily Register ({mode})",
-                            "logged_by": user.username if user else 'Staff',
-                            "created_at": timezone.now().isoformat()
-                        }]
+                    # CASH or UPI payment from Daily Register
+                    history = list(bill.payment_history or [])
+                    
+                    # Remove any prior payment log from this specific daily record to prevent duplicate entries
+                    filtered_history = [
+                        p for p in history
+                        if not (p.get('source_daily_record') == daily_record.id or 
+                                (p.get('date') == daily_record.date.isoformat() and p.get('ref_tag') == f"DR-{daily_record.id}-{idx}"))
+                    ]
+                    
+                    new_pay_log = {
+                        "id": len(filtered_history) + 1,
+                        "date": daily_record.date.isoformat(),
+                        "payment_date": daily_record.date.isoformat(),
+                        "amount": float(amt),
+                        "payment_mode": mode,
+                        "reference_number": raw_note if raw_note else f"Daily Register Payout #{idx+1}",
+                        "notes": item.get('purpose') or f"Paid via Daily Register ({mode}) on {daily_record.date}",
+                        "logged_by": user.username if user else 'Staff',
+                        "source_daily_record": daily_record.id,
+                        "ref_tag": f"DR-{daily_record.id}-{idx}",
+                        "created_at": timezone.now().isoformat()
+                    }
+                    filtered_history.append(new_pay_log)
+                    bill.payment_history = filtered_history
+                    
+                    # Recompute total paid amount from all history entries
+                    history_sum = sum(Decimal(str(p.get('amount', 0.0))) for p in filtered_history)
+                    bill.paid_amount = max(history_sum, amt)
+                    
+                    if bill.paid_amount >= bill.total_amount:
+                        bill.status = 'PAID'
+                    else:
+                        bill.status = 'PARTIAL'
 
                 bill.save()
 
@@ -598,7 +619,8 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
         Auto-aggregate live Cash, UPI, and total sales from POS Invoices for a selected date,
         and look up the previous recorded day's closing balance as the suggested opening balance.
         """
-        date_str = request.query_params.get('date')
+        params = getattr(request, 'query_params', getattr(request, 'GET', {}))
+        date_str = params.get('date')
         if date_str:
             try:
                 target_date = datetime.strptime(date_str, '%Y-%m-%d').date()

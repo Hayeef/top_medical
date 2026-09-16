@@ -300,14 +300,19 @@ export default function Sidebar({
           width: '260px',
           minWidth: '260px',
           height: '100vh',
+          maxHeight: '100vh',
           backgroundColor: '#ffffff',
           borderRight: '1px solid #e2e8f0',
+          display: 'flex',
           flexDirection: 'column',
           position: 'sticky',
           top: 0,
+          left: 0,
+          flexShrink: 0,
           zIndex: 50,
           userSelect: 'none',
-          boxShadow: '2px 0 10px rgba(0, 0, 0, 0.02)'
+          boxShadow: '2px 0 10px rgba(0, 0, 0, 0.02)',
+          overflowY: 'hidden'
         }}
       >
         {content}

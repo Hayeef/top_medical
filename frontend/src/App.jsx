@@ -193,7 +193,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', width: '100vw', background: 'var(--bg-main)', overflowX: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100vh', width: '100vw', background: 'var(--bg-main)', overflow: 'hidden' }}>
       {/* Sidebar (Desktop sticky & Mobile Drawer) */}
       <Sidebar 
         activeTab={activeTab} 
@@ -209,8 +209,8 @@ export default function App() {
         onCloseMobile={() => setIsMobileMenuOpen(false)}
       />
 
-      {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: '100vh', position: 'relative' }}>
+      {/* Main Content Area - Independently Scrollable */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100vh', maxHeight: '100vh', overflowY: 'auto', overflowX: 'hidden', position: 'relative' }}>
         <Header 
           activeTab={activeTab} 
           setActiveTab={setActiveTab} 
@@ -401,6 +401,7 @@ export default function App() {
             isOpen={isDailyReportOpen}
             onClose={() => setIsDailyReportOpen(false)}
             profile={profile}
+            user={authUser}
             suppliers={suppliers}
             categories={categories}
           />

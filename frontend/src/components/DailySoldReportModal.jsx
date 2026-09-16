@@ -24,9 +24,18 @@ export default function DailySoldReportModal({
   isOpen, 
   onClose, 
   profile,
+  user,
   suppliers = [],
   categories = []
 }) {
+  const isAdmin = Boolean(
+    user?.is_superuser || 
+    user?.role === 'admin' || 
+    user?.role === 'Owner' || 
+    (typeof user?.email === 'string' && (user.email.toLowerCase().includes('admin') || user.email.toLowerCase().includes('owner'))) || 
+    (typeof user?.username === 'string' && (user.username.toLowerCase().includes('admin') || user.username.toLowerCase().includes('owner')))
+  );
+
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
     return d.toISOString().split('T')[0];
@@ -124,8 +133,7 @@ export default function DailySoldReportModal({
       'Manufacturer / Company',
       'Primary Supplier',
       'Rack Location',
-      'Unit MRP (Rs)',
-      'Total Dispensed Amount (Rs)'
+      ...(isAdmin ? ['Unit MRP (Rs)', 'Total Dispensed Amount (Rs)'] : [])
     ];
 
     const rows = items.map((item, idx) => [
@@ -142,8 +150,7 @@ export default function DailySoldReportModal({
       `"${item.manufacturer || '-'}"`,
       `"${item.primary_supplier || '-'}"`,
       `"${item.rack_location || '-'}"`,
-      item.unit_mrp,
-      item.total_sales_amount
+      ...(isAdmin ? [item.unit_mrp, item.total_sales_amount] : [])
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [
@@ -486,12 +493,14 @@ export default function DailySoldReportModal({
               </div>
             </div>
 
-            <div style={{ padding: '10px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Sales Value</div>
-              <div className="mono" style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-                Rs. {(reportData?.total_sales_value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            {isAdmin && (
+              <div style={{ padding: '10px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Sales Value</div>
+                <div className="mono" style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                  Rs. {(reportData?.total_sales_value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Loading or Error State */}
@@ -525,13 +534,13 @@ export default function DailySoldReportModal({
                     <thead>
                       <tr style={{ background: '#f1f5f9', borderTop: '1px solid #cbd5e1', borderBottom: '2px solid #0f172a', textAlign: 'left' }}>
                         <th style={{ padding: '8px 6px', width: '30px', textAlign: 'center' }}>#</th>
-                        <th style={{ padding: '8px 10px', width: '28%' }}>Medicine Name & Salt Composition</th>
+                        <th style={{ padding: '8px 10px', width: isAdmin ? '26%' : '32%' }}>Medicine Name & Salt Composition</th>
                         <th style={{ padding: '8px 8px', width: '10%' }}>Dosage & Form</th>
                         <th style={{ padding: '8px 8px', width: '12%', textAlign: 'center', background: '#e0f2fe' }}>Qty Sold Today</th>
                         <th style={{ padding: '8px 8px', width: '11%', textAlign: 'center' }}>Current Stock</th>
-                        <th style={{ padding: '8px 8px', width: '12%', textAlign: 'center', background: '#fef3c7' }}>Suggested Reorder</th>
-                        <th style={{ padding: '8px 10px', width: '16%' }}>Manufacturer / Supplier</th>
-                        <th style={{ padding: '8px 8px', width: '11%', textAlign: 'right' }}>Total (₹)</th>
+                        <th style={{ padding: '8px 8px', width: '13%', textAlign: 'center', background: '#fef3c7' }}>Suggested Reorder</th>
+                        <th style={{ padding: '8px 10px', width: isAdmin ? '16%' : '22%' }}>Manufacturer / Supplier</th>
+                        {isAdmin && <th style={{ padding: '8px 8px', width: '12%', textAlign: 'right' }}>Total (₹)</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -634,9 +643,11 @@ export default function DailySoldReportModal({
                               </div>
                             </td>
 
-                            <td className="mono" style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
-                              Rs. {item.total_sales_amount.toFixed(2)}
-                            </td>
+                            {isAdmin && (
+                              <td className="mono" style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
+                                Rs. {item.total_sales_amount.toFixed(2)}
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
@@ -654,9 +665,11 @@ export default function DailySoldReportModal({
                           {items.reduce((acc, item) => acc + (item.suggested_reorder_packs || 0), 0)} pk
                         </td>
                         <td></td>
-                        <td style={{ padding: '10px 8px', textAlign: 'right', color: '#0f172a' }} className="mono">
-                          Rs. {(reportData?.total_sales_value || 0).toFixed(2)}
-                        </td>
+                        {isAdmin && (
+                          <td style={{ padding: '10px 8px', textAlign: 'right', color: '#0f172a' }} className="mono">
+                            Rs. {(reportData?.total_sales_value || 0).toFixed(2)}
+                          </td>
+                        )}
                       </tr>
                     </tfoot>
                   </table>

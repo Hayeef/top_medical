@@ -670,9 +670,14 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
         """
         all_records = DailyFinanceRecord.objects.all().order_by('-date')
         
-        # Today's Record
+        # Today's Record or live POS invoices
         today_d = date.today()
         today_record = DailyFinanceRecord.objects.filter(date=today_d).first()
+        
+        pos_invoices_today = Invoice.objects.filter(invoice_date__date=today_d)
+        pos_sales_today = pos_invoices_today.aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
+        pos_cash_today = pos_invoices_today.filter(payment_mode='CASH').aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
+        pos_upi_today = pos_invoices_today.filter(payment_mode='UPI').aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
         
         # All time sums
         all_time_totals = all_records.aggregate(
@@ -717,17 +722,17 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
             "today": {
                 "recorded": bool(today_record),
                 "date": today_d.strftime('%Y-%m-%d'),
-                "daily_sales": round(float(today_record.daily_sales), 2) if today_record else 0.0,
-                "cash_earned": round(float(today_record.cash_earned), 2) if today_record else 0.0,
-                "upi_earned": round(float(today_record.upi_earned), 2) if today_record else 0.0,
-                "total_earned": round(float(today_record.total_earned), 2) if today_record else 0.0,
-                "total_paid": round(float(today_record.total_paid), 2) if today_record else 0.0,
-                "supplier_payments": round(float(today_record.supplier_payments), 2) if today_record else 0.0,
-                "staff_expenses": round(float(today_record.staff_expenses), 2) if today_record else 0.0,
-                "vehicle_expenses": round(float(today_record.vehicle_expenses), 2) if today_record else 0.0,
-                "expenses": round(float(today_record.expenses), 2) if today_record else 0.0,
-                "net_day_change": round(float(today_record.net_day_change), 2) if today_record else 0.0,
-                "closing_balance": round(float(today_record.closing_balance), 2) if today_record else 0.0,
+                "daily_sales": round(float(today_record.daily_sales if today_record else pos_sales_today), 2),
+                "cash_earned": round(float(today_record.cash_earned if today_record else pos_cash_today), 2),
+                "upi_earned": round(float(today_record.upi_earned if today_record else pos_upi_today), 2),
+                "total_earned": round(float(today_record.total_earned if today_record else (pos_cash_today + pos_upi_today)), 2),
+                "total_paid": round(float(today_record.total_paid if today_record else Decimal('0.00')), 2),
+                "supplier_payments": round(float(today_record.supplier_payments if today_record else Decimal('0.00')), 2),
+                "staff_expenses": round(float(today_record.staff_expenses if today_record else Decimal('0.00')), 2),
+                "vehicle_expenses": round(float(today_record.vehicle_expenses if today_record else Decimal('0.00')), 2),
+                "expenses": round(float(today_record.expenses if today_record else Decimal('0.00')), 2),
+                "net_day_change": round(float(today_record.net_day_change if today_record else (pos_cash_today + pos_upi_today)), 2),
+                "closing_balance": round(float(today_record.closing_balance if today_record else current_firm_balance), 2),
             },
             "this_month": {
                 "year": cur_year,

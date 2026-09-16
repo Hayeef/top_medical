@@ -1002,13 +1002,29 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
     return list;
   }, [records, registerSearchQuery]);
 
-  // Metric stats
-  const todaySales = summaryStats?.today?.daily_sales || 0;
-  const todayCash = summaryStats?.today?.cash_earned || 0;
-  const todayUpi = summaryStats?.today?.upi_earned || 0;
-  const todayEarned = summaryStats?.today?.total_earned || (todayCash + todayUpi);
-  const todayPaid = summaryStats?.today?.total_paid || 0;
-  const currentFirmBalance = summaryStats?.current_firm_balance || 0;
+  // Dynamic Metric stats derived live from active selected date / current form / records / summaryStats
+  const activeRecordForDate = records.find(r => r.date === formData.date);
+  const latestRecordedDay = records.length > 0 ? [...records].sort((a, b) => new Date(b.date) - new Date(a.date))[0] : null;
+
+  const dynamicSales = (formData.daily_sales !== '' && formData.daily_sales !== undefined && formData.daily_sales !== null) 
+    ? (parseFloat(formData.daily_sales) || 0)
+    : (formTotalEarned > 0 ? formTotalEarned : (activeRecordForDate ? parseFloat(activeRecordForDate.daily_sales) : (summaryStats?.today?.daily_sales || (latestRecordedDay ? parseFloat(latestRecordedDay.daily_sales) : 0))));
+
+  const dynamicCash = (formData.cash_earned !== '' && formData.cash_earned !== undefined && formData.cash_earned !== null) 
+    ? formCashEarned 
+    : (activeRecordForDate ? parseFloat(activeRecordForDate.cash_earned) : (summaryStats?.today?.cash_earned || (latestRecordedDay ? parseFloat(latestRecordedDay.cash_earned) : 0)));
+
+  const dynamicUpi = (formData.upi_earned !== '' && formData.upi_earned !== undefined && formData.upi_earned !== null) 
+    ? formUpiEarned 
+    : (activeRecordForDate ? parseFloat(activeRecordForDate.upi_earned) : (summaryStats?.today?.upi_earned || (latestRecordedDay ? parseFloat(latestRecordedDay.upi_earned) : 0)));
+
+  const dynamicPaid = (formData.payment_details && formData.payment_details.length > 0 && formTotalPaid > 0) 
+    ? formTotalPaid 
+    : (activeRecordForDate ? parseFloat(activeRecordForDate.total_paid) : (summaryStats?.today?.total_paid || (latestRecordedDay ? parseFloat(latestRecordedDay.total_paid) : 0)));
+
+  const dynamicClosingBalance = (formData.opening_balance !== '' || formNetChange !== 0) 
+    ? formClosingBalance 
+    : (activeRecordForDate ? parseFloat(activeRecordForDate.closing_balance) : (summaryStats?.current_firm_balance || (latestRecordedDay ? parseFloat(latestRecordedDay.closing_balance) : 0)));
 
   return (
     <div className="main-page-wrapper df-page-wrapper" style={{ maxWidth: '1280px', margin: '0 auto', paddingBottom: '60px' }}>
@@ -1541,30 +1557,30 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
         </div>
       </div>
 
-      {/* QUICK STATUS BAR: Today at a Glance */}
+      {/* QUICK STATUS BAR: Live Daily Financial Summary (Dynamic for Active Day / Form) */}
       <div className="df-status-grid" style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
         gap: '12px',
         marginTop: '16px'
       }}>
-        {/* Today Sales */}
+        {/* Daily Sales */}
         <div className="glass-panel" style={{ padding: '12px 14px', background: '#f0f9ff', border: '1px solid #bae6fd' }}>
           <div style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>
-            Today's Total Sales
+            {formData.date ? `${new Date(formData.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} Sales` : "Daily Total Sales"}
           </div>
           <div className="mono" style={{ fontSize: '18px', fontWeight: 900, color: '#0284c7', marginTop: '2px' }}>
-            {currency}{todaySales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            {currency}{dynamicSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </div>
         </div>
 
-        {/* Cash In Hand */}
+        {/* Cash In Hand / Received */}
         <div className="glass-panel" style={{ padding: '12px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
           <div style={{ fontSize: '11px', fontWeight: 800, color: '#059669', textTransform: 'uppercase' }}>
             💵 Cash Received
           </div>
           <div className="mono" style={{ fontSize: '18px', fontWeight: 900, color: '#059669', marginTop: '2px' }}>
-            {currency}{todayCash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            {currency}{dynamicCash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </div>
         </div>
 
@@ -1574,17 +1590,17 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             📱 UPI Received
           </div>
           <div className="mono" style={{ fontSize: '18px', fontWeight: 900, color: '#0369a1', marginTop: '2px' }}>
-            {currency}{todayUpi.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            {currency}{dynamicUpi.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </div>
         </div>
 
-        {/* Total Money Out Today */}
+        {/* Total Money Out */}
         <div className="glass-panel" style={{ padding: '12px 14px', background: '#fff1f2', border: '1px solid #fecdd3' }}>
           <div style={{ fontSize: '11px', fontWeight: 800, color: '#e11d48', textTransform: 'uppercase' }}>
             🔴 Total Paid Out
           </div>
           <div className="mono" style={{ fontSize: '18px', fontWeight: 900, color: '#e11d48', marginTop: '2px' }}>
-            {currency}{todayPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            {currency}{dynamicPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </div>
         </div>
 
@@ -1594,7 +1610,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             💼 Closing Firm Balance
           </div>
           <div className="mono" style={{ fontSize: '20px', fontWeight: 900, marginTop: '2px' }}>
-            {currency}{currentFirmBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            {currency}{dynamicClosingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </div>
         </div>
       </div>
@@ -4942,21 +4958,20 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                     <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: '#0284c7' }}>Daily Sales ({currency})</th>
                     <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: '#be123c' }}>Daily Total Expense ({currency})</th>
                     <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: '#0369a1' }}>Closing Balance ({currency})</th>
-                    <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: '#059669' }}>Remaining Net (+/-) ({currency})</th>
                     <th style={{ textAlign: 'center', width: '120px', padding: '12px 10px', fontWeight: 800, color: '#334155' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                      <td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
                         <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 8px' }} />
                         <div>Loading accounts ledger...</div>
                       </td>
                     </tr>
                   ) : records.length === 0 ? (
                     <tr>
-                      <td colSpan="6" style={{ textAlign: 'center', padding: '50px 20px', color: '#94a3b8' }}>
+                      <td colSpan="5" style={{ textAlign: 'center', padding: '50px 20px', color: '#94a3b8' }}>
                         <Landmark size={36} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
                         <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-main)' }}>No accounts records yet</div>
                         <div style={{ fontSize: '12px', marginTop: '4px' }}>Click below to record today's daily accounts & expenses</div>
@@ -4972,8 +4987,6 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                     </tr>
                   ) : (
                     records.map((r, idx) => {
-                      const netVal = parseFloat(r.net_day_change) || 0;
-                      const isPositive = netVal >= 0;
                       const dateFormatted = new Date(r.date).toLocaleDateString('en-GB', {
                         day: '2-digit',
                         month: 'short',
@@ -5027,22 +5040,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                             </span>
                           </td>
 
-                          {/* 5. Remaining Net / Outstanding Balance */}
-                          <td style={{ textAlign: 'right', padding: '12px 14px' }} className="mono">
-                            <span style={{
-                              color: isPositive ? '#059669' : '#dc2626',
-                              fontWeight: 800,
-                              fontSize: '13px',
-                              background: isPositive ? '#f0fdf4' : '#fef2f2',
-                              padding: '4px 9px',
-                              borderRadius: '6px',
-                              border: '1px solid ' + (isPositive ? '#bbf7d0' : '#fecdd3')
-                            }}>
-                              {isPositive ? '+' : ''}{currency}{netVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                            </span>
-                          </td>
-
-                          {/* 6. Actions */}
+                          {/* 5. Actions */}
                           <td style={{ textAlign: 'center', padding: '12px 10px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
                               <button

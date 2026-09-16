@@ -92,6 +92,11 @@ export default function InventoryPage({
   const [serverSummary, setServerSummary] = useState(null);
   const [loadingBatches, setLoadingBatches] = useState(false);
 
+  // Pagination State (Default 10 items per page for instant zero-lag rendering)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [catalogPage, setCatalogPage] = useState(1);
+
   // Row Edit State Map: { [batchId]: { purchase_price, mrp, selling_price, pack_quantity, loose_quantity, expiry_date, rack_location, batch_number, isDirty, isSaving, isSaved } }
   const [rowEdits, setRowEdits] = useState({});
   const [savingAll, setSavingAll] = useState(false);
@@ -550,6 +555,32 @@ export default function InventoryPage({
       return matchesSearch && matchesCategory && matchesRx;
     });
   }, [safeMedicines, activeSearch, searchInput, selectedCategory, filterRx]);
+
+  // Auto-reset pagination to page 1 whenever search, categories, suppliers, or filters change
+  useEffect(() => {
+    setCurrentPage(1);
+    setCatalogPage(1);
+  }, [activeSearch, searchInput, selectedCategory, selectedSupplier, statusFilter, filterRx, pageSize]);
+
+  // Paginated Batches for Table View (Default 10 items per page)
+  const totalBatches = filteredBatches.length;
+  const totalPages = Math.max(1, Math.ceil(totalBatches / pageSize));
+  const validCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const paginatedBatches = useMemo(() => {
+    const start = (validCurrentPage - 1) * pageSize;
+    return filteredBatches.slice(start, start + pageSize);
+  }, [filteredBatches, validCurrentPage, pageSize]);
+
+  // Paginated Catalog for Catalog View (Default 10 items per page)
+  const totalCatalog = filteredCatalogMedicines.length;
+  const totalCatalogPages = Math.max(1, Math.ceil(totalCatalog / pageSize));
+  const validCatalogPage = Math.min(Math.max(1, catalogPage), totalCatalogPages);
+
+  const paginatedCatalogMedicines = useMemo(() => {
+    const start = (validCatalogPage - 1) * pageSize;
+    return filteredCatalogMedicines.slice(start, start + pageSize);
+  }, [filteredCatalogMedicines, validCatalogPage, pageSize]);
 
   const toggleExpand = (id) => {
     setExpandedMedId(expandedMedId === id ? null : id);
@@ -1310,14 +1341,14 @@ export default function InventoryPage({
                 </tr>
               </thead>
               <tbody>
-                {filteredBatches.length === 0 ? (
+                {paginatedBatches.length === 0 ? (
                   <tr>
                     <td colSpan={isAdmin ? 11 : 10} style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
                       No stock batches match your search or filter criteria.
                     </td>
                   </tr>
                 ) : (
-                  filteredBatches.map((batch) => {
+                  paginatedBatches.map((batch) => {
                     const dirty = isRowDirty(batch.id);
                     const rowEdit = rowEdits[batch.id] || {};
                     const isSaving = rowEdit.isSaving;
@@ -1693,7 +1724,7 @@ export default function InventoryPage({
 
           {/* Mobile Stock Cards */}
           <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px' }}>
-            {filteredBatches.map((batch) => {
+            {paginatedBatches.map((batch) => {
               const dirty = isRowDirty(batch.id);
               const isSaving = rowEdits[batch.id]?.isSaving;
 
@@ -1834,6 +1865,130 @@ export default function InventoryPage({
             })}
           </div>
 
+          {/* Pagination Toolbar */}
+          <div style={{
+            padding: '12px 18px',
+            borderTop: '1px solid #e2e8f0',
+            background: '#f8fafc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
+            fontSize: '13px'
+          }}>
+            {/* Item Range & Page Size */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', color: '#475569', fontWeight: 600 }}>
+              <span>
+                Showing <strong style={{ color: '#0f172a' }}>{totalBatches > 0 ? (validCurrentPage - 1) * pageSize + 1 : 0}</strong> to <strong style={{ color: '#0f172a' }}>{Math.min(validCurrentPage * pageSize, totalBatches)}</strong> of <strong style={{ color: '#0284c7' }}>{totalBatches}</strong> stock items
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>Show:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(parseInt(e.target.value) || 10)}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    border: '1.5px solid #cbd5e1',
+                    background: '#ffffff',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    cursor: 'pointer',
+                    outline: 'none'
+                  }}
+                >
+                  <option value={10}>10 per page</option>
+                  <option value={20}>20 per page</option>
+                  <option value={50}>50 per page</option>
+                  <option value={100}>100 per page</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Page Buttons */}
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <button
+                  type="button"
+                  disabled={validCurrentPage === 1}
+                  onClick={() => setCurrentPage(1)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '6px 10px', fontSize: '12px', fontWeight: 800, opacity: validCurrentPage === 1 ? 0.5 : 1 }}
+                  title="First Page"
+                >
+                  « First
+                </button>
+                <button
+                  type="button"
+                  disabled={validCurrentPage === 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '6px 10px', fontSize: '12px', fontWeight: 800, opacity: validCurrentPage === 1 ? 0.5 : 1 }}
+                  title="Previous Page"
+                >
+                  ‹ Prev
+                </button>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(page => page === 1 || page === totalPages || Math.abs(page - validCurrentPage) <= 2)
+                  .map((page, idx, arr) => {
+                    const prev = arr[idx - 1];
+                    const hasGap = prev && page - prev > 1;
+                    return (
+                      <React.Fragment key={page}>
+                        {hasGap && <span style={{ color: '#94a3b8', padding: '0 4px', fontWeight: 800 }}>...</span>}
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPage(page)}
+                          style={{
+                            minWidth: '32px',
+                            height: '32px',
+                            padding: '0 8px',
+                            borderRadius: '7px',
+                            border: page === validCurrentPage ? '1.5px solid #0284c7' : '1px solid #e2e8f0',
+                            background: page === validCurrentPage ? '#0284c7' : '#ffffff',
+                            color: page === validCurrentPage ? '#ffffff' : '#334155',
+                            fontWeight: page === validCurrentPage ? 900 : 700,
+                            fontSize: '12.5px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: page === validCurrentPage ? '0 2px 6px rgba(2, 132, 199, 0.3)' : 'none'
+                          }}
+                        >
+                          {page}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+
+                <button
+                  type="button"
+                  disabled={validCurrentPage === totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '6px 10px', fontSize: '12px', fontWeight: 800, opacity: validCurrentPage === totalPages ? 0.5 : 1 }}
+                  title="Next Page"
+                >
+                  Next ›
+                </button>
+                <button
+                  type="button"
+                  disabled={validCurrentPage === totalPages}
+                  onClick={() => setCurrentPage(totalPages)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '6px 10px', fontSize: '12px', fontWeight: 800, opacity: validCurrentPage === totalPages ? 0.5 : 1 }}
+                  title="Last Page"
+                >
+                  Last »
+                </button>
+              </div>
+            )}
+          </div>
+
         </div>
       )}
 
@@ -1950,14 +2105,14 @@ export default function InventoryPage({
                 </tr>
               </thead>
               <tbody>
-                {filteredCatalogMedicines.length === 0 ? (
+                {paginatedCatalogMedicines.length === 0 ? (
                   <tr>
                     <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
                       No medicines match your search query.
                     </td>
                   </tr>
                 ) : (
-                  filteredCatalogMedicines.map((med) => {
+                  paginatedCatalogMedicines.map((med) => {
                     const isExpanded = expandedMedId === med.id;
                     const totalPacks = med.total_stock_packs ?? (med.batches?.reduce((acc, b) => acc + (b.is_expired ? 0 : b.pack_quantity), 0) || 0);
                     const isLow = totalPacks <= (med.min_stock_alert || 10);
@@ -2125,6 +2280,130 @@ export default function InventoryPage({
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Catalog Pagination Toolbar */}
+          <div style={{
+            padding: '12px 18px',
+            borderTop: '1px solid #e2e8f0',
+            background: '#f8fafc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
+            fontSize: '13px'
+          }}>
+            {/* Item Range & Page Size */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', color: '#475569', fontWeight: 600 }}>
+              <span>
+                Showing <strong style={{ color: '#0f172a' }}>{totalCatalog > 0 ? (validCatalogPage - 1) * pageSize + 1 : 0}</strong> to <strong style={{ color: '#0f172a' }}>{Math.min(validCatalogPage * pageSize, totalCatalog)}</strong> of <strong style={{ color: '#0284c7' }}>{totalCatalog}</strong> drug master SKUs
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>Show:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(parseInt(e.target.value) || 10)}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    border: '1.5px solid #cbd5e1',
+                    background: '#ffffff',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    cursor: 'pointer',
+                    outline: 'none'
+                  }}
+                >
+                  <option value={10}>10 per page</option>
+                  <option value={20}>20 per page</option>
+                  <option value={50}>50 per page</option>
+                  <option value={100}>100 per page</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Page Buttons */}
+            {totalCatalogPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <button
+                  type="button"
+                  disabled={validCatalogPage === 1}
+                  onClick={() => setCatalogPage(1)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '6px 10px', fontSize: '12px', fontWeight: 800, opacity: validCatalogPage === 1 ? 0.5 : 1 }}
+                  title="First Page"
+                >
+                  « First
+                </button>
+                <button
+                  type="button"
+                  disabled={validCatalogPage === 1}
+                  onClick={() => setCatalogPage(p => Math.max(1, p - 1))}
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '6px 10px', fontSize: '12px', fontWeight: 800, opacity: validCatalogPage === 1 ? 0.5 : 1 }}
+                  title="Previous Page"
+                >
+                  ‹ Prev
+                </button>
+
+                {Array.from({ length: totalCatalogPages }, (_, i) => i + 1)
+                  .filter(page => page === 1 || page === totalCatalogPages || Math.abs(page - validCatalogPage) <= 2)
+                  .map((page, idx, arr) => {
+                    const prev = arr[idx - 1];
+                    const hasGap = prev && page - prev > 1;
+                    return (
+                      <React.Fragment key={page}>
+                        {hasGap && <span style={{ color: '#94a3b8', padding: '0 4px', fontWeight: 800 }}>...</span>}
+                        <button
+                          type="button"
+                          onClick={() => setCatalogPage(page)}
+                          style={{
+                            minWidth: '32px',
+                            height: '32px',
+                            padding: '0 8px',
+                            borderRadius: '7px',
+                            border: page === validCatalogPage ? '1.5px solid #0284c7' : '1px solid #e2e8f0',
+                            background: page === validCatalogPage ? '#0284c7' : '#ffffff',
+                            color: page === validCatalogPage ? '#ffffff' : '#334155',
+                            fontWeight: page === validCatalogPage ? 900 : 700,
+                            fontSize: '12.5px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: page === validCatalogPage ? '0 2px 6px rgba(2, 132, 199, 0.3)' : 'none'
+                          }}
+                        >
+                          {page}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+
+                <button
+                  type="button"
+                  disabled={validCatalogPage === totalCatalogPages}
+                  onClick={() => setCatalogPage(p => Math.min(totalCatalogPages, p + 1))}
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '6px 10px', fontSize: '12px', fontWeight: 800, opacity: validCatalogPage === totalCatalogPages ? 0.5 : 1 }}
+                  title="Next Page"
+                >
+                  Next ›
+                </button>
+                <button
+                  type="button"
+                  disabled={validCatalogPage === totalCatalogPages}
+                  onClick={() => setCatalogPage(totalCatalogPages)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '6px 10px', fontSize: '12px', fontWeight: 800, opacity: validCatalogPage === totalCatalogPages ? 0.5 : 1 }}
+                  title="Last Page"
+                >
+                  Last »
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

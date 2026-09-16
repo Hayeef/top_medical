@@ -222,3 +222,15 @@ export const dailyFinanceAPI = {
   },
 };
 
+export const vendorBillsAPI = {
+  getBills: (params = '') => request(`/billing/vendor-bills/${params ? `?${params}` : ''}`),
+  getBill: (id) => request(`/billing/vendor-bills/${id}/`),
+  createBill: (data) => request('/billing/vendor-bills/', { method: 'POST', body: JSON.stringify(data) }),
+  updateBill: (id, data) => request(`/billing/vendor-bills/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
+  patchBill: (id, data) => request(`/billing/vendor-bills/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteBill: (id) => request(`/billing/vendor-bills/${id}/`, { method: 'DELETE' }),
+  recordPayment: (id, data) => request(`/billing/vendor-bills/${id}/record_payment/`, { method: 'POST', body: JSON.stringify(data) }),
+  getSummary: () => request('/billing/vendor-bills/summary/'),
+};
+
+

@@ -1,9 +1,10 @@
 import uuid
+from datetime import date, timedelta
 from django.db import models
 from django.utils import timezone
 from decimal import Decimal
 from django.contrib.auth.models import User
-from inventory.models import Medicine, Batch
+from inventory.models import Medicine, Batch, Supplier
 
 class PharmacyProfile(models.Model):
     name = models.CharField(max_length=200, default="Top Medical Pharmacy")
@@ -282,4 +283,93 @@ class DailyFinanceRecord(models.Model):
         self.closing_balance = self.opening_balance + self.net_day_change
         
         super().save(*args, **kwargs)
+
+
+class VendorBill(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending Payment'),
+        ('PARTIAL', 'Partially Paid'),
+        ('PAID', 'Fully Paid'),
+        ('OVERDUE', 'Overdue'),
+        ('CANCELLED', 'Cancelled / Disputed'),
+    ]
+
+    supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name='bills')
+    supplier_name = models.CharField(max_length=200, db_index=True)
+    supplier_phone = models.CharField(max_length=50, blank=True, null=True)
+    supplier_gstin = models.CharField(max_length=50, blank=True, null=True)
+    
+    bill_number = models.CharField(max_length=100, db_index=True, help_text="Supplier invoice/bill number")
+    bill_date = models.DateField(default=date.today, db_index=True)
+    credit_days = models.PositiveIntegerField(default=21, help_text="Agreed credit period in days")
+    due_date = models.DateField(db_index=True, help_text="Payment due date (bill_date + credit_days)")
+    
+    total_amount = models.DecimalField(max_digits=14, decimal_places=2, help_text="Total bill amount including GST")
+    paid_amount = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total amount paid against this bill")
+    balance_due = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Remaining pending balance")
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING', db_index=True)
+    
+    # Detailed payment audit log
+    payment_history = models.JSONField(default=list, blank=True, help_text="List of payment logs: date, amount, mode, ref, notes, logged_in_daily_finance")
+    
+    notes = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='vendor_bills_created')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['due_date', '-created_at']
+        unique_together = [['supplier_name', 'bill_number']]
+
+    def __str__(self):
+        return f"{self.supplier_name} - Bill #{self.bill_number} (₹{self.total_amount} | Due: ₹{self.balance_due})"
+
+    @property
+    def days_left(self):
+        """Returns the number of days remaining until due_date. Negative means overdue."""
+        today = date.today()
+        if self.due_date:
+            return (self.due_date - today).days
+        return 0
+
+    @property
+    def is_overdue(self):
+        return self.status != 'PAID' and self.days_left < 0
+
+    def save(self, *args, **kwargs):
+        self.total_amount = Decimal(str(self.total_amount or '0.00'))
+        self.paid_amount = Decimal(str(self.paid_amount or '0.00'))
+        self.balance_due = max(Decimal('0.00'), self.total_amount - self.paid_amount)
+        
+        # Calculate due_date if not explicitly provided or if credit_days is changed
+        if self.bill_date and (not self.due_date or self.credit_days is not None):
+            self.due_date = self.bill_date + timedelta(days=int(self.credit_days or 21))
+            
+        # Update status
+        if self.balance_due <= Decimal('0.00'):
+            self.status = 'PAID'
+        elif self.paid_amount > Decimal('0.00'):
+            if self.days_left < 0:
+                self.status = 'OVERDUE'
+            else:
+                self.status = 'PARTIAL'
+        else:
+            if self.days_left < 0:
+                self.status = 'OVERDUE'
+            else:
+                self.status = 'PENDING'
+                
+        # Auto link supplier object if found by name
+        if not self.supplier and self.supplier_name:
+            sup = Supplier.objects.filter(name__iexact=self.supplier_name.strip()).first()
+            if sup:
+                self.supplier = sup
+                if not self.supplier_phone and sup.phone:
+                    self.supplier_phone = sup.phone
+                if not self.supplier_gstin and sup.gstin:
+                    self.supplier_gstin = sup.gstin
+
+        super().save(*args, **kwargs)
+
 

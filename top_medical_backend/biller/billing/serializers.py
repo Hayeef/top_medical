@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.db import transaction
 from decimal import Decimal
-from .models import PharmacyProfile, StaffMember, Doctor, Customer, Invoice, InvoiceItem, DailyFinanceRecord
+from .models import PharmacyProfile, StaffMember, Doctor, Customer, Invoice, InvoiceItem, DailyFinanceRecord, VendorBill
 from inventory.models import Medicine, Batch, StockMovement
 
 class PharmacyProfileSerializer(serializers.ModelSerializer):
@@ -255,4 +255,27 @@ class DailyFinanceRecordSerializer(serializers.ModelSerializer):
         if obj.created_by:
             return obj.created_by.get_full_name() or obj.created_by.username
         return 'Admin'
+
+
+class VendorBillSerializer(serializers.ModelSerializer):
+    days_left = serializers.IntegerField(read_only=True)
+    is_overdue = serializers.BooleanField(read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VendorBill
+        fields = [
+            'id', 'supplier', 'supplier_name', 'supplier_phone', 'supplier_gstin',
+            'bill_number', 'bill_date', 'credit_days', 'due_date',
+            'total_amount', 'paid_amount', 'balance_due', 'status',
+            'days_left', 'is_overdue', 'payment_history', 'notes',
+            'created_by', 'created_by_name', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['balance_due', 'status', 'days_left', 'is_overdue', 'created_at', 'updated_at']
+
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return obj.created_by.get_full_name() or obj.created_by.username
+        return 'Admin'
+
 

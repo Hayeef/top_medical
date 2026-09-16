@@ -4,16 +4,16 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.http import HttpResponse
 from django.db import transaction
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum, Count, Q, F
 from django.utils import timezone
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal
-from .models import PharmacyProfile, StaffMember, Doctor, Customer, Invoice, InvoiceItem, DailyFinanceRecord
+from .models import PharmacyProfile, StaffMember, Doctor, Customer, Invoice, InvoiceItem, DailyFinanceRecord, VendorBill
 from .serializers import (
     PharmacyProfileSerializer, StaffMemberSerializer, DoctorSerializer, CustomerSerializer,
-    InvoiceSerializer, InvoiceItemSerializer, DailyFinanceRecordSerializer
+    InvoiceSerializer, InvoiceItemSerializer, DailyFinanceRecordSerializer, VendorBillSerializer
 )
 from .excel_export import generate_bills_excel, generate_daily_finance_excel
 from inventory.models import Batch, StockMovement
@@ -705,5 +705,223 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         response['Access-Control-Expose-Headers'] = 'Content-Disposition'
         return response
+
+
+class VendorBillViewSet(viewsets.ModelViewSet):
+    queryset = VendorBill.objects.all()
+    serializer_class = VendorBillSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['supplier_name', 'bill_number', 'supplier_phone', 'supplier_gstin', 'notes']
+    ordering_fields = ['due_date', 'bill_date', 'total_amount', 'balance_due', 'created_at']
+    ordering = ['due_date', '-bill_date']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        supplier_id = self.request.query_params.get('supplier')
+        supplier_name = self.request.query_params.get('supplier_name')
+        status_filter = self.request.query_params.get('status')
+        due_filter = self.request.query_params.get('due_filter') # 'overdue' | 'due_soon'
+        is_overdue = self.request.query_params.get('is_overdue')
+        due_soon = self.request.query_params.get('due_soon') # e.g. within 7 days
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        search = self.request.query_params.get('search')
+
+        if supplier_id:
+            qs = qs.filter(supplier_id=supplier_id)
+        if supplier_name:
+            qs = qs.filter(supplier_name__icontains=supplier_name)
+        if search:
+            qs = qs.filter(
+                Q(supplier_name__icontains=search) |
+                Q(bill_number__icontains=search) |
+                Q(supplier_gstin__icontains=search) |
+                Q(supplier_phone__icontains=search) |
+                Q(notes__icontains=search)
+            )
+
+        if status_filter:
+            if status_filter == 'PENDING' or status_filter == 'PENDING_DUES':
+                qs = qs.filter(paid_amount__lt=F('total_amount'))
+            elif status_filter == 'PAID':
+                qs = qs.filter(paid_amount__gte=F('total_amount'))
+            elif status_filter == 'OVERDUE':
+                qs = qs.filter(paid_amount__lt=F('total_amount'), due_date__lt=date.today())
+            elif status_filter == 'PARTIAL':
+                qs = qs.filter(paid_amount__gt=Decimal('0.00'), paid_amount__lt=F('total_amount'))
+            else:
+                qs = qs.filter(status=status_filter)
+
+        if due_filter == 'overdue' or is_overdue == 'true':
+            qs = qs.filter(paid_amount__lt=F('total_amount'), due_date__lt=date.today())
+        elif due_filter == 'due_soon' or due_soon == 'true':
+            today = date.today()
+            seven_days = today + timedelta(days=7)
+            qs = qs.filter(paid_amount__lt=F('total_amount'), due_date__gte=today, due_date__lte=seven_days)
+
+        if start_date:
+            qs = qs.filter(bill_date__gte=start_date)
+        if end_date:
+            qs = qs.filter(bill_date__lte=end_date)
+            
+        return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user if self.request.user.is_authenticated else None
+        serializer.save(created_by=user)
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def record_payment(self, request, pk=None):
+        """
+        Record a partial or full payment against a vendor bill.
+        Optional parameter sync_to_daily_accounts (boolean) to simultaneously record this in today's Daily Cash/Accounts outflow.
+        """
+        bill = self.get_object()
+        data = request.data
+        
+        try:
+            pay_amount = Decimal(str(data.get('amount', '0.00')))
+        except Exception:
+            return Response({"error": "Invalid payment amount."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if pay_amount <= Decimal('0.00'):
+            return Response({"error": "Payment amount must be greater than zero."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if pay_amount > bill.balance_due:
+            return Response(
+                {"error": f"Payment amount (₹{pay_amount}) cannot exceed remaining balance due (₹{bill.balance_due})."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        pay_mode = str(data.get('payment_mode', 'CASH')).upper()
+        if pay_mode not in ['CASH', 'UPI', 'NEFT', 'CHEQUE', 'BANK']:
+            pay_mode = 'CASH'
+
+        payment_date_str = data.get('payment_date') or date.today().isoformat()
+        try:
+            pay_date = datetime.strptime(payment_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            pay_date = date.today()
+
+        ref_no = str(data.get('reference_number', data.get('reference_no', ''))).strip()
+        notes = str(data.get('notes', '')).strip()
+        sync_daily = bool(data.get('sync_to_daily_accounts', True))
+
+        # 1. Update bill's payment history
+        history = list(bill.payment_history or [])
+        new_pay_id = len(history) + 1
+        pay_log = {
+            "id": new_pay_id,
+            "date": pay_date.isoformat(),
+            "payment_date": pay_date.isoformat(),
+            "amount": float(pay_amount),
+            "payment_mode": pay_mode,
+            "reference_number": ref_no,
+            "reference_no": ref_no,
+            "notes": notes,
+            "logged_by": request.user.username if request.user.is_authenticated else 'Staff',
+            "created_at": timezone.now().isoformat()
+        }
+        history.append(pay_log)
+        bill.payment_history = history
+        bill.paid_amount += pay_amount
+        bill.save()
+
+        # 2. Sync to DailyFinanceRecord if requested
+        daily_record_synced = None
+        sync_status = "Skipped"
+        if sync_daily:
+            daily_record, _ = DailyFinanceRecord.objects.get_or_create(
+                date=pay_date,
+                defaults={
+                    "opening_balance": Decimal('0.00'),
+                    "daily_sales": Decimal('0.00'),
+                    "cash_earned": Decimal('0.00'),
+                    "upi_earned": Decimal('0.00'),
+                    "total_earned": Decimal('0.00'),
+                    "total_paid": Decimal('0.00'),
+                }
+            )
+
+            p_details = list(daily_record.payment_details or [])
+            # Append vendor payment line item
+            p_details.append({
+                "id": int(datetime.now().timestamp() * 1000),
+                "type": "VENDOR",
+                "recipient": bill.supplier_name,
+                "staff_id": "",
+                "staff_name": "",
+                "charge_code": "",
+                "purpose": f"Settlement for Bill #{bill.bill_number}",
+                "vehicle_info": "",
+                "category": "Wholesale Medicine Supplier",
+                "amount": float(pay_amount),
+                "payment_mode": pay_mode if pay_mode in ['CASH', 'UPI'] else 'CASH',
+                "note": f"Bill #{bill.bill_number} (Ref: {ref_no})" if ref_no else f"Bill #{bill.bill_number}"
+            })
+            daily_record.payment_details = p_details
+
+            # Re-sum supplier_payments & total_paid
+            daily_record.supplier_payments = sum(
+                Decimal(str(p.get('amount', 0.0)))
+                for p in p_details
+                if p.get('type') == 'VENDOR'
+            )
+            daily_record.total_paid = sum(
+                Decimal(str(p.get('amount', 0.0)))
+                for p in p_details
+            )
+            daily_record.save()
+            daily_record_synced = daily_record.id
+            sync_status = "Synced"
+
+        serializer = self.get_serializer(bill)
+        return Response({
+            "message": f"Successfully recorded payment of ₹{pay_amount:.2f} for {bill.supplier_name}.",
+            "bill": serializer.data,
+            "daily_record_id": daily_record_synced,
+            "sync_status": sync_status
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        """
+        Aggregate summary metrics for vendor bills & credit dues.
+        """
+        today = date.today()
+        seven_days = today + timedelta(days=7)
+
+        all_bills = list(VendorBill.objects.all())
+        total_vendor_bills = len(all_bills)
+
+        total_invoiced_amount = sum((b.total_amount for b in all_bills), Decimal('0.00'))
+        total_paid_to_vendors = sum((b.paid_amount for b in all_bills), Decimal('0.00'))
+        total_pending_due = sum((b.balance_due for b in all_bills), Decimal('0.00'))
+
+        paid_bills_count = sum(1 for b in all_bills if b.balance_due == Decimal('0.00'))
+        pending_bills_count = sum(1 for b in all_bills if b.balance_due > Decimal('0.00'))
+
+        overdue_bills = [b for b in all_bills if b.balance_due > Decimal('0.00') and b.due_date < today]
+        overdue_bills_count = len(overdue_bills)
+        overdue_amount = sum((b.balance_due for b in overdue_bills), Decimal('0.00'))
+
+        upcoming_due_7days = [b for b in all_bills if b.balance_due > Decimal('0.00') and today <= b.due_date <= seven_days]
+        upcoming_due_7days_count = len(upcoming_due_7days)
+        upcoming_due_amount = sum((b.balance_due for b in upcoming_due_7days), Decimal('0.00'))
+
+        return Response({
+            "total_vendor_bills": total_vendor_bills,
+            "total_invoiced_amount": round(float(total_invoiced_amount), 2),
+            "total_paid_to_vendors": round(float(total_paid_to_vendors), 2),
+            "total_pending_due": round(float(total_pending_due), 2),
+            "paid_bills_count": paid_bills_count,
+            "pending_bills_count": pending_bills_count,
+            "overdue_bills_count": overdue_bills_count,
+            "overdue_amount": round(float(overdue_amount), 2),
+            "upcoming_due_7days_count": upcoming_due_7days_count,
+            "upcoming_due_amount": round(float(upcoming_due_amount), 2),
+        })
+
 
 

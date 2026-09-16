@@ -60,6 +60,7 @@ export default function Header({
     switch (activeTab) {
       case 'pos': return 'POS Billing Terminal';
       case 'dashboard': return 'Dashboard & Sales';
+      case 'finance': return 'Daily Sales & Cash/UPI Accounts';
       case 'inventory': return 'Medicines & Batch Stock';
       case 'alerts': return 'Expiry Radar & Alerts';
       case 'invoices': return 'Sales Ledger & Archive';

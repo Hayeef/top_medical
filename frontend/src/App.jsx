@@ -15,6 +15,7 @@ import DailySoldReportModal from './components/DailySoldReportModal';
 import LoginPage from './pages/LoginPage';
 import PosBillingPage from './pages/PosBillingPage';
 import DashboardPage from './pages/DashboardPage';
+import DailyFinancePage from './pages/DailyFinancePage';
 import InventoryPage from './pages/InventoryPage';
 import AlertsPage from './pages/AlertsPage';
 import InvoicesPage from './pages/InvoicesPage';
@@ -252,6 +253,15 @@ export default function App() {
                 onOpenAddBatch={() => handleOpenAddBatch(null)}
                 onOpenScanBill={() => setIsScanBillOpen(true)}
                 onOpenDailyReport={() => setIsDailyReportOpen(true)}
+              />
+            )}
+
+            {activeTab === 'finance' && (
+              <DailyFinancePage
+                profile={profile}
+                user={authUser}
+                suppliers={suppliers}
+                staffList={staffList}
               />
             )}
 

@@ -2,6 +2,7 @@ import uuid
 from django.db import models
 from django.utils import timezone
 from decimal import Decimal
+from django.contrib.auth.models import User
 from inventory.models import Medicine, Batch
 
 class PharmacyProfile(models.Model):
@@ -212,3 +213,73 @@ class InvoiceItem(models.Model):
     def __str__(self):
         unit_type = "Units" if self.is_loose else "Packs"
         return f"{self.medicine_name} x {self.quantity} {unit_type} ({self.total_amount})"
+
+
+class DailyFinanceRecord(models.Model):
+    date = models.DateField(unique=True, db_index=True)
+    
+    # Sales & Inflow (Strictly Cash and UPI)
+    daily_sales = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total gross sales invoiced/recorded on this day")
+    cash_earned = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total Cash payments received")
+    upi_earned = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total UPI / QR digital payments received")
+    total_earned = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total money earned: Cash + UPI")
+    
+    # Outflow / Disbursements / Money Paid
+    total_paid = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total money paid out")
+    supplier_payments = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total paid to medicine vendors/wholesalers")
+    staff_expenses = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total staff expenses mapped with charge codes (salary, allowance, tea)")
+    vehicle_expenses = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total delivery vehicle & fuel expenses")
+    expenses = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Day-to-day shop operational expenses: rent, electricity, maintenance, etc.")
+    other_outflow = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Other miscellaneous expenses or drawings")
+    
+    # Firm Balances
+    opening_balance = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Firm starting balance at opening of day")
+    net_day_change = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Net day change: total_earned - total_paid")
+    closing_balance = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Closing balance in the firm: opening_balance + total_earned - total_paid")
+    
+    # Itemized Breakdown
+    payment_details = models.JSONField(default=list, blank=True, help_text="Itemized list of payments (vendors, staff with charge codes, vehicle, shop)")
+    
+    notes = models.TextField(blank=True, null=True, help_text="Daily financial notes / explanations")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='daily_finance_records')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"Daily Finance ({self.date}): Sales ₹{self.daily_sales} | Inflow ₹{self.total_earned} (Cash ₹{self.cash_earned} + UPI ₹{self.upi_earned}) | Outflow ₹{self.total_paid} | Firm Bal ₹{self.closing_balance}"
+
+    def save(self, *args, **kwargs):
+        self.daily_sales = Decimal(str(self.daily_sales or '0.00'))
+        self.cash_earned = Decimal(str(self.cash_earned or '0.00'))
+        self.upi_earned = Decimal(str(self.upi_earned or '0.00'))
+        
+        # Total money earned is strictly Cash + UPI
+        self.total_earned = self.cash_earned + self.upi_earned
+        
+        self.supplier_payments = Decimal(str(self.supplier_payments or '0.00'))
+        self.staff_expenses = Decimal(str(self.staff_expenses or '0.00'))
+        self.vehicle_expenses = Decimal(str(self.vehicle_expenses or '0.00'))
+        self.expenses = Decimal(str(self.expenses or '0.00'))
+        self.other_outflow = Decimal(str(self.other_outflow or '0.00'))
+        
+        breakdown_outflow = (
+            self.supplier_payments + 
+            self.staff_expenses + 
+            self.vehicle_expenses + 
+            self.expenses + 
+            self.other_outflow
+        )
+        if Decimal(str(self.total_paid or '0.00')) == Decimal('0.00') and breakdown_outflow > Decimal('0.00'):
+            self.total_paid = breakdown_outflow
+        else:
+            self.total_paid = Decimal(str(self.total_paid or '0.00'))
+            
+        self.opening_balance = Decimal(str(self.opening_balance or '0.00'))
+        self.net_day_change = self.total_earned - self.total_paid
+        self.closing_balance = self.opening_balance + self.net_day_change
+        
+        super().save(*args, **kwargs)
+

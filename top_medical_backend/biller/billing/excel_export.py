@@ -645,3 +645,177 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
     wb.save(buffer)
     buffer.seek(0)
     return buffer
+
+
+def generate_daily_finance_excel(records_qs, profile, filter_info="", report_title="DAILY SALES & CASH/UPI FINANCIAL REGISTER"):
+    """
+    Export Daily Sales, Cash & UPI Earnings, Expenses, and Firm Balance records
+    to a professionally styled Excel workbook.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Daily Financial Register"
+    ws.views.sheetView[0].showGridLines = True
+
+    currency = profile.currency_symbol if profile else "₹"
+    pharmacy_name = (profile.name if profile else "TOP MEDICAL PHARMACY").upper()
+
+    # 1. Title Banner (Rows 1-3)
+    ws.merge_cells("A1:O1")
+    t_cell = ws["A1"]
+    t_cell.value = f"🏥  {pharmacy_name}"
+    t_cell.font = FONT_TITLE
+    t_cell.fill = FILL_NAVY
+    t_cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 28
+
+    ws.merge_cells("A2:O2")
+    sub_cell = ws["A2"]
+    sub_cell.value = f"{report_title}  |  DL: {profile.dl_number_20b if profile else 'N/A'}  |  GSTIN: {profile.gstin if profile else 'N/A'}"
+    sub_cell.font = FONT_SUBTITLE
+    sub_cell.fill = FILL_NAVY
+    sub_cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[2].height = 18
+
+    ws.merge_cells("A3:O3")
+    meta_cell = ws["A3"]
+    export_time_str = timezone.now().strftime('%d-%b-%Y %I:%M %p')
+    meta_cell.value = f"Generated On: {export_time_str}  |  Period: {filter_info or 'All Recorded Entries'}  |  Currency: INR ({currency})"
+    meta_cell.font = Font(name="Calibri", size=9, bold=True, color="0284C7")
+    meta_cell.fill = PatternFill(start_color="F0F9FF", end_color="F0F9FF", fill_type="solid")
+    meta_cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[3].height = 20
+
+    ws.row_dimensions[4].height = 10  # blank spacer
+
+    # 2. Table Headers (Row 5)
+    headers = [
+        "Date",
+        f"Daily Sales ({currency})",
+        f"Cash Received ({currency})",
+        f"UPI Received ({currency})",
+        f"Total Earned ({currency})",
+        f"Vendor Payouts ({currency})",
+        f"Staff Exp [Charge Code] ({currency})",
+        f"Vehicle / Fuel ({currency})",
+        f"Shop Expenses ({currency})",
+        f"Other Outflow ({currency})",
+        f"Total Paid ({currency})",
+        f"Opening Bal ({currency})",
+        f"Net Day Change ({currency})",
+        f"Firm Balance ({currency})",
+        "Expense Itemization & Remarks"
+    ]
+
+    ws.row_dimensions[5].height = 26
+    for col_idx, header_text in enumerate(headers, start=1):
+        cell = ws.cell(row=5, column=col_idx, value=header_text)
+        cell.font = FONT_HEADER
+        cell.fill = FILL_BRAND
+        cell.alignment = ALIGN_HEADER
+        cell.border = BORDER_THIN
+
+    # 3. Data Rows
+    start_row = 6
+    cur_row = start_row
+
+    for record in records_qs:
+        ws.row_dimensions[cur_row].height = 20
+        is_zebra = (cur_row % 2 == 0)
+        row_fill = FILL_ZEBRA if is_zebra else None
+
+        # Values
+        date_str = record.date.strftime('%d-%m-%Y') if hasattr(record.date, 'strftime') else str(record.date)
+        sales_val = float(record.daily_sales or 0)
+        cash_val = float(record.cash_earned or 0)
+        upi_val = float(record.upi_earned or 0)
+        earned_val = float(record.total_earned or (record.cash_earned + record.upi_earned))
+        supp_val = float(record.supplier_payments or 0)
+        staff_val = float(getattr(record, 'staff_expenses', 0) or 0)
+        veh_val = float(getattr(record, 'vehicle_expenses', 0) or 0)
+        exp_val = float(record.expenses or 0)
+        oth_val = float(record.other_outflow or 0)
+        paid_val = float(record.total_paid or 0)
+        open_val = float(record.opening_balance or 0)
+        net_val = float(record.net_day_change or 0)
+        close_val = float(record.closing_balance or 0)
+
+        # Build detailed note string including itemized expense vouchers
+        details_list = record.payment_details if isinstance(record.payment_details, list) else []
+        item_summaries = []
+        for it in details_list:
+            t = it.get('type') or it.get('category', 'Expense')
+            amt = it.get('amount', '')
+            recip = it.get('recipient') or it.get('staff_name') or it.get('vehicle_info') or ''
+            code = f" [{it.get('charge_code')}]" if it.get('charge_code') else ""
+            if recip and amt:
+                item_summaries.append(f"{t}: {recip}{code} ₹{amt}")
+        
+        full_notes_parts = []
+        if item_summaries:
+            full_notes_parts.append("; ".join(item_summaries))
+        if record.notes:
+            full_notes_parts.append(record.notes)
+        notes_val = " | ".join(full_notes_parts)
+
+        row_data = [
+            (date_str, ALIGN_CENTER, '@', FONT_DATA_BOLD),
+            (sales_val, ALIGN_RIGHT, FORMAT_CURRENCY, FONT_DATA_BOLD),
+            (cash_val, ALIGN_RIGHT, FORMAT_CURRENCY, FONT_DATA),
+            (upi_val, ALIGN_RIGHT, FORMAT_CURRENCY, FONT_DATA),
+            (earned_val, ALIGN_RIGHT, FORMAT_CURRENCY, FONT_DATA_BOLD),
+            (supp_val, ALIGN_RIGHT, FORMAT_CURRENCY, FONT_DATA),
+            (staff_val, ALIGN_RIGHT, FORMAT_CURRENCY, FONT_DATA),
+            (veh_val, ALIGN_RIGHT, FORMAT_CURRENCY, FONT_DATA),
+            (exp_val, ALIGN_RIGHT, FORMAT_CURRENCY, FONT_DATA),
+            (oth_val, ALIGN_RIGHT, FORMAT_CURRENCY, FONT_DATA),
+            (paid_val, ALIGN_RIGHT, FORMAT_CURRENCY, FONT_DATA_BOLD),
+            (open_val, ALIGN_RIGHT, FORMAT_CURRENCY, FONT_DATA),
+            (net_val, ALIGN_RIGHT, FORMAT_CURRENCY, FONT_DATA_BOLD),
+            (close_val, ALIGN_RIGHT, FORMAT_CURRENCY, FONT_DATA_BOLD),
+            (notes_val, ALIGN_LEFT, '@', FONT_DATA)
+        ]
+
+        for col_idx, (val, align, num_fmt, fnt) in enumerate(row_data, start=1):
+            cell = ws.cell(row=cur_row, column=col_idx, value=val)
+            cell.font = fnt
+            cell.alignment = align
+            cell.number_format = num_fmt
+            cell.border = BORDER_THIN
+            if row_fill:
+                cell.fill = row_fill
+
+        cur_row += 1
+
+    # 4. Summary Total Row
+    if cur_row > start_row:
+        ws.row_dimensions[cur_row].height = 24
+        tot_cell = ws.cell(row=cur_row, column=1, value="TOTALS")
+        tot_cell.font = FONT_TOTAL
+        tot_cell.alignment = ALIGN_CENTER
+        tot_cell.border = BORDER_TOTAL
+        tot_cell.fill = FILL_TOTAL
+
+        # Sum columns: Daily Sales (2), Cash (3), UPI (4), Total Earned (5), Supplier (6), Staff (7), Vehicle (8), Expenses (9), Other (10), Total Paid (11), Net Change (13)
+        for c_idx in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13]:
+            c_let = get_column_letter(c_idx)
+            cell = ws.cell(row=cur_row, column=c_idx)
+            cell.value = f"=SUM({c_let}{start_row}:{c_let}{cur_row-1})"
+            cell.font = FONT_TOTAL
+            cell.alignment = ALIGN_RIGHT
+            cell.number_format = FORMAT_CURRENCY
+            cell.border = BORDER_TOTAL
+            cell.fill = FILL_TOTAL
+
+        for c_idx in [12, 14, 15]:
+            blank_c = ws.cell(row=cur_row, column=c_idx, value="")
+            blank_c.border = BORDER_TOTAL
+            blank_c.fill = FILL_TOTAL
+
+    auto_fit_columns(ws, {15: 45})
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
+

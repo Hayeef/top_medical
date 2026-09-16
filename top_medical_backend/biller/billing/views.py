@@ -10,12 +10,12 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from datetime import datetime, date
 from decimal import Decimal
-from .models import PharmacyProfile, StaffMember, Doctor, Customer, Invoice, InvoiceItem
+from .models import PharmacyProfile, StaffMember, Doctor, Customer, Invoice, InvoiceItem, DailyFinanceRecord
 from .serializers import (
     PharmacyProfileSerializer, StaffMemberSerializer, DoctorSerializer, CustomerSerializer,
-    InvoiceSerializer, InvoiceItemSerializer
+    InvoiceSerializer, InvoiceItemSerializer, DailyFinanceRecordSerializer
 )
-from .excel_export import generate_bills_excel
+from .excel_export import generate_bills_excel, generate_daily_finance_excel
 from inventory.models import Batch, StockMovement
 
 class LoginAPIView(APIView):
@@ -472,4 +472,238 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             "message": f"Successfully applied {discount_value}{'%' if discount_type == 'PERCENT' else ' ₹'} discount to Bill #{invoice.invoice_number}. New Grand Total: ₹{rounded_total:.2f}",
             "invoice": serializer.data
         }, status=status.HTTP_200_OK)
+
+
+class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
+    """
+    Daily Sales, Cash & UPI Earnings, Outflows, and Firm Balance tracking
+    exclusively for the Admin portal.
+    """
+    queryset = DailyFinanceRecord.objects.all().select_related('created_by')
+    serializer_class = DailyFinanceRecordSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['notes']
+
+    def get_queryset(self):
+        qs = DailyFinanceRecord.objects.all().select_related('created_by')
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        month = self.request.query_params.get('month')
+        year = self.request.query_params.get('year')
+        search = self.request.query_params.get('search')
+
+        if month:
+            try:
+                m_int = int(month)
+                y_int = int(year) if year else timezone.now().year
+                qs = qs.filter(date__year=y_int, date__month=m_int)
+            except (ValueError, TypeError):
+                pass
+        elif start_date or end_date:
+            if start_date:
+                qs = qs.filter(date__gte=start_date)
+            if end_date:
+                qs = qs.filter(date__lte=end_date)
+
+        if search:
+            qs = qs.filter(notes__icontains=search)
+
+        return qs.order_by('-date')
+
+    def perform_create(self, serializer):
+        user = self.request.user if self.request.user.is_authenticated else None
+        serializer.save(created_by=user)
+
+    @action(detail=False, methods=['get'], url_path='auto_fetch_pos_day')
+    def auto_fetch_pos_day(self, request):
+        """
+        Auto-aggregate live Cash, UPI, and total sales from POS Invoices for a selected date,
+        and look up the previous recorded day's closing balance as the suggested opening balance.
+        """
+        date_str = request.query_params.get('date')
+        if date_str:
+            try:
+                target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                target_date = date.today()
+        else:
+            target_date = date.today()
+
+        start_dt = timezone.make_aware(datetime.combine(target_date, datetime.min.time()))
+        end_dt = timezone.make_aware(datetime.combine(target_date, datetime.max.time()))
+
+        invoices = Invoice.objects.filter(
+            created_at__range=(start_dt, end_dt)
+        ).exclude(payment_status__in=['CANCELLED', 'REFUNDED'])
+
+        pos_sales = invoices.aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
+        pos_cash = invoices.aggregate(total=Sum('cash_amount'))['total'] or Decimal('0.00')
+        pos_upi = invoices.aggregate(total=Sum('upi_amount'))['total'] or Decimal('0.00')
+        invoices_count = invoices.count()
+
+        # Find previous daily record before this date to carry forward closing balance
+        prev_record = DailyFinanceRecord.objects.filter(date__lt=target_date).order_by('-date').first()
+        suggested_opening = prev_record.closing_balance if prev_record else Decimal('0.00')
+
+        # Check if a record already exists for this date
+        existing_record = DailyFinanceRecord.objects.filter(date=target_date).first()
+        existing_data = DailyFinanceRecordSerializer(existing_record).data if existing_record else None
+
+        return Response({
+            "target_date": target_date.strftime('%Y-%m-%d'),
+            "pos_daily_sales": round(float(pos_sales), 2),
+            "pos_cash_earned": round(float(pos_cash), 2),
+            "pos_upi_earned": round(float(pos_upi), 2),
+            "pos_total_earned": round(float(pos_cash + pos_upi), 2),
+            "invoices_count": invoices_count,
+            "suggested_opening_balance": round(float(suggested_opening), 2),
+            "has_existing_record": bool(existing_record),
+            "existing_record": existing_data,
+        })
+
+    @action(detail=False, methods=['get'], url_path='summary_stats')
+    def summary_stats(self, request):
+        """
+        Overall financial dashboard KPIs:
+        - Current Firm Balance
+        - All-Time & Monthly Sales, Cash, UPI, Outflows, and Net Profit/Draw
+        """
+        all_records = DailyFinanceRecord.objects.all().order_by('-date')
+        
+        # Today's Record
+        today_d = date.today()
+        today_record = DailyFinanceRecord.objects.filter(date=today_d).first()
+        
+        # All time sums
+        all_time_totals = all_records.aggregate(
+            total_sales=Sum('daily_sales'),
+            total_cash=Sum('cash_earned'),
+            total_upi=Sum('upi_earned'),
+            total_earned=Sum('total_earned'),
+            total_paid=Sum('total_paid'),
+            total_supplier=Sum('supplier_payments'),
+            total_staff=Sum('staff_expenses'),
+            total_vehicle=Sum('vehicle_expenses'),
+            total_expenses=Sum('expenses'),
+            total_other_outflow=Sum('other_outflow'),
+        )
+
+        # Current Firm Balance is the closing balance of the most recent record
+        latest_record = all_records.first()
+        current_firm_balance = latest_record.closing_balance if latest_record else Decimal('0.00')
+
+        # Current Month Totals
+        cur_year = today_d.year
+        cur_month = today_d.month
+        month_records = DailyFinanceRecord.objects.filter(date__year=cur_year, date__month=cur_month)
+        month_totals = month_records.aggregate(
+            month_sales=Sum('daily_sales'),
+            month_cash=Sum('cash_earned'),
+            month_upi=Sum('upi_earned'),
+            month_earned=Sum('total_earned'),
+            month_paid=Sum('total_paid'),
+            month_supplier=Sum('supplier_payments'),
+            month_staff=Sum('staff_expenses'),
+            month_vehicle=Sum('vehicle_expenses'),
+            month_expenses=Sum('expenses'),
+        )
+
+        month_earned = month_totals['month_earned'] or Decimal('0.00')
+        month_paid = month_totals['month_paid'] or Decimal('0.00')
+        month_net = month_earned - month_paid
+
+        return Response({
+            "current_firm_balance": round(float(current_firm_balance), 2),
+            "today": {
+                "recorded": bool(today_record),
+                "date": today_d.strftime('%Y-%m-%d'),
+                "daily_sales": round(float(today_record.daily_sales), 2) if today_record else 0.0,
+                "cash_earned": round(float(today_record.cash_earned), 2) if today_record else 0.0,
+                "upi_earned": round(float(today_record.upi_earned), 2) if today_record else 0.0,
+                "total_earned": round(float(today_record.total_earned), 2) if today_record else 0.0,
+                "total_paid": round(float(today_record.total_paid), 2) if today_record else 0.0,
+                "supplier_payments": round(float(today_record.supplier_payments), 2) if today_record else 0.0,
+                "staff_expenses": round(float(today_record.staff_expenses), 2) if today_record else 0.0,
+                "vehicle_expenses": round(float(today_record.vehicle_expenses), 2) if today_record else 0.0,
+                "expenses": round(float(today_record.expenses), 2) if today_record else 0.0,
+                "net_day_change": round(float(today_record.net_day_change), 2) if today_record else 0.0,
+                "closing_balance": round(float(today_record.closing_balance), 2) if today_record else 0.0,
+            },
+            "this_month": {
+                "year": cur_year,
+                "month": cur_month,
+                "month_name": today_d.strftime('%B %Y'),
+                "sales": round(float(month_totals['month_sales'] or 0.0), 2),
+                "cash_earned": round(float(month_totals['month_cash'] or 0.0), 2),
+                "upi_earned": round(float(month_totals['month_upi'] or 0.0), 2),
+                "total_earned": round(float(month_earned), 2),
+                "total_paid": round(float(month_paid), 2),
+                "supplier_paid": round(float(month_totals['month_supplier'] or 0.0), 2),
+                "staff_paid": round(float(month_totals['month_staff'] or 0.0), 2),
+                "vehicle_paid": round(float(month_totals['month_vehicle'] or 0.0), 2),
+                "expenses": round(float(month_totals['month_expenses'] or 0.0), 2),
+                "net_change": round(float(month_net), 2),
+                "days_count": month_records.count(),
+            },
+            "all_time": {
+                "total_sales": round(float(all_time_totals['total_sales'] or 0.0), 2),
+                "cash_earned": round(float(all_time_totals['total_cash'] or 0.0), 2),
+                "upi_earned": round(float(all_time_totals['total_upi'] or 0.0), 2),
+                "total_earned": round(float(all_time_totals['total_earned'] or 0.0), 2),
+                "total_paid": round(float(all_time_totals['total_paid'] or 0.0), 2),
+                "supplier_paid": round(float(all_time_totals['total_supplier'] or 0.0), 2),
+                "staff_paid": round(float(all_time_totals['total_staff'] or 0.0), 2),
+                "vehicle_paid": round(float(all_time_totals['total_vehicle'] or 0.0), 2),
+                "expenses": round(float(all_time_totals['total_expenses'] or 0.0), 2),
+                "total_days_recorded": all_records.count(),
+            }
+        })
+
+    @action(detail=False, methods=['get'], url_path='export_excel')
+    def export_excel(self, request):
+        """
+        Download Excel sheet of the Daily Financial Register.
+        Supports filtering by month, year, start_date, end_date.
+        """
+        qs = self.get_queryset().order_by('date')
+        
+        month = request.query_params.get('month')
+        year = request.query_params.get('year')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
+        filter_info = ""
+        if month:
+            try:
+                m_int = int(month)
+                y_int = int(year) if year else timezone.now().year
+                month_dt = datetime(y_int, m_int, 1)
+                filter_info = f"Month: {month_dt.strftime('%B %Y')}"
+                filename = f"TopMedical_DailyFinance_{month_dt.strftime('%b_%Y')}.xlsx"
+            except (ValueError, TypeError):
+                filter_info = "Current Month"
+                filename = f"TopMedical_DailyFinance_{timezone.now().strftime('%Y%m')}.xlsx"
+        elif start_date or end_date:
+            filter_info = f"Date Range: {start_date or 'Start'} to {end_date or 'Now'}"
+            filename = f"TopMedical_DailyFinance_{start_date or 'Start'}_to_{end_date or 'Now'}.xlsx"
+        else:
+            filter_info = "All Recorded Entries"
+            filename = f"TopMedical_DailyFinance_All_{timezone.now().strftime('%Y%m%d')}.xlsx"
+
+        profile = PharmacyProfile.get_settings()
+        excel_buffer = generate_daily_finance_excel(
+            records_qs=qs,
+            profile=profile,
+            filter_info=filter_info,
+            report_title="DAILY SALES & CASH/UPI FINANCIAL REGISTER"
+        )
+
+        response = HttpResponse(
+            excel_buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        return response
+
 

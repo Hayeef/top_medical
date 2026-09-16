@@ -13,7 +13,8 @@ import {
   Camera,
   X,
   FileSpreadsheet,
-  ClipboardList
+  ClipboardList,
+  Landmark
 } from 'lucide-react';
 import PharmacyLogo from './PharmacyLogo';
 
@@ -42,6 +43,7 @@ export default function Sidebar({
   const navItems = isAdmin ? [
     { id: 'pos', label: 'POS Billing', icon: ShoppingCart, badge: 'F2', highlight: true },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'finance', label: 'Daily Accounts & Cash', icon: Landmark, badge: '₹', highlight: true },
     { id: 'inventory', label: 'Medicine Stock', icon: Pill, badge: 'F3' },
     { id: 'daily_report', label: 'Daily Reorder (PDF)', icon: ClipboardList, badge: 'PDF', isAction: true },
     { 

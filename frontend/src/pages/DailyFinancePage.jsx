@@ -1,0 +1,3460 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  DollarSign, 
+  TrendingUp, 
+  TrendingDown,
+  PlusCircle, 
+  Banknote, 
+  QrCode, 
+  Landmark, 
+  Calendar, 
+  FileSpreadsheet, 
+  Printer, 
+  Edit3, 
+  Trash2, 
+  CheckCircle2, 
+  AlertCircle, 
+  Search, 
+  Sparkles, 
+  Layers, 
+  Receipt, 
+  X, 
+  Save, 
+  Plus, 
+  Trash, 
+  Eye,
+  RefreshCw,
+  Wallet,
+  Building2,
+  UserCheck,
+  Truck,
+  Coffee,
+  Zap,
+  Tag,
+  CreditCard,
+  ChevronLeft,
+  ChevronRight,
+  ArrowRight,
+  ArrowDown,
+  Calculator,
+  ClipboardList,
+  Check
+} from 'lucide-react';
+import { 
+  ResponsiveContainer, 
+  ComposedChart, 
+  Bar, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  Tooltip, 
+  CartesianGrid 
+} from 'recharts';
+import { dailyFinanceAPI } from '../api';
+
+export default function DailyFinancePage({ profile, user, suppliers = [], staffList = [] }) {
+  const currency = profile?.currency_symbol || '₹';
+
+  // Page View Modes: 'register' (Super Easy Table Entry Sheet) or 'ledger' (Full History & Reports)
+  const [activeViewMode, setActiveViewMode] = useState('register');
+
+  // Data states
+  const [records, setRecords] = useState([]);
+  const [summaryStats, setSummaryStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [registerSearchQuery, setRegisterSearchQuery] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  // Modal / Detail states
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [viewingRecord, setViewingRecord] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isAutoFetching, setIsAutoFetching] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [notification, setNotification] = useState(null);
+
+  // Form State for Table Entry Register
+  const initialFormState = {
+    date: new Date().toISOString().slice(0, 10),
+    daily_sales: '',
+    cash_earned: '',
+    upi_earned: '',
+    supplier_payments: '',
+    staff_expenses: '',
+    vehicle_expenses: '',
+    expenses: '',
+    other_outflow: '',
+    total_paid: '',
+    opening_balance: '',
+    notes: '',
+    // Spreadsheet-like itemized expenses
+    payment_details: [
+      {
+        id: 1,
+        type: 'VENDOR',
+        recipient: '',
+        staff_id: '',
+        staff_name: '',
+        charge_code: '',
+        purpose: '',
+        vehicle_info: '',
+        category: '',
+        amount: '',
+        payment_mode: 'CASH',
+        note: ''
+      }
+    ]
+  };
+  const [formData, setFormData] = useState(initialFormState);
+
+  // Auto-dismiss notification toast
+  const showToast = (message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 4000);
+  };
+
+  // Load Data from Backend
+  const loadFinanceData = async () => {
+    try {
+      setRefreshing(true);
+      let queryParams = [];
+      if (selectedMonth) {
+        queryParams.push(`month=${selectedMonth}`);
+        if (selectedYear) queryParams.push(`year=${selectedYear}`);
+      } else if (startDate || endDate) {
+        if (startDate) queryParams.push(`start_date=${startDate}`);
+        if (endDate) queryParams.push(`end_date=${endDate}`);
+      }
+      if (searchQuery.trim()) {
+        queryParams.push(`search=${encodeURIComponent(searchQuery.trim())}`);
+      }
+
+      const queryString = queryParams.join('&');
+
+      const [recordsRes, statsRes] = await Promise.allSettled([
+        dailyFinanceAPI.getRecords(queryString),
+        dailyFinanceAPI.getSummaryStats()
+      ]);
+
+      if (recordsRes.status === 'fulfilled') {
+        const data = recordsRes.value?.results || recordsRes.value || [];
+        setRecords(Array.isArray(data) ? data : []);
+      }
+      if (statsRes.status === 'fulfilled') {
+        setSummaryStats(statsRes.value);
+      }
+    } catch (err) {
+      console.error('Failed to load daily finance data:', err);
+      showToast(`Error loading data: ${err.message}`, 'error');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadFinanceData();
+  }, [selectedMonth, selectedYear, startDate, endDate]);
+
+  // Initial auto-fetch for today when entering
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    triggerAutoFetch(today, false);
+  }, []);
+
+  // Quick Date Navigation
+  const handleShiftDate = (days) => {
+    const curr = new Date(formData.date || new Date().toISOString().slice(0, 10));
+    curr.setDate(curr.getDate() + days);
+    const newDateStr = curr.toISOString().slice(0, 10);
+    handleChangeDate(newDateStr);
+  };
+
+  const handleChangeDate = async (newDate) => {
+    setFormData(prev => ({ ...prev, date: newDate }));
+    
+    // Check if a record already exists for this date
+    const existing = records.find(r => r.date === newDate);
+    if (existing) {
+      handleOpenEdit(existing, false);
+    } else {
+      setEditingRecord(null);
+      await triggerAutoFetch(newDate, true);
+    }
+  };
+
+  // Open Edit Mode
+  const handleOpenEdit = (record, switchView = true) => {
+    setEditingRecord(record);
+    const details = Array.isArray(record.payment_details) && record.payment_details.length > 0 
+      ? record.payment_details 
+      : [{
+          id: Date.now(),
+          type: 'VENDOR',
+          recipient: '',
+          staff_id: '',
+          staff_name: '',
+          charge_code: '',
+          purpose: '',
+          vehicle_info: '',
+          category: '',
+          amount: '',
+          payment_mode: 'CASH',
+          note: ''
+        }];
+
+    setFormData({
+      date: record.date,
+      daily_sales: record.daily_sales?.toString() || '',
+      cash_earned: record.cash_earned?.toString() || '',
+      upi_earned: record.upi_earned?.toString() || '',
+      supplier_payments: record.supplier_payments?.toString() || '',
+      staff_expenses: record.staff_expenses?.toString() || '',
+      vehicle_expenses: record.vehicle_expenses?.toString() || '',
+      expenses: record.expenses?.toString() || '',
+      other_outflow: record.other_outflow?.toString() || '',
+      total_paid: record.total_paid?.toString() || '',
+      opening_balance: record.opening_balance?.toString() || '',
+      notes: record.notes || '',
+      payment_details: details
+    });
+
+    if (switchView) {
+      setActiveViewMode('register');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  // Open Clean New Entry
+  const handleOpenNewEntry = async (targetDate = null) => {
+    const target = targetDate || new Date().toISOString().slice(0, 10);
+    setEditingRecord(null);
+    setFormData({
+      ...initialFormState,
+      date: target
+    });
+    setActiveViewMode('register');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    await triggerAutoFetch(target, true);
+  };
+
+  // Trigger POS Auto-Fetch
+  const triggerAutoFetch = async (targetDate, showNotification = true) => {
+    setIsAutoFetching(true);
+    try {
+      const data = await dailyFinanceAPI.autoFetchDay(targetDate);
+      if (data) {
+        setFormData(prev => {
+          return {
+            ...prev,
+            daily_sales: (data.pos_daily_sales || 0).toString(),
+            cash_earned: (data.pos_cash_earned || 0).toString(),
+            upi_earned: (data.pos_upi_earned || 0).toString(),
+            opening_balance: prev.opening_balance !== '' ? prev.opening_balance : (data.suggested_opening_balance || 0).toString(),
+          };
+        });
+        if (showNotification && data.invoices_count > 0) {
+          showToast(`⚡ Filled ${data.invoices_count} bills: Cash ₹${data.pos_cash_earned} | UPI ₹${data.pos_upi_earned}`, 'info');
+        }
+      }
+    } catch (err) {
+      console.error('Auto-fetch failed:', err);
+    } finally {
+      setIsAutoFetching(false);
+    }
+  };
+
+  // Spreadsheet Itemized Calculations by Type
+  const itemizedSums = useMemo(() => {
+    let vendorSum = 0;
+    let staffSum = 0;
+    let vehicleSum = 0;
+    let shopSum = 0;
+    let otherSum = 0;
+    let totalTableSum = 0;
+
+    (formData.payment_details || []).forEach(item => {
+      const amt = parseFloat(item.amount) || 0;
+      totalTableSum += amt;
+      if (item.type === 'VENDOR' || item.type === 'Supplier') vendorSum += amt;
+      else if (item.type === 'STAFF') staffSum += amt;
+      else if (item.type === 'VEHICLE') vehicleSum += amt;
+      else if (item.type === 'SHOP' || item.type === 'Expense') shopSum += amt;
+      else otherSum += amt;
+    });
+
+    return { vendorSum, staffSum, vehicleSum, shopSum, otherSum, totalTableSum };
+  }, [formData.payment_details]);
+
+  // Live Math Calculations
+  const formCashEarned = parseFloat(formData.cash_earned) || 0;
+  const formUpiEarned = parseFloat(formData.upi_earned) || 0;
+  const formTotalEarned = formCashEarned + formUpiEarned;
+
+  const formSupplierPaid = itemizedSums.vendorSum;
+  const formStaffPaid = itemizedSums.staffSum;
+  const formVehiclePaid = itemizedSums.vehicleSum;
+  const formShopExpenses = itemizedSums.shopSum;
+  const formOtherOutflow = itemizedSums.otherSum;
+  const formTotalPaid = itemizedSums.totalTableSum;
+
+  const formOpeningBalance = parseFloat(formData.opening_balance) || 0;
+  const formNetChange = formTotalEarned - formTotalPaid;
+  const formClosingBalance = formOpeningBalance + formNetChange;
+
+  // Add Row to Expense Table
+  const handleAddExpenseRow = (type = 'VENDOR') => {
+    let newRow = {
+      id: Date.now() + Math.random(),
+      type: type,
+      recipient: '',
+      staff_id: '',
+      staff_name: '',
+      charge_code: '',
+      purpose: type === 'STAFF' ? 'Daily Wage' : (type === 'VEHICLE' ? 'Fuel / Petrol' : (type === 'SHOP' ? 'Tea / Snacks' : '')),
+      vehicle_info: '',
+      category: type === 'SHOP' ? 'Tea / Snacks' : '',
+      amount: '',
+      payment_mode: 'CASH',
+      note: ''
+    };
+
+    if (type === 'STAFF' && staffList.length > 0) {
+      const firstStaff = staffList[0];
+      newRow.staff_id = firstStaff.id;
+      newRow.staff_name = firstStaff.name;
+      newRow.charge_code = firstStaff.charge_code;
+    }
+
+    if (type === 'VENDOR' && suppliers.length > 0) {
+      newRow.recipient = suppliers[0].name;
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      payment_details: [...(prev.payment_details || []), newRow]
+    }));
+  };
+
+  // Remove Row from Expense Table
+  const handleRemoveExpenseRow = (id) => {
+    setFormData(prev => {
+      const filtered = (prev.payment_details || []).filter(item => item.id !== id);
+      return {
+        ...prev,
+        payment_details: filtered.length > 0 ? filtered : [{
+          id: Date.now(),
+          type: 'VENDOR',
+          recipient: '',
+          staff_id: '',
+          staff_name: '',
+          charge_code: '',
+          purpose: '',
+          vehicle_info: '',
+          category: '',
+          amount: '',
+          payment_mode: 'CASH',
+          note: ''
+        }]
+      };
+    });
+  };
+
+  // Update Specific Field in Row
+  const handleUpdateExpenseRow = (id, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      payment_details: (prev.payment_details || []).map(item => {
+        if (item.id === id) {
+          const updated = { ...item, [field]: value };
+          
+          // Auto-sync staff details & mapped charge code
+          if (field === 'staff_id') {
+            const foundStaff = staffList.find(s => s.id.toString() === value.toString());
+            if (foundStaff) {
+              updated.staff_name = foundStaff.name;
+              updated.charge_code = foundStaff.charge_code;
+            }
+          }
+
+          // If type changes, apply smart defaults
+          if (field === 'type') {
+            if (value === 'STAFF') {
+              if (staffList.length > 0 && !updated.staff_id) {
+                updated.staff_id = staffList[0].id;
+                updated.staff_name = staffList[0].name;
+                updated.charge_code = staffList[0].charge_code;
+              }
+              updated.purpose = updated.purpose || 'Daily Wage';
+            } else if (value === 'VENDOR') {
+              if (suppliers.length > 0 && !updated.recipient) {
+                updated.recipient = suppliers[0].name;
+              }
+              updated.staff_id = '';
+              updated.staff_name = '';
+              updated.charge_code = '';
+            } else if (value === 'VEHICLE') {
+              updated.purpose = 'Fuel / Petrol';
+              updated.staff_id = '';
+              updated.staff_name = '';
+              updated.charge_code = '';
+            } else if (value === 'SHOP') {
+              updated.category = 'Tea / Snacks';
+              updated.staff_id = '';
+              updated.staff_name = '';
+              updated.charge_code = '';
+            } else if (value === 'OTHER') {
+              updated.staff_id = '';
+              updated.staff_name = '';
+              updated.charge_code = '';
+            }
+          }
+
+          return updated;
+        }
+        return item;
+      })
+    }));
+  };
+
+  // Save Record
+  const handleSaveRecord = async (e) => {
+    if (e) e.preventDefault();
+    if (!formData.date) {
+      alert('Please choose an accounting date.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Filter out blank empty rows before submitting
+      const validDetails = (formData.payment_details || []).filter(item => {
+        const hasAmount = parseFloat(item.amount) > 0;
+        const hasName = Boolean(item.recipient || item.staff_name || item.vehicle_info || item.note || item.category);
+        return hasAmount || hasName;
+      });
+
+      const payload = {
+        date: formData.date,
+        daily_sales: parseFloat(formData.daily_sales) || formTotalEarned,
+        cash_earned: formCashEarned,
+        upi_earned: formUpiEarned,
+        supplier_payments: formSupplierPaid,
+        staff_expenses: formStaffPaid,
+        vehicle_expenses: formVehiclePaid,
+        expenses: formShopExpenses,
+        other_outflow: formOtherOutflow,
+        total_paid: formTotalPaid,
+        opening_balance: formOpeningBalance,
+        notes: formData.notes,
+        payment_details: validDetails
+      };
+
+      if (editingRecord) {
+        await dailyFinanceAPI.updateRecord(editingRecord.id, payload);
+        showToast(`✅ Saved & Updated Accounts for ${formData.date}`);
+      } else {
+        await dailyFinanceAPI.createRecord(payload);
+        showToast(`✅ Successfully Saved Daily Accounts for ${formData.date}`);
+      }
+
+      await loadFinanceData();
+    } catch (err) {
+      console.error('Save failed:', err);
+      alert(`Could not save record: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Delete Record
+  const handleDeleteRecord = async (record) => {
+    const confirmDelete = window.confirm(`Are you sure you want to delete the daily accounts record for ${record.date}?`);
+    if (!confirmDelete) return;
+
+    try {
+      await dailyFinanceAPI.deleteRecord(record.id);
+      showToast(`Record for ${record.date} deleted.`);
+      if (formData.date === record.date) {
+        handleOpenNewEntry(record.date);
+      }
+      loadFinanceData();
+    } catch (err) {
+      alert(`Delete failed: ${err.message}`);
+    }
+  };
+
+  // Excel Export
+  const handleExportExcel = async () => {
+    setExportingExcel(true);
+    try {
+      let queryParams = [];
+      if (selectedMonth) {
+        queryParams.push(`month=${selectedMonth}`);
+        if (selectedYear) queryParams.push(`year=${selectedYear}`);
+      } else if (startDate || endDate) {
+        if (startDate) queryParams.push(`start_date=${startDate}`);
+        if (endDate) queryParams.push(`end_date=${endDate}`);
+      }
+      const queryString = queryParams.join('&');
+      const res = await dailyFinanceAPI.exportExcel(queryString);
+      showToast(`Excel file downloaded: ${res.filename}`);
+    } catch (err) {
+      alert(`Excel export failed: ${err.message}`);
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  // Chart Data Preparation
+  const chartData = useMemo(() => {
+    return [...records]
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .map(r => ({
+        date: r.date.slice(5),
+        fullDate: r.date,
+        sales: parseFloat(r.daily_sales) || 0,
+        cash: parseFloat(r.cash_earned) || 0,
+        upi: parseFloat(r.upi_earned) || 0,
+        earned: parseFloat(r.total_earned) || ((parseFloat(r.cash_earned) || 0) + (parseFloat(r.upi_earned) || 0)),
+        paid: parseFloat(r.total_paid) || 0,
+        balance: parseFloat(r.closing_balance) || 0,
+      }));
+  }, [records]);
+
+  // Filtered Records for Register Table (sorted newest first)
+  const filteredRegisterRecords = useMemo(() => {
+    let list = [...records].sort((a, b) => new Date(b.date) - new Date(a.date));
+    if (registerSearchQuery.trim()) {
+      const q = registerSearchQuery.toLowerCase();
+      list = list.filter(r => {
+        const matchDate = r.date?.toLowerCase().includes(q);
+        const matchNotes = r.notes?.toLowerCase().includes(q);
+        const matchDetails = Array.isArray(r.payment_details) && r.payment_details.some(d => 
+          d.recipient?.toLowerCase().includes(q) ||
+          d.staff_name?.toLowerCase().includes(q) ||
+          d.charge_code?.toLowerCase().includes(q) ||
+          d.vehicle_info?.toLowerCase().includes(q) ||
+          d.category?.toLowerCase().includes(q) ||
+          d.note?.toLowerCase().includes(q)
+        );
+        return matchDate || matchNotes || matchDetails;
+      });
+    }
+    return list;
+  }, [records, registerSearchQuery]);
+
+  // Metric stats
+  const todaySales = summaryStats?.today?.daily_sales || 0;
+  const todayCash = summaryStats?.today?.cash_earned || 0;
+  const todayUpi = summaryStats?.today?.upi_earned || 0;
+  const todayEarned = summaryStats?.today?.total_earned || (todayCash + todayUpi);
+  const todayPaid = summaryStats?.today?.total_paid || 0;
+  const currentFirmBalance = summaryStats?.current_firm_balance || 0;
+
+  return (
+    <div className="main-page-wrapper df-page-wrapper" style={{ maxWidth: '1280px', margin: '0 auto', paddingBottom: '60px' }}>
+      
+      {/* Scoped Responsive & Professional Styles */}
+      <style>{`
+        .df-page-wrapper {
+          padding: 16px 20px 60px 20px;
+        }
+        @media (max-width: 768px) {
+          .df-page-wrapper {
+            padding: 10px 10px 80px 10px !important;
+          }
+          .df-header {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 12px !important;
+          }
+          .df-tabs {
+            width: 100% !important;
+            display: flex !important;
+          }
+          .df-tab-btn {
+            flex: 1 !important;
+            justify-content: center !important;
+            padding: 10px 6px !important;
+            font-size: 12.5px !important;
+          }
+          .df-status-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 8px !important;
+          }
+          .df-status-closing {
+            grid-column: span 2 !important;
+          }
+          .df-top-bar {
+            padding: 14px !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 14px !important;
+          }
+          .df-date-group {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            width: 100% !important;
+            gap: 8px !important;
+          }
+          .df-date-nav {
+            width: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+          }
+          .df-date-input-wrap {
+            width: 100% !important;
+          }
+          .df-date-input-wrap input {
+            width: 100% !important;
+            font-size: 15px !important;
+            padding: 10px 12px !important;
+            text-align: center !important;
+            border-radius: 10px !important;
+            box-sizing: border-box !important;
+          }
+          .df-date-buttons-row {
+            display: flex !important;
+            gap: 6px !important;
+            width: 100% !important;
+          }
+          .df-date-buttons-row button {
+            flex: 1 !important;
+            padding: 9px 6px !important;
+            font-size: 12px !important;
+            justify-content: center !important;
+            border-radius: 8px !important;
+          }
+          .df-autofetch-wrap {
+            width: 100% !important;
+            align-items: stretch !important;
+          }
+          .df-autofetch-btn {
+            width: 100% !important;
+            justify-content: center !important;
+            padding: 12px !important;
+            font-size: 14px !important;
+          }
+          .df-inflows-grid {
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+          }
+          .df-section-header {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 10px !important;
+          }
+          .df-total-badge {
+            width: 100% !important;
+            justify-content: space-between !important;
+          }
+          .df-quick-chips {
+            gap: 6px !important;
+            padding: 10px !important;
+          }
+          .df-quick-btn {
+            flex: 1 1 calc(50% - 6px) !important;
+            padding: 8px 8px !important;
+            font-size: 11.5px !important;
+            justify-content: center !important;
+          }
+          .df-quick-btn-blank {
+            flex: 1 1 100% !important;
+            margin-left: 0 !important;
+          }
+          .df-table-desktop {
+            display: none !important;
+          }
+          .df-cards-mobile {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 12px !important;
+          }
+          .df-math-equalizer {
+            grid-template-columns: 1fr !important;
+            gap: 10px !important;
+          }
+          .df-save-bar {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            padding: 14px !important;
+          }
+          .df-save-btn-group {
+            width: 100% !important;
+            flex-direction: column !important;
+          }
+          .df-save-btn {
+            width: 100% !important;
+            justify-content: center !important;
+            padding: 14px !important;
+            font-size: 15px !important;
+          }
+          .df-saved-header {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 10px !important;
+          }
+          .df-saved-search {
+            width: 100% !important;
+            max-width: 100% !important;
+          }
+        }
+        @media (min-width: 769px) {
+          .df-cards-mobile {
+            display: none !important;
+          }
+          .df-table-desktop {
+            display: block !important;
+          }
+          .df-date-nav {
+            display: flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+          }
+          .df-date-buttons-row {
+            display: flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+          }
+        }
+        .df-active-row {
+          background: #f0f9ff !important;
+          border-left: 4px solid #0284c7 !important;
+        }
+      `}</style>
+
+      {/* Floating Notification Toast */}
+      {notification && (
+        <div style={{
+          position: 'fixed',
+          top: '24px',
+          right: '24px',
+          zIndex: 9999,
+          padding: '14px 22px',
+          borderRadius: '12px',
+          background: notification.type === 'error' ? '#ef4444' : (notification.type === 'info' ? '#0284c7' : '#10b981'),
+          color: '#ffffff',
+          fontWeight: 800,
+          fontSize: '14px',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.22)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          animation: 'slideInRight 0.3s ease'
+        }}>
+          {notification.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
+          <span>{notification.message}</span>
+        </div>
+      )}
+
+      {/* TOP HEADER: Clean Title & Mode Switcher */}
+      <div className="df-header" style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '16px',
+        paddingBottom: '16px',
+        borderBottom: '2px solid var(--border-subtle)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '46px',
+            height: '46px',
+            borderRadius: '14px',
+            background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+            color: '#ffffff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 6px 16px rgba(2, 132, 199, 0.3)',
+            flexShrink: 0
+          }}>
+            <Landmark size={26} />
+          </div>
+          <div>
+            <h1 style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text-main)', margin: 0, letterSpacing: '-0.01em' }}>
+              Daily Cash, UPI & Expense Register
+            </h1>
+            <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+              Professional accounts entry for daily counter money, staff charge codes, and vendor payments
+            </p>
+          </div>
+        </div>
+
+        {/* View Switcher Tabs */}
+        <div className="df-tabs" style={{
+          display: 'flex',
+          background: 'var(--bg-main)',
+          padding: '4px',
+          borderRadius: '12px',
+          border: '1px solid var(--border-subtle)',
+          gap: '4px'
+        }}>
+          <button
+            type="button"
+            onClick={() => setActiveViewMode('register')}
+            className="df-tab-btn"
+            style={{
+              padding: '10px 18px',
+              borderRadius: '9px',
+              border: 'none',
+              fontWeight: 800,
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.2s',
+              background: activeViewMode === 'register' ? '#0284c7' : 'transparent',
+              color: activeViewMode === 'register' ? '#ffffff' : 'var(--text-muted)',
+              boxShadow: activeViewMode === 'register' ? '0 4px 12px rgba(2, 132, 199, 0.25)' : 'none'
+            }}
+          >
+            <ClipboardList size={16} />
+            <span>Daily Register Entry</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveViewMode('ledger')}
+            className="df-tab-btn"
+            style={{
+              padding: '10px 18px',
+              borderRadius: '9px',
+              border: 'none',
+              fontWeight: 800,
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.2s',
+              background: activeViewMode === 'ledger' ? '#0284c7' : 'transparent',
+              color: activeViewMode === 'ledger' ? '#ffffff' : 'var(--text-muted)',
+              boxShadow: activeViewMode === 'ledger' ? '0 4px 12px rgba(2, 132, 199, 0.25)' : 'none'
+            }}
+          >
+            <Receipt size={16} />
+            <span>History Ledger ({records.length})</span>
+          </button>
+        </div>
+      </div>
+
+      {/* QUICK STATUS BAR: Today at a Glance */}
+      <div className="df-status-grid" style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gap: '12px',
+        marginTop: '16px'
+      }}>
+        {/* Today Sales */}
+        <div className="glass-panel" style={{ padding: '12px 14px', background: '#f0f9ff', border: '1px solid #bae6fd' }}>
+          <div style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>
+            Today's Total Sales
+          </div>
+          <div className="mono" style={{ fontSize: '18px', fontWeight: 900, color: '#0284c7', marginTop: '2px' }}>
+            {currency}{todaySales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          </div>
+        </div>
+
+        {/* Cash In Hand */}
+        <div className="glass-panel" style={{ padding: '12px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+          <div style={{ fontSize: '11px', fontWeight: 800, color: '#059669', textTransform: 'uppercase' }}>
+            💵 Cash Received
+          </div>
+          <div className="mono" style={{ fontSize: '18px', fontWeight: 900, color: '#059669', marginTop: '2px' }}>
+            {currency}{todayCash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          </div>
+        </div>
+
+        {/* UPI Received */}
+        <div className="glass-panel" style={{ padding: '12px 14px', background: '#f0f9ff', border: '1px solid #bae6fd' }}>
+          <div style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase' }}>
+            📱 UPI Received
+          </div>
+          <div className="mono" style={{ fontSize: '18px', fontWeight: 900, color: '#0369a1', marginTop: '2px' }}>
+            {currency}{todayUpi.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          </div>
+        </div>
+
+        {/* Total Money Out Today */}
+        <div className="glass-panel" style={{ padding: '12px 14px', background: '#fff1f2', border: '1px solid #fecdd3' }}>
+          <div style={{ fontSize: '11px', fontWeight: 800, color: '#e11d48', textTransform: 'uppercase' }}>
+            🔴 Total Paid Out
+          </div>
+          <div className="mono" style={{ fontSize: '18px', fontWeight: 900, color: '#e11d48', marginTop: '2px' }}>
+            {currency}{todayPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          </div>
+        </div>
+
+        {/* Closing Firm Balance */}
+        <div className="glass-panel df-status-closing" style={{ padding: '12px 14px', background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)', color: '#ffffff', border: 'none' }}>
+          <div style={{ fontSize: '11px', fontWeight: 800, opacity: 0.9, textTransform: 'uppercase' }}>
+            💼 Closing Firm Balance
+          </div>
+          <div className="mono" style={{ fontSize: '20px', fontWeight: 900, marginTop: '2px' }}>
+            {currency}{currentFirmBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          </div>
+        </div>
+      </div>
+
+      {/* =========================================================================
+          VIEW 1: ULTRA-FRIENDLY TABLE ENTRY REGISTER (DESKTOP + MOBILE CARDS)
+          ========================================================================= */}
+      {activeViewMode === 'register' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '20px' }}>
+          
+          <form onSubmit={handleSaveRecord} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+            {/* TOP BAR: DATE PICKER & 1-CLICK AUTO-FILL BUTTON */}
+            <div className="glass-panel df-top-bar" style={{
+              padding: '16px 20px',
+              background: '#ffffff',
+              border: '1.5px solid #bae6fd',
+              borderRadius: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '14px',
+              boxShadow: '0 4px 16px rgba(2, 132, 199, 0.06)'
+            }}>
+              
+              {/* Date Selector with Quick Navigation */}
+              <div className="df-date-group" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#0284c7',
+                  boxShadow: '0 4px 10px rgba(2, 132, 199, 0.12)',
+                  flexShrink: 0
+                }}>
+                  <Calendar size={22} />
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    📅 Accounting Date:
+                  </div>
+                  <div className="df-date-nav" style={{ marginTop: '6px' }}>
+                    <div className="df-date-input-wrap">
+                      <input
+                        type="date"
+                        required
+                        value={formData.date}
+                        onChange={(e) => handleChangeDate(e.target.value)}
+                        style={{
+                          padding: '7px 12px',
+                          fontSize: '14.5px',
+                          fontWeight: 800,
+                          borderRadius: '8px',
+                          border: '1.5px solid #0284c7',
+                          background: '#f0f9ff',
+                          color: '#0369a1',
+                          cursor: 'pointer',
+                          outline: 'none'
+                        }}
+                      />
+                    </div>
+
+                    <div className="df-date-buttons-row">
+                      <button
+                        type="button"
+                        onClick={() => handleShiftDate(-1)}
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '7px 12px', fontSize: '12.5px', fontWeight: 800, borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        title="Previous Day"
+                      >
+                        <ChevronLeft size={15} /> Prev Day
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleChangeDate(new Date().toISOString().slice(0, 10))}
+                        className="btn btn-secondary btn-sm"
+                        style={{
+                          padding: '7px 12px',
+                          fontSize: '12.5px',
+                          fontWeight: 800,
+                          borderRadius: '8px',
+                          background: formData.date === new Date().toISOString().slice(0, 10) ? '#e0f2fe' : '#ffffff',
+                          border: '1.5px solid #0284c7',
+                          color: '#0369a1'
+                        }}
+                        title="Jump to Today"
+                      >
+                        ⚡ Today
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleShiftDate(1)}
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '7px 12px', fontSize: '12.5px', fontWeight: 800, borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        title="Next Day"
+                      >
+                        Next Day <ChevronRight size={15} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* One-Click Auto-Fill Button */}
+              <div className="df-autofetch-wrap" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                <button
+                  type="button"
+                  onClick={() => triggerAutoFetch(formData.date, true)}
+                  disabled={isAutoFetching}
+                  className="df-autofetch-btn"
+                  style={{
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '12px',
+                    padding: '11px 20px',
+                    fontSize: '14px',
+                    fontWeight: 900,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 6px 18px rgba(16, 185, 129, 0.3)',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <Sparkles size={18} className={isAutoFetching ? 'animate-spin' : ''} />
+                  <span>{isAutoFetching ? 'Reading POS Bills...' : '⚡ Auto-Fill Today’s Bills (POS)'}</span>
+                </button>
+                <span style={{ fontSize: '11px', color: '#059669', fontWeight: 700 }}>
+                  Reads Cash & UPI directly from counter invoices
+                </span>
+              </div>
+
+            </div>
+
+            {/* =========================================================================
+                SECTION 1: MONEY COMING IN (CASH & UPI INFLOWS)
+                ========================================================================= */}
+            <div className="glass-panel" style={{
+              padding: '18px 20px',
+              background: '#ffffff',
+              borderRadius: '16px',
+              border: '1.5px solid #86efac',
+              boxShadow: '0 4px 16px rgba(16, 185, 129, 0.06)'
+            }}>
+              
+              {/* Step 1 Title Banner */}
+              <div className="df-section-header" style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '12px',
+                borderBottom: '1.5px solid #f0fdf4',
+                paddingBottom: '14px',
+                marginBottom: '16px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '10px',
+                    background: '#10b981',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 900,
+                    fontSize: '15px',
+                    boxShadow: '0 3px 10px rgba(16, 185, 129, 0.25)',
+                    flexShrink: 0
+                  }}>
+                    1
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: '16px', fontWeight: 900, color: '#065f46', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>🟢 Money Coming In (Cash & UPI Inflows)</span>
+                    </h2>
+                    <div style={{ fontSize: '12px', color: '#059669', marginTop: '1px' }}>
+                      Counted cash in drawer and digital online receipts
+                    </div>
+                  </div>
+                </div>
+
+                {/* Total Inflow Live Badge */}
+                <div className="df-total-badge" style={{
+                  padding: '8px 16px',
+                  background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+                  borderRadius: '10px',
+                  border: '1.5px solid #6ee7b7',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: '#065f46', textTransform: 'uppercase' }}>
+                    Total Inflow:
+                  </span>
+                  <span className="mono" style={{ fontSize: '19px', fontWeight: 900, color: '#047857' }}>
+                    {currency}{formTotalEarned.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* 3 Large Inflow Entry Cards */}
+              <div className="df-inflows-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+                
+                {/* 1. Cash in Drawer */}
+                <div style={{
+                  padding: '16px',
+                  background: 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)',
+                  borderRadius: '14px',
+                  border: '2px solid #059669'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 900, color: '#065f46', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Banknote size={18} color="#059669" />
+                      <span>💵 CASH in Drawer ({currency}) *</span>
+                    </label>
+                    <span className="badge badge-emerald" style={{ fontSize: '10px', fontWeight: 800 }}>Hard Cash</span>
+                  </div>
+                  
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '18px', fontWeight: 900, color: '#059669' }}>
+                      {currency}
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      placeholder="0.00"
+                      value={formData.cash_earned}
+                      onChange={(e) => setFormData({ ...formData, cash_earned: e.target.value })}
+                      className="mono"
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px 10px 32px',
+                        fontSize: '22px',
+                        fontWeight: 900,
+                        borderRadius: '10px',
+                        border: '1.5px solid #059669',
+                        background: '#ffffff',
+                        color: '#065f46',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#059669', marginTop: '6px', fontWeight: 700 }}>
+                    Physical cash in your counter drawer
+                  </div>
+                </div>
+
+                {/* 2. UPI / QR Received */}
+                <div style={{
+                  padding: '16px',
+                  background: 'linear-gradient(135deg, #f0f9ff 0%, #ffffff 100%)',
+                  borderRadius: '14px',
+                  border: '2px solid #0284c7'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 900, color: '#0369a1', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <QrCode size={18} color="#0284c7" />
+                      <span>📱 UPI / QR Online ({currency}) *</span>
+                    </label>
+                    <span className="badge badge-cyan" style={{ fontSize: '10px', fontWeight: 800 }}>PhonePe / GPay</span>
+                  </div>
+                  
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '18px', fontWeight: 900, color: '#0284c7' }}>
+                      {currency}
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      placeholder="0.00"
+                      value={formData.upi_earned}
+                      onChange={(e) => setFormData({ ...formData, upi_earned: e.target.value })}
+                      className="mono"
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px 10px 32px',
+                        fontSize: '22px',
+                        fontWeight: 900,
+                        borderRadius: '10px',
+                        border: '1.5px solid #0284c7',
+                        background: '#ffffff',
+                        color: '#0369a1',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '6px', fontWeight: 700 }}>
+                    Digital receipts received on shop QR / soundbox
+                  </div>
+                </div>
+
+                {/* 3. Gross Daily Sales (POS Bills) */}
+                <div style={{
+                  padding: '16px',
+                  background: '#f8fafc',
+                  borderRadius: '14px',
+                  border: '1.5px solid #cbd5e1'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <TrendingUp size={18} color="#64748b" />
+                      <span>💻 Gross POS Sales ({currency})</span>
+                    </label>
+                    <span className="badge badge-gray" style={{ fontSize: '10px', fontWeight: 700 }}>Invoiced</span>
+                  </div>
+                  
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '18px', fontWeight: 800, color: '#475569' }}>
+                      {currency}
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={formData.daily_sales}
+                      onChange={(e) => setFormData({ ...formData, daily_sales: e.target.value })}
+                      className="mono"
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px 10px 32px',
+                        fontSize: '22px',
+                        fontWeight: 800,
+                        borderRadius: '10px',
+                        border: '1.5px solid #cbd5e1',
+                        background: '#ffffff',
+                        color: 'var(--text-main)',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                    Total billed medicines on computer software
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* =========================================================================
+                SECTION 2: MONEY GOING OUT (DAILY EXPENSES & PAYMENTS TABLE / MOBILE CARDS)
+                ========================================================================= */}
+            <div className="glass-panel" style={{
+              padding: '18px 20px',
+              background: '#ffffff',
+              borderRadius: '16px',
+              border: '1.5px solid #fda4af',
+              boxShadow: '0 4px 16px rgba(225, 29, 72, 0.06)'
+            }}>
+              
+              {/* Header & Quick Category Shortcuts */}
+              <div className="df-section-header" style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '12px',
+                borderBottom: '1.5px solid #fff1f2',
+                paddingBottom: '14px',
+                marginBottom: '16px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '10px',
+                    background: '#e11d48',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 900,
+                    fontSize: '15px',
+                    boxShadow: '0 3px 10px rgba(225, 29, 72, 0.25)',
+                    flexShrink: 0
+                  }}>
+                    2
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: '16px', fontWeight: 900, color: '#be123c', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>🔴 Money Going Out (Daily Expenses & Payouts Table)</span>
+                    </h2>
+                    <div style={{ fontSize: '12px', color: '#e11d48', marginTop: '1px' }}>
+                      Add line items for supplier payments, staff salaries, petrol, and shop expenses
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live Expense Total Badge */}
+                <div className="df-total-badge" style={{
+                  padding: '8px 16px',
+                  background: 'linear-gradient(135deg, #ffe4e6 0%, #fecdd3 100%)',
+                  borderRadius: '10px',
+                  border: '1.5px solid #f43f5e',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: '#9f1239', textTransform: 'uppercase' }}>
+                    Total Expenses:
+                  </span>
+                  <span className="mono" style={{ fontSize: '19px', fontWeight: 900, color: '#be123c' }}>
+                    {currency}{formTotalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* 5 Quick 1-Click Row Addition Buttons */}
+              <div className="df-quick-chips" style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                flexWrap: 'wrap',
+                marginBottom: '14px',
+                padding: '10px 14px',
+                background: '#fff1f2',
+                borderRadius: '12px',
+                border: '1.5px dashed #fca5a5'
+              }}>
+                <span style={{ fontSize: '12px', fontWeight: 900, color: '#9f1239', marginRight: '2px' }}>
+                  ⚡ Quick Add:
+                </span>
+                
+                {/* 1. Vendor Payout */}
+                <button
+                  type="button"
+                  onClick={() => handleAddExpenseRow('VENDOR')}
+                  className="df-quick-btn"
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #d8b4fe',
+                    background: '#faf5ff',
+                    color: '#6b21a8',
+                    fontWeight: 800,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                >
+                  <Building2 size={14} color="#7e22ce" />
+                  <span>+ Vendor Payout</span>
+                </button>
+
+                {/* 2. Staff Pay */}
+                <button
+                  type="button"
+                  onClick={() => handleAddExpenseRow('STAFF')}
+                  className="df-quick-btn"
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #7dd3fc',
+                    background: '#f0f9ff',
+                    color: '#0369a1',
+                    fontWeight: 800,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                >
+                  <UserCheck size={14} color="#0284c7" />
+                  <span>+ Staff Pay [Code]</span>
+                </button>
+
+                {/* 3. Petrol / Vehicle */}
+                <button
+                  type="button"
+                  onClick={() => handleAddExpenseRow('VEHICLE')}
+                  className="df-quick-btn"
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #fde68a',
+                    background: '#fffbeb',
+                    color: '#92400e',
+                    fontWeight: 800,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                >
+                  <Truck size={14} color="#d97706" />
+                  <span>+ Petrol / Vehicle</span>
+                </button>
+
+                {/* 4. Tea / Shop Expense */}
+                <button
+                  type="button"
+                  onClick={() => handleAddExpenseRow('SHOP')}
+                  className="df-quick-btn"
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #fecdd3',
+                    background: '#fff1f2',
+                    color: '#be123c',
+                    fontWeight: 800,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                >
+                  <Coffee size={14} color="#e11d48" />
+                  <span>+ Tea / Shop</span>
+                </button>
+
+                {/* 5. Add Blank */}
+                <button
+                  type="button"
+                  onClick={() => handleAddExpenseRow('VENDOR')}
+                  className="df-quick-btn df-quick-btn-blank"
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: 'var(--text-main)',
+                    fontWeight: 800,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    marginLeft: 'auto'
+                  }}
+                >
+                  <Plus size={14} />
+                  <span>+ Add Blank Row</span>
+                </button>
+              </div>
+
+              {/* ----------------------------------------------------
+                  DESKTOP VIEW: SPREADSHEET TABLE (>= 769px)
+                  ---------------------------------------------------- */}
+              <div className="df-table-desktop" style={{
+                overflowX: 'auto',
+                border: '1.5px solid #cbd5e1',
+                borderRadius: '12px',
+                background: '#ffffff'
+              }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
+                      <th style={{ padding: '12px 10px', width: '40px', textAlign: 'center', fontWeight: 800, color: '#334155' }}>#</th>
+                      <th style={{ padding: '12px 10px', width: '160px', fontWeight: 800, color: '#334155' }}>Expense Category</th>
+                      <th style={{ padding: '12px 10px', minWidth: '220px', fontWeight: 800, color: '#334155' }}>Paid To / Description</th>
+                      <th style={{ padding: '12px 10px', width: '160px', fontWeight: 800, color: '#334155' }}>Charge Code / Purpose</th>
+                      <th style={{ padding: '12px 10px', width: '140px', fontWeight: 800, color: '#be123c', textAlign: 'right' }}>Amount ({currency}) *</th>
+                      <th style={{ padding: '12px 10px', width: '120px', fontWeight: 800, color: '#334155' }}>Payment Mode</th>
+                      <th style={{ padding: '12px 10px', width: '45px', textAlign: 'center' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(formData.payment_details || []).map((row, index) => {
+                      const isVendor = row.type === 'VENDOR' || row.type === 'Supplier';
+                      const isStaff = row.type === 'STAFF';
+                      const isVehicle = row.type === 'VEHICLE';
+                      const isShop = row.type === 'SHOP' || row.type === 'Expense';
+                      const isOther = row.type === 'OTHER';
+
+                      const rowBg = index % 2 === 0 ? '#ffffff' : '#fcfcfd';
+
+                      return (
+                        <tr key={row.id || index} style={{ background: rowBg, borderBottom: '1px solid #e2e8f0' }}>
+                          
+                          {/* 1. Row Index */}
+                          <td style={{ textAlign: 'center', fontWeight: 800, color: '#64748b', padding: '10px 4px' }}>
+                            {index + 1}
+                          </td>
+
+                          {/* 2. Category Dropdown with Emoji */}
+                          <td style={{ padding: '8px 10px' }}>
+                            <select
+                              value={row.type}
+                              onChange={(e) => handleUpdateExpenseRow(row.id, 'type', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px 10px',
+                                borderRadius: '8px',
+                                border: '1.5px solid ' + (isVendor ? '#d8b4fe' : (isStaff ? '#7dd3fc' : (isVehicle ? '#fde68a' : '#fecdd3'))),
+                                background: isVendor ? '#faf5ff' : (isStaff ? '#f0f9ff' : (isVehicle ? '#fffbeb' : '#fff1f2')),
+                                fontWeight: 800,
+                                fontSize: '12px',
+                                color: isVendor ? '#6b21a8' : (isStaff ? '#0369a1' : (isVehicle ? '#92400e' : '#be123c')),
+                                cursor: 'pointer',
+                                outline: 'none'
+                              }}
+                            >
+                              <option value="VENDOR">🏢 Vendor Payout</option>
+                              <option value="STAFF">👤 Staff Pay</option>
+                              <option value="VEHICLE">🚗 Petrol / Vehicle</option>
+                              <option value="SHOP">☕ Shop Expense</option>
+                              <option value="OTHER">📦 Other Expense</option>
+                            </select>
+                          </td>
+
+                          {/* 3. Name / Details (Context-Aware) */}
+                          <td style={{ padding: '8px 10px' }}>
+                            {isVendor && (
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                {suppliers.length > 0 ? (
+                                  <select
+                                    value={row.recipient || ''}
+                                    onChange={(e) => handleUpdateExpenseRow(row.id, 'recipient', e.target.value)}
+                                    style={{
+                                      flex: 1,
+                                      padding: '8px 10px',
+                                      borderRadius: '8px',
+                                      border: '1px solid #cbd5e1',
+                                      fontSize: '13px',
+                                      fontWeight: 700,
+                                      background: '#ffffff',
+                                      color: '#1e293b',
+                                      outline: 'none'
+                                    }}
+                                  >
+                                    <option value="">-- Select Supplier / Wholesaler --</option>
+                                    {suppliers.map(s => (
+                                      <option key={s.id} value={s.name}>{s.name}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    placeholder="Type Supplier Name"
+                                    value={row.recipient || ''}
+                                    onChange={(e) => handleUpdateExpenseRow(row.id, 'recipient', e.target.value)}
+                                    style={{
+                                      flex: 1,
+                                      padding: '8px 10px',
+                                      borderRadius: '8px',
+                                      border: '1px solid #cbd5e1',
+                                      fontSize: '13px',
+                                      fontWeight: 700,
+                                      outline: 'none'
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            )}
+
+                            {isStaff && (
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                {staffList.length > 0 ? (
+                                  <select
+                                    value={row.staff_id || ''}
+                                    onChange={(e) => handleUpdateExpenseRow(row.id, 'staff_id', e.target.value)}
+                                    style={{
+                                      flex: 1,
+                                      padding: '8px 10px',
+                                      borderRadius: '8px',
+                                      border: '1.5px solid #7dd3fc',
+                                      fontSize: '13px',
+                                      fontWeight: 800,
+                                      color: '#0369a1',
+                                      background: '#ffffff',
+                                      outline: 'none'
+                                    }}
+                                  >
+                                    <option value="">-- Select Staff Member --</option>
+                                    {staffList.map(st => (
+                                      <option key={st.id} value={st.id}>
+                                        [{st.charge_code}] {st.name} ({st.role})
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    placeholder="Staff Person Name"
+                                    value={row.staff_name || ''}
+                                    onChange={(e) => handleUpdateExpenseRow(row.id, 'staff_name', e.target.value)}
+                                    style={{
+                                      flex: 1,
+                                      padding: '8px 10px',
+                                      borderRadius: '8px',
+                                      border: '1px solid #cbd5e1',
+                                      fontSize: '13px',
+                                      fontWeight: 700,
+                                      outline: 'none'
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            )}
+
+                            {isVehicle && (
+                              <input
+                                type="text"
+                                placeholder="Delivery Bike / Driver / Vehicle details"
+                                value={row.vehicle_info || ''}
+                                onChange={(e) => handleUpdateExpenseRow(row.id, 'vehicle_info', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 10px',
+                                  borderRadius: '8px',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '13px',
+                                  fontWeight: 700,
+                                  outline: 'none'
+                                }}
+                              />
+                            )}
+
+                            {isShop && (
+                              <input
+                                type="text"
+                                placeholder="Details (e.g. Tea & snacks for staff / Cleaning supplies)"
+                                value={row.note || ''}
+                                onChange={(e) => handleUpdateExpenseRow(row.id, 'note', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 10px',
+                                  borderRadius: '8px',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '13px',
+                                  fontWeight: 700,
+                                  outline: 'none'
+                                }}
+                              />
+                            )}
+
+                            {isOther && (
+                              <input
+                                type="text"
+                                placeholder="Expense description / notes"
+                                value={row.note || ''}
+                                onChange={(e) => handleUpdateExpenseRow(row.id, 'note', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 10px',
+                                  borderRadius: '8px',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '13px',
+                                  fontWeight: 700,
+                                  outline: 'none'
+                                }}
+                              />
+                            )}
+                          </td>
+
+                          {/* 4. Reason / Mapped Staff Charge Code */}
+                          <td style={{ padding: '8px 10px' }}>
+                            {isStaff ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {row.charge_code ? (
+                                  <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '3px 8px',
+                                    background: '#e0f2fe',
+                                    color: '#0369a1',
+                                    borderRadius: '6px',
+                                    fontWeight: 900,
+                                    fontSize: '11.5px',
+                                    border: '1px solid #bae6fd'
+                                  }}>
+                                    <Tag size={11} /> Code: {row.charge_code}
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>No Code</span>
+                                )}
+
+                                <select
+                                  value={row.purpose || 'Daily Wage'}
+                                  onChange={(e) => handleUpdateExpenseRow(row.id, 'purpose', e.target.value)}
+                                  style={{
+                                    padding: '5px 8px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #cbd5e1',
+                                    fontSize: '11.5px',
+                                    fontWeight: 700,
+                                    color: '#0369a1',
+                                    outline: 'none'
+                                  }}
+                                >
+                                  <option value="Daily Wage">Daily Wage</option>
+                                  <option value="Salary Advance">Salary Advance</option>
+                                  <option value="Monthly Salary">Monthly Salary</option>
+                                  <option value="Tea/Food">Tea / Food Allowance</option>
+                                  <option value="Commission">Commission / Bonus</option>
+                                  <option value="Other">Other</option>
+                                </select>
+                              </div>
+                            ) : isVendor ? (
+                              <input
+                                type="text"
+                                placeholder="Bill / Invoice # (Optional)"
+                                value={row.note || ''}
+                                onChange={(e) => handleUpdateExpenseRow(row.id, 'note', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '7px 10px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '12px',
+                                  outline: 'none'
+                                }}
+                              />
+                            ) : isVehicle ? (
+                              <select
+                                value={row.purpose || 'Fuel / Petrol'}
+                                onChange={(e) => handleUpdateExpenseRow(row.id, 'purpose', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '7px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                  outline: 'none'
+                                }}
+                              >
+                                <option value="Fuel / Petrol">⛽ Petrol / Diesel</option>
+                                <option value="Maintenance">🔧 Vehicle Repair</option>
+                                <option value="Courier/Freight">📦 Courier / Freight</option>
+                                <option value="Parking/Toll">🅿️ Parking / Toll</option>
+                              </select>
+                            ) : (
+                              <select
+                                value={row.category || 'Tea / Snacks'}
+                                onChange={(e) => handleUpdateExpenseRow(row.id, 'category', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '7px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                  outline: 'none'
+                                }}
+                              >
+                                <option value="Tea / Snacks">☕ Tea & Snacks</option>
+                                <option value="Electricity">💡 Electricity Bill</option>
+                                <option value="Shop Rent">🏢 Shop Rent</option>
+                                <option value="Cleaning/Maint">🧹 Cleaning / Maintenance</option>
+                                <option value="Stationery">📝 Printing / Stationery</option>
+                                <option value="Other">📦 Other Miscellaneous</option>
+                              </select>
+                            )}
+                          </td>
+
+                          {/* 5. Amount (₹) */}
+                          <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                            <div style={{ position: 'relative' }}>
+                              <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px', fontWeight: 900, color: '#e11d48' }}>
+                                {currency}
+                              </span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={row.amount || ''}
+                                onChange={(e) => handleUpdateExpenseRow(row.id, 'amount', e.target.value)}
+                                className="mono"
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 10px 8px 24px',
+                                  borderRadius: '8px',
+                                  border: '1.5px solid #f87171',
+                                  fontSize: '16px',
+                                  fontWeight: 900,
+                                  color: '#be123c',
+                                  textAlign: 'right',
+                                  background: '#ffffff',
+                                  outline: 'none'
+                                }}
+                              />
+                            </div>
+                          </td>
+
+                          {/* 6. Payment Mode (Cash vs UPI) */}
+                          <td style={{ padding: '8px 10px' }}>
+                            <select
+                              value={row.payment_mode || 'CASH'}
+                              onChange={(e) => handleUpdateExpenseRow(row.id, 'payment_mode', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px 8px',
+                                borderRadius: '8px',
+                                border: '1.5px solid ' + (row.payment_mode === 'UPI' ? '#93c5fd' : '#86efac'),
+                                fontSize: '12px',
+                                fontWeight: 800,
+                                color: row.payment_mode === 'UPI' ? '#0284c7' : '#059669',
+                                background: row.payment_mode === 'UPI' ? '#f0f9ff' : '#f0fdf4',
+                                cursor: 'pointer',
+                                outline: 'none'
+                              }}
+                            >
+                              <option value="CASH">💵 CASH</option>
+                              <option value="UPI">📱 UPI</option>
+                            </select>
+                          </td>
+
+                          {/* 7. Remove Button */}
+                          <td style={{ padding: '8px 4px', textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExpenseRow(row.id)}
+                              style={{
+                                background: '#fef2f2',
+                                border: '1px solid #fecdd3',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                padding: '6px',
+                                borderRadius: '6px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                              title="Delete this row"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </td>
+
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+
+                  {/* Summary Footer of Table */}
+                  <tfoot>
+                    <tr style={{ background: '#fff1f2', borderTop: '2px solid #fecdd3', fontWeight: 800 }}>
+                      <td colSpan="4" style={{ padding: '12px 14px', color: '#9f1239' }}>
+                        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', fontSize: '12.5px' }}>
+                          <span>🏢 Vendors: <strong>{currency}{formSupplierPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></span>
+                          <span>👤 Staff: <strong>{currency}{formStaffPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></span>
+                          <span>🚗 Vehicle: <strong>{currency}{formVehiclePaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></span>
+                          <span>☕ Shop: <strong>{currency}{formShopExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '12px 10px', textAlign: 'right' }} className="mono">
+                        <div style={{ fontSize: '18px', fontWeight: 900, color: '#be123c' }}>
+                          {currency}{formTotalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </div>
+                      </td>
+                      <td colSpan="2" style={{ padding: '12px 10px', fontSize: '11px', color: '#be123c', fontWeight: 800, textTransform: 'uppercase' }}>
+                        Total Paid Out
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* ----------------------------------------------------
+                  MOBILE VIEW: RESPONSIVE CARDS (< 769px)
+                  ---------------------------------------------------- */}
+              <div className="df-cards-mobile">
+                {(formData.payment_details || []).map((row, index) => {
+                  const isVendor = row.type === 'VENDOR' || row.type === 'Supplier';
+                  const isStaff = row.type === 'STAFF';
+                  const isVehicle = row.type === 'VEHICLE';
+                  const isShop = row.type === 'SHOP' || row.type === 'Expense';
+                  const isOther = row.type === 'OTHER';
+
+                  return (
+                    <div key={row.id || index} style={{
+                      background: '#ffffff',
+                      borderRadius: '12px',
+                      border: '1.5px solid ' + (isVendor ? '#d8b4fe' : (isStaff ? '#7dd3fc' : (isVehicle ? '#fde68a' : '#fecdd3'))),
+                      padding: '12px 14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+                    }}>
+                      {/* Top Row: Index, Category Dropdown, Delete Button */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{
+                          width: '26px',
+                          height: '26px',
+                          borderRadius: '8px',
+                          background: '#f1f5f9',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '12px',
+                          fontWeight: 900,
+                          color: '#475569',
+                          flexShrink: 0
+                        }}>
+                          #{index + 1}
+                        </span>
+
+                        <select
+                          value={row.type}
+                          onChange={(e) => handleUpdateExpenseRow(row.id, 'type', e.target.value)}
+                          style={{
+                            flex: 1,
+                            padding: '8px 10px',
+                            borderRadius: '8px',
+                            border: '1px solid #cbd5e1',
+                            background: isVendor ? '#faf5ff' : (isStaff ? '#f0f9ff' : (isVehicle ? '#fffbeb' : '#fff1f2')),
+                            fontWeight: 800,
+                            fontSize: '12.5px',
+                            color: isVendor ? '#6b21a8' : (isStaff ? '#0369a1' : (isVehicle ? '#92400e' : '#be123c')),
+                            outline: 'none'
+                          }}
+                        >
+                          <option value="VENDOR">🏢 Vendor Payout</option>
+                          <option value="STAFF">👤 Staff Pay</option>
+                          <option value="VEHICLE">🚗 Petrol / Vehicle</option>
+                          <option value="SHOP">☕ Shop Expense</option>
+                          <option value="OTHER">📦 Other Expense</option>
+                        </select>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveExpenseRow(row.id)}
+                          style={{
+                            background: '#fef2f2',
+                            border: '1px solid #fecdd3',
+                            color: '#ef4444',
+                            padding: '8px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+
+                      {/* Middle: Name / Details */}
+                      <div>
+                        {isVendor && (
+                          suppliers.length > 0 ? (
+                            <select
+                              value={row.recipient || ''}
+                              onChange={(e) => handleUpdateExpenseRow(row.id, 'recipient', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px 10px',
+                                borderRadius: '8px',
+                                border: '1px solid #cbd5e1',
+                                fontSize: '13px',
+                                fontWeight: 700,
+                                background: '#ffffff',
+                                outline: 'none'
+                              }}
+                            >
+                              <option value="">-- Select Supplier / Wholesaler --</option>
+                              {suppliers.map(s => (
+                                <option key={s.id} value={s.name}>{s.name}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              placeholder="Type Supplier Name"
+                              value={row.recipient || ''}
+                              onChange={(e) => handleUpdateExpenseRow(row.id, 'recipient', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px 10px',
+                                borderRadius: '8px',
+                                border: '1px solid #cbd5e1',
+                                fontSize: '13px',
+                                outline: 'none'
+                              }}
+                            />
+                          )
+                        )}
+
+                        {isStaff && (
+                          staffList.length > 0 ? (
+                            <select
+                              value={row.staff_id || ''}
+                              onChange={(e) => handleUpdateExpenseRow(row.id, 'staff_id', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px 10px',
+                                borderRadius: '8px',
+                                border: '1.5px solid #7dd3fc',
+                                fontSize: '13px',
+                                fontWeight: 800,
+                                color: '#0369a1',
+                                background: '#ffffff',
+                                outline: 'none'
+                              }}
+                            >
+                              <option value="">-- Select Staff Member --</option>
+                              {staffList.map(st => (
+                                <option key={st.id} value={st.id}>
+                                  [{st.charge_code}] {st.name} ({st.role})
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              placeholder="Staff Person Name"
+                              value={row.staff_name || ''}
+                              onChange={(e) => handleUpdateExpenseRow(row.id, 'staff_name', e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px 10px',
+                                borderRadius: '8px',
+                                border: '1px solid #cbd5e1',
+                                fontSize: '13px',
+                                outline: 'none'
+                              }}
+                            />
+                          )
+                        )}
+
+                        {isVehicle && (
+                          <input
+                            type="text"
+                            placeholder="Delivery Bike / Driver / Vehicle details"
+                            value={row.vehicle_info || ''}
+                            onChange={(e) => handleUpdateExpenseRow(row.id, 'vehicle_info', e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '8px',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '13px',
+                              outline: 'none'
+                            }}
+                          />
+                        )}
+
+                        {isShop && (
+                          <input
+                            type="text"
+                            placeholder="Details (e.g. Tea & snacks / Cleaning)"
+                            value={row.note || ''}
+                            onChange={(e) => handleUpdateExpenseRow(row.id, 'note', e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '8px',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '13px',
+                              outline: 'none'
+                            }}
+                          />
+                        )}
+
+                        {isOther && (
+                          <input
+                            type="text"
+                            placeholder="Expense description"
+                            value={row.note || ''}
+                            onChange={(e) => handleUpdateExpenseRow(row.id, 'note', e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '8px',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '13px',
+                              outline: 'none'
+                            }}
+                          />
+                        )}
+                      </div>
+
+                      {/* Purpose & Charge code */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '6px' }}>
+                        {isStaff && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {row.charge_code && (
+                              <span style={{
+                                padding: '3px 6px',
+                                background: '#e0f2fe',
+                                color: '#0369a1',
+                                borderRadius: '6px',
+                                fontWeight: 800,
+                                fontSize: '11px',
+                                border: '1px solid #bae6fd'
+                              }}>
+                                Code: {row.charge_code}
+                              </span>
+                            )}
+                            <select
+                              value={row.purpose || 'Daily Wage'}
+                              onChange={(e) => handleUpdateExpenseRow(row.id, 'purpose', e.target.value)}
+                              style={{
+                                flex: 1,
+                                padding: '6px 8px',
+                                borderRadius: '6px',
+                                border: '1px solid #cbd5e1',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                outline: 'none'
+                              }}
+                            >
+                              <option value="Daily Wage">Daily Wage</option>
+                              <option value="Salary Advance">Salary Advance</option>
+                              <option value="Monthly Salary">Monthly Salary</option>
+                              <option value="Tea/Food">Tea / Food Allowance</option>
+                              <option value="Commission">Commission</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </div>
+                        )}
+
+                        {isVendor && (
+                          <input
+                            type="text"
+                            placeholder="Bill / Invoice # (Optional)"
+                            value={row.note || ''}
+                            onChange={(e) => handleUpdateExpenseRow(row.id, 'note', e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '6px 8px',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '12px',
+                              outline: 'none'
+                            }}
+                          />
+                        )}
+
+                        {isVehicle && (
+                          <select
+                            value={row.purpose || 'Fuel / Petrol'}
+                            onChange={(e) => handleUpdateExpenseRow(row.id, 'purpose', e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '6px 8px',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              outline: 'none'
+                            }}
+                          >
+                            <option value="Fuel / Petrol">⛽ Petrol / Diesel</option>
+                            <option value="Maintenance">🔧 Vehicle Repair</option>
+                            <option value="Courier/Freight">📦 Courier</option>
+                            <option value="Parking/Toll">🅿️ Parking / Toll</option>
+                          </select>
+                        )}
+
+                        {isShop && (
+                          <select
+                            value={row.category || 'Tea / Snacks'}
+                            onChange={(e) => handleUpdateExpenseRow(row.id, 'category', e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '6px 8px',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              outline: 'none'
+                            }}
+                          >
+                            <option value="Tea / Snacks">☕ Tea & Snacks</option>
+                            <option value="Electricity">💡 Electricity</option>
+                            <option value="Shop Rent">🏢 Rent</option>
+                            <option value="Cleaning/Maint">🧹 Cleaning</option>
+                            <option value="Stationery">📝 Stationery</option>
+                            <option value="Other">📦 Other</option>
+                          </select>
+                        )}
+                      </div>
+
+                      {/* Bottom Row: Amount + Payment Mode */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '8px', alignItems: 'center' }}>
+                        <div style={{ position: 'relative' }}>
+                          <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px', fontWeight: 900, color: '#e11d48' }}>
+                            {currency}
+                          </span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            value={row.amount || ''}
+                            onChange={(e) => handleUpdateExpenseRow(row.id, 'amount', e.target.value)}
+                            className="mono"
+                            style={{
+                              width: '100%',
+                              padding: '8px 8px 8px 24px',
+                              borderRadius: '8px',
+                              border: '1.5px solid #f87171',
+                              fontSize: '16px',
+                              fontWeight: 900,
+                              color: '#be123c',
+                              textAlign: 'right',
+                              outline: 'none'
+                            }}
+                          />
+                        </div>
+
+                        <select
+                          value={row.payment_mode || 'CASH'}
+                          onChange={(e) => handleUpdateExpenseRow(row.id, 'payment_mode', e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px',
+                            borderRadius: '8px',
+                            border: '1.5px solid ' + (row.payment_mode === 'UPI' ? '#93c5fd' : '#86efac'),
+                            fontSize: '12px',
+                            fontWeight: 800,
+                            color: row.payment_mode === 'UPI' ? '#0284c7' : '#059669',
+                            background: row.payment_mode === 'UPI' ? '#f0f9ff' : '#f0fdf4',
+                            outline: 'none'
+                          }}
+                        >
+                          <option value="CASH">💵 CASH</option>
+                          <option value="UPI">📱 UPI</option>
+                        </select>
+                      </div>
+
+                    </div>
+                  );
+                })}
+
+                {/* Mobile Bottom Expense Totals Summary */}
+                <div style={{
+                  padding: '12px',
+                  background: '#fff1f2',
+                  borderRadius: '10px',
+                  border: '1.5px solid #fecdd3',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#9f1239' }}>
+                    Total Expenses:
+                  </span>
+                  <span className="mono" style={{ fontSize: '18px', fontWeight: 900, color: '#be123c' }}>
+                    {currency}{formTotalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Bottom Add Row Button */}
+              <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'flex-start' }}>
+                <button
+                  type="button"
+                  onClick={() => handleAddExpenseRow('VENDOR')}
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, padding: '8px 16px', borderRadius: '8px', border: '1.5px solid #fca5a5', background: '#fff1f2', color: '#be123c' }}
+                >
+                  <PlusCircle size={16} color="#e11d48" />
+                  <span>+ Add Another Expense Line</span>
+                </button>
+              </div>
+
+            </div>
+
+            {/* =========================================================================
+                SECTION 3: DAILY FIRM BALANCE CALCULATOR (CLOSING BALANCE)
+                ========================================================================= */}
+            <div className="glass-panel" style={{
+              padding: '18px 20px',
+              background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+              borderRadius: '16px',
+              border: '2px solid #7dd3fc',
+              boxShadow: '0 4px 16px rgba(2, 132, 199, 0.08)'
+            }}>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                <div style={{
+                  width: '34px',
+                  height: '34px',
+                  borderRadius: '10px',
+                  background: '#0284c7',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 900,
+                  fontSize: '15px',
+                  boxShadow: '0 3px 10px rgba(2, 132, 199, 0.25)',
+                  flexShrink: 0
+                }}>
+                  3
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '16px', fontWeight: 900, color: '#0369a1', margin: 0 }}>
+                    🔵 Firm Balance Calculator (Starting + Inflow - Outflow = Closing)
+                  </h2>
+                  <div style={{ fontSize: '12px', color: '#0284c7', marginTop: '1px' }}>
+                    Automatic live balance calculation for your firm's cash and bank holdings
+                  </div>
+                </div>
+              </div>
+
+              {/* 4 Equalizer Visual Cards */}
+              <div className="df-math-equalizer" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', alignItems: 'center' }}>
+                
+                {/* 1. Morning Opening Balance */}
+                <div style={{ padding: '14px', background: '#ffffff', borderRadius: '12px', border: '1.5px solid #bae6fd' }}>
+                  <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Wallet size={15} color="#0284c7" />
+                    <span>1. Starting Morning ({currency})</span>
+                  </div>
+                  <div style={{ position: 'relative', marginTop: '6px' }}>
+                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '15px', fontWeight: 900, color: '#0284c7' }}>
+                      {currency}
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={formData.opening_balance}
+                      onChange={(e) => setFormData({ ...formData, opening_balance: e.target.value })}
+                      className="mono"
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px 8px 24px',
+                        fontSize: '18px',
+                        fontWeight: 900,
+                        color: '#0369a1',
+                        borderRadius: '8px',
+                        border: '1.5px solid #7dd3fc',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '4px' }}>
+                    Previous night's closing cash
+                  </div>
+                </div>
+
+                {/* 2. Today's Inflow (+) */}
+                <div style={{ padding: '14px', background: '#ecfdf5', borderRadius: '12px', border: '1.5px solid #86efac' }}>
+                  <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#065f46', textTransform: 'uppercase' }}>
+                    ➕ 2. Today Received (Inflow)
+                  </div>
+                  <div className="mono" style={{ fontSize: '20px', fontWeight: 900, color: '#059669', marginTop: '6px' }}>
+                    +{currency}{formTotalEarned.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: '#059669', marginTop: '4px', fontWeight: 700 }}>
+                    Cash ({currency}{formCashEarned}) + UPI ({currency}{formUpiEarned})
+                  </div>
+                </div>
+
+                {/* 3. Today's Outflow (-) */}
+                <div style={{ padding: '14px', background: '#fff1f2', borderRadius: '12px', border: '1.5px solid #fecdd3' }}>
+                  <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#be123c', textTransform: 'uppercase' }}>
+                    ➖ 3. Today Paid Out (Outflow)
+                  </div>
+                  <div className="mono" style={{ fontSize: '20px', fontWeight: 900, color: '#e11d48', marginTop: '6px' }}>
+                    -{currency}{formTotalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: '#be123c', marginTop: '4px', fontWeight: 700 }}>
+                    From expense table above
+                  </div>
+                </div>
+
+                {/* 4. Final Closing Balance (=) */}
+                <div style={{
+                  padding: '16px',
+                  background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                  borderRadius: '14px',
+                  color: '#ffffff',
+                  boxShadow: '0 6px 20px rgba(2, 132, 199, 0.3)'
+                }}>
+                  <div style={{ fontSize: '11.5px', fontWeight: 900, opacity: 0.95, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    🟰 4. Closing Firm Balance
+                  </div>
+                  <div className="mono" style={{ fontSize: '24px', fontWeight: 900, marginTop: '2px' }}>
+                    {currency}{formClosingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </div>
+                  <div style={{ fontSize: '11px', opacity: 0.9, marginTop: '2px', fontWeight: 700 }}>
+                    Net Day Change: {formNetChange >= 0 ? '+' : ''}{currency}{formNetChange.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* =========================================================================
+                SECTION 4: NOTES & REMARKS (OPTIONAL)
+                ========================================================================= */}
+            <div className="glass-panel" style={{ padding: '16px 20px', background: '#ffffff', borderRadius: '14px', border: '1px solid #cbd5e1' }}>
+              <label style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text-main)', display: 'block', marginBottom: '6px' }}>
+                📝 Daily Notes & Remarks (Optional)
+              </label>
+              <textarea
+                rows="2"
+                placeholder="Type any daily remarks here (e.g. Staff advance paid, supplier invoice cleared, delivery charges)..."
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '13px',
+                  fontFamily: 'inherit',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            {/* =========================================================================
+                SECTION 5: BIG SAVE & SUBMIT ACTION BAR
+                ========================================================================= */}
+            <div className="df-save-bar" style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '14px',
+              padding: '16px 20px',
+              background: '#ffffff',
+              borderRadius: '16px',
+              border: '2px solid #bae6fd',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.05)'
+            }}>
+              <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#475569' }}>
+                {editingRecord ? `✏️ Updating accounts for ${formData.date}` : `Ready to save accounts for ${formData.date}`}
+              </div>
+
+              <div className="df-save-btn-group" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => handleOpenNewEntry()}
+                  className="btn btn-secondary"
+                  style={{ padding: '12px 18px', fontWeight: 800, borderRadius: '10px', fontSize: '13.5px' }}
+                  disabled={isSaving}
+                >
+                  🔄 Reset Form
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="df-save-btn"
+                  style={{
+                    background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '12px',
+                    padding: '14px 30px',
+                    fontSize: '16px',
+                    fontWeight: 900,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    boxShadow: '0 6px 22px rgba(5, 150, 105, 0.35)',
+                    transition: 'all 0.2s',
+                    letterSpacing: '0.01em'
+                  }}
+                >
+                  <Save size={20} />
+                  <span>{isSaving ? 'Saving Accounts...' : (editingRecord ? '💾 UPDATE TODAY’S ACCOUNTS' : '💾 SAVE TODAY’S ACCOUNTS')}</span>
+                </button>
+              </div>
+            </div>
+
+          </form>
+
+            {/* =========================================================================
+                SECTION 6: RECORDED DAILY ACCOUNTS REGISTER (ENTRY DISPLAY AFTER SUBMISSION)
+                ========================================================================= */}
+            <div className="glass-panel" style={{
+              padding: '18px 20px',
+              background: '#ffffff',
+              borderRadius: '16px',
+              border: '1.5px solid #bae6fd',
+              boxShadow: '0 4px 18px rgba(2, 132, 199, 0.06)'
+            }}>
+              {/* Header */}
+              <div className="df-saved-header" style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '12px',
+                borderBottom: '1.5px solid #e0f2fe',
+                paddingBottom: '14px',
+                marginBottom: '16px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '10px',
+                    background: '#0284c7',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 3px 10px rgba(2, 132, 199, 0.25)',
+                    flexShrink: 0
+                  }}>
+                    <FileSpreadsheet size={18} />
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: 900, color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>Daily Accounts Register & Recorded Entries</span>
+                      <span className="badge badge-cyan" style={{ fontSize: '11px', fontWeight: 800 }}>
+                        {filteredRegisterRecords.length} Days Recorded
+                      </span>
+                    </h3>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      Complete register of saved daily accounts, inflows, vouchers, and firm balance
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Search & Filter */}
+                <div className="df-saved-search" style={{ position: 'relative', width: '280px' }}>
+                  <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                  <input
+                    type="text"
+                    placeholder="Search date, vendor, staff..."
+                    value={registerSearchQuery}
+                    onChange={(e) => setRegisterSearchQuery(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px 7px 32px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '12.5px',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  {registerSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setRegisterSearchQuery('')}
+                      style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0 }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* DESKTOP REGISTER SPREADSHEET TABLE */}
+              <div className="df-table-desktop" style={{
+                overflowX: 'auto',
+                border: '1.5px solid #cbd5e1',
+                borderRadius: '12px',
+                background: '#ffffff'
+              }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
+                      <th style={{ padding: '12px 10px', width: '120px', fontWeight: 800, color: '#334155' }}>Date</th>
+                      <th style={{ padding: '12px 10px', width: '120px', fontWeight: 800, color: '#059669', textAlign: 'right' }}>Cash In ({currency})</th>
+                      <th style={{ padding: '12px 10px', width: '120px', fontWeight: 800, color: '#0284c7', textAlign: 'right' }}>UPI In ({currency})</th>
+                      <th style={{ padding: '12px 10px', width: '130px', fontWeight: 800, color: '#047857', textAlign: 'right' }}>Total Inflow ({currency})</th>
+                      <th style={{ padding: '12px 10px', width: '130px', fontWeight: 800, color: '#be123c', textAlign: 'right' }}>Paid Out ({currency})</th>
+                      <th style={{ padding: '12px 10px', minWidth: '220px', fontWeight: 800, color: '#334155' }}>Vouchers & Breakdown</th>
+                      <th style={{ padding: '12px 10px', width: '120px', fontWeight: 800, color: '#334155', textAlign: 'right' }}>Net Day (+/-)</th>
+                      <th style={{ padding: '12px 10px', width: '140px', fontWeight: 800, color: '#0369a1', textAlign: 'right' }}>Firm Balance ({currency})</th>
+                      <th style={{ padding: '12px 10px', width: '110px', textAlign: 'center', fontWeight: 800, color: '#334155' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredRegisterRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan="9" style={{ textAlign: 'center', padding: '36px 16px', color: '#94a3b8' }}>
+                          <FileSpreadsheet size={32} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
+                          <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-main)' }}>No saved records found</div>
+                          <div style={{ fontSize: '12px', marginTop: '2px' }}>Fill in the entries above and click "Save Today’s Accounts"</div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredRegisterRecords.map((r, idx) => {
+                        const isSelectedDate = r.date === formData.date;
+                        const netVal = parseFloat(r.net_day_change) || 0;
+                        const isPositive = netVal >= 0;
+                        const dateFormatted = new Date(r.date).toLocaleDateString('en-GB', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric'
+                        });
+
+                        const details = Array.isArray(r.payment_details) ? r.payment_details : [];
+                        const vendorCount = details.filter(d => d.type === 'VENDOR' || d.type === 'Supplier').length;
+                        const staffCount = details.filter(d => d.type === 'STAFF').length;
+                        const vehicleCount = details.filter(d => d.type === 'VEHICLE').length;
+                        const shopCount = details.filter(d => d.type === 'SHOP' || d.type === 'Expense').length;
+
+                        return (
+                          <tr
+                            key={r.id || idx}
+                            className={isSelectedDate ? 'df-active-row' : ''}
+                            style={{
+                              background: isSelectedDate ? '#f0f9ff' : (idx % 2 === 0 ? '#ffffff' : '#fcfcfd'),
+                              borderBottom: '1px solid #e2e8f0',
+                              transition: 'background 0.15s'
+                            }}
+                          >
+                            {/* Date */}
+                            <td style={{ padding: '10px 10px', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Calendar size={13} color="#0284c7" />
+                                <span>{dateFormatted}</span>
+                              </div>
+                              {isSelectedDate && (
+                                <span className="badge badge-cyan" style={{ fontSize: '9.5px', marginTop: '3px', padding: '1px 5px', fontWeight: 800 }}>
+                                  {editingRecord ? '✏️ Loaded in Form' : 'Active Date'}
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Cash In */}
+                            <td style={{ padding: '10px 10px', textAlign: 'right' }} className="mono">
+                              <span style={{ color: '#059669', fontWeight: 800, background: '#f0fdf4', padding: '3px 7px', borderRadius: '6px' }}>
+                                {currency}{parseFloat(r.cash_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </span>
+                            </td>
+
+                            {/* UPI In */}
+                            <td style={{ padding: '10px 10px', textAlign: 'right' }} className="mono">
+                              <span style={{ color: '#0284c7', fontWeight: 800, background: '#f0f9ff', padding: '3px 7px', borderRadius: '6px' }}>
+                                {currency}{parseFloat(r.upi_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </span>
+                            </td>
+
+                            {/* Total Inflow */}
+                            <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 900, color: '#047857' }} className="mono">
+                              {currency}{parseFloat(r.total_earned || ((parseFloat(r.cash_earned) || 0) + (parseFloat(r.upi_earned) || 0))).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </td>
+
+                            {/* Total Outflow */}
+                            <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 900, color: '#be123c' }} className="mono">
+                              {currency}{parseFloat(r.total_paid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </td>
+
+                            {/* Vouchers & Expense Breakdown */}
+                            <td style={{ padding: '8px 10px' }}>
+                              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                {vendorCount > 0 && (
+                                  <span className="badge badge-purple" style={{ fontSize: '10.5px', padding: '2px 6px', fontWeight: 800 }}>
+                                    🏢 {vendorCount} {vendorCount === 1 ? 'Vendor' : 'Vendors'}
+                                  </span>
+                                )}
+                                {staffCount > 0 && (
+                                  <span className="badge badge-cyan" style={{ fontSize: '10.5px', padding: '2px 6px', fontWeight: 800 }}>
+                                    👤 {staffCount} Staff
+                                  </span>
+                                )}
+                                {vehicleCount > 0 && (
+                                  <span className="badge badge-amber" style={{ fontSize: '10.5px', padding: '2px 6px', fontWeight: 800 }}>
+                                    🚗 Vehicle
+                                  </span>
+                                )}
+                                {shopCount > 0 && (
+                                  <span className="badge badge-rose" style={{ fontSize: '10.5px', padding: '2px 6px', fontWeight: 800 }}>
+                                    ☕ Shop
+                                  </span>
+                                )}
+                                {details.length === 0 && (
+                                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>No line items</span>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Net Day Change */}
+                            <td style={{ padding: '10px 10px', textAlign: 'right' }} className="mono">
+                              <span style={{
+                                color: isPositive ? '#059669' : '#dc2626',
+                                fontWeight: 800,
+                                fontSize: '12.5px'
+                              }}>
+                                {isPositive ? '+' : ''}{currency}{netVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </span>
+                            </td>
+
+                            {/* Closing Balance */}
+                            <td style={{ padding: '10px 10px', textAlign: 'right' }} className="mono">
+                              <span style={{
+                                fontSize: '13px',
+                                fontWeight: 900,
+                                color: '#0369a1',
+                                background: '#e0f2fe',
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                border: '1px solid #bae6fd'
+                              }}>
+                                {currency}{parseFloat(r.closing_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </span>
+                            </td>
+
+                            {/* Row Action Buttons */}
+                            <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEdit(r, true)}
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ padding: '5px 8px', color: '#0284c7', background: '#f0f9ff', border: '1px solid #bae6fd', fontWeight: 800 }}
+                                  title="Edit in Register"
+                                >
+                                  <Edit3 size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingRecord(r)}
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ padding: '5px 8px', color: '#475569', fontWeight: 700 }}
+                                  title="View Statement Voucher"
+                                >
+                                  <Eye size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteRecord(r)}
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ padding: '5px 8px', color: '#ef4444', background: '#fef2f2', border: '1px solid #fecdd3' }}
+                                  title="Delete Record"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </td>
+
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* MOBILE RESPONSIVE REGISTER CARDS (< 769px) */}
+              <div className="df-cards-mobile" style={{ marginTop: '12px' }}>
+                {filteredRegisterRecords.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '30px 16px', background: '#f8fafc', borderRadius: '12px', color: '#94a3b8' }}>
+                    <FileSpreadsheet size={28} style={{ margin: '0 auto 6px', opacity: 0.5 }} />
+                    <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-main)' }}>No saved records found</div>
+                  </div>
+                ) : (
+                  filteredRegisterRecords.map((r, idx) => {
+                    const isSelectedDate = r.date === formData.date;
+                    const netVal = parseFloat(r.net_day_change) || 0;
+                    const isPositive = netVal >= 0;
+                    const dateFormatted = new Date(r.date).toLocaleDateString('en-GB', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric'
+                    });
+
+                    const details = Array.isArray(r.payment_details) ? r.payment_details : [];
+                    const vendorCount = details.filter(d => d.type === 'VENDOR' || d.type === 'Supplier').length;
+                    const staffCount = details.filter(d => d.type === 'STAFF').length;
+                    const vehicleCount = details.filter(d => d.type === 'VEHICLE').length;
+                    const shopCount = details.filter(d => d.type === 'SHOP' || d.type === 'Expense').length;
+
+                    return (
+                      <div
+                        key={r.id || idx}
+                        style={{
+                          background: isSelectedDate ? '#f0f9ff' : '#ffffff',
+                          borderRadius: '12px',
+                          border: isSelectedDate ? '2px solid #0284c7' : '1.5px solid #cbd5e1',
+                          padding: '12px 14px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px',
+                          boxShadow: isSelectedDate ? '0 4px 14px rgba(2, 132, 199, 0.15)' : '0 2px 6px rgba(0,0,0,0.03)'
+                        }}
+                      >
+                        {/* Top: Date & Net Day */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Calendar size={15} color="#0284c7" />
+                            <strong style={{ fontSize: '13.5px', color: 'var(--text-main)' }}>{dateFormatted}</strong>
+                            {isSelectedDate && (
+                              <span className="badge badge-cyan" style={{ fontSize: '10px', padding: '2px 6px', fontWeight: 800 }}>
+                                Active
+                              </span>
+                            )}
+                          </div>
+
+                          <span style={{
+                            fontSize: '12px',
+                            fontWeight: 900,
+                            color: isPositive ? '#059669' : '#dc2626',
+                            background: isPositive ? '#ecfdf5' : '#fef2f2',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid ' + (isPositive ? '#bbf7d0' : '#fecdd3')
+                          }}>
+                            {isPositive ? '+' : ''}{currency}{netVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+
+                        {/* 4 Metrics in 2x2 Grid */}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(2, 1fr)',
+                          gap: '6px',
+                          background: isSelectedDate ? '#ffffff' : '#f8fafc',
+                          padding: '8px 10px',
+                          borderRadius: '8px'
+                        }}>
+                          <div>
+                            <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#059669', textTransform: 'uppercase' }}>💵 Cash In</div>
+                            <div className="mono" style={{ fontSize: '13.5px', fontWeight: 900, color: '#059669' }}>
+                              {currency}{parseFloat(r.cash_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase' }}>📱 UPI In</div>
+                            <div className="mono" style={{ fontSize: '13.5px', fontWeight: 900, color: '#0284c7' }}>
+                              {currency}{parseFloat(r.upi_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#e11d48', textTransform: 'uppercase' }}>🔴 Paid Out</div>
+                            <div className="mono" style={{ fontSize: '13.5px', fontWeight: 900, color: '#e11d48' }}>
+                              {currency}{parseFloat(r.total_paid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>💼 Closing Firm</div>
+                            <div className="mono" style={{ fontSize: '13.5px', fontWeight: 900, color: '#0284c7' }}>
+                              {currency}{parseFloat(r.closing_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Expense Tags */}
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                          {vendorCount > 0 && <span className="badge badge-purple" style={{ fontSize: '10px' }}>🏢 {vendorCount} Vendors</span>}
+                          {staffCount > 0 && <span className="badge badge-cyan" style={{ fontSize: '10px' }}>👤 {staffCount} Staff</span>}
+                          {vehicleCount > 0 && <span className="badge badge-amber" style={{ fontSize: '10px' }}>🚗 Vehicle</span>}
+                          {shopCount > 0 && <span className="badge badge-rose" style={{ fontSize: '10px' }}>☕ Shop</span>}
+                        </div>
+
+                        {/* Actions Row */}
+                        <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #e2e8f0', paddingTop: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(r, true)}
+                            className="btn btn-secondary btn-sm"
+                            style={{ flex: 1, padding: '7px 10px', fontSize: '12px', fontWeight: 800, color: '#0284c7', background: '#f0f9ff', border: '1px solid #bae6fd', justifyContent: 'center' }}
+                          >
+                            <Edit3 size={13} /> Edit Entry
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setViewingRecord(r)}
+                            className="btn btn-secondary btn-sm"
+                            style={{ flex: 1, padding: '7px 10px', fontSize: '12px', fontWeight: 700, justifyContent: 'center' }}
+                          >
+                            <Eye size={13} /> Voucher
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRecord(r)}
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '7px 10px', color: '#ef4444', background: '#fef2f2', border: '1px solid #fecdd3' }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+        </div>
+      )}
+
+      {/* =========================================================================
+          VIEW 2: HISTORY LEDGER & REPORTS (CHRONOLOGICAL RECORDS + EXCEL + PRINT)
+          ========================================================================= */}
+      {activeViewMode === 'ledger' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '20px' }}>
+          
+          {/* Top Controls: Search, Month, Excel Export */}
+          <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+            
+            {/* Search Input */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '240px', flex: 1 }}>
+              <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
+                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                <input
+                  type="text"
+                  placeholder="Search vendor, staff, charge code, remarks..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && loadFinanceData()}
+                  className="input-field"
+                  style={{ paddingLeft: '36px', fontSize: '13px', height: '40px' }}
+                />
+              </div>
+            </div>
+
+            {/* Filter & Export Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              
+              {/* Month Selector */}
+              <select
+                value={selectedMonth}
+                onChange={(e) => {
+                  setSelectedMonth(e.target.value);
+                  setStartDate('');
+                  setEndDate('');
+                }}
+                className="input-field"
+                style={{ width: '130px', fontSize: '12.5px', height: '40px' }}
+              >
+                <option value="">All Months</option>
+                <option value="1">January</option>
+                <option value="2">February</option>
+                <option value="3">March</option>
+                <option value="4">April</option>
+                <option value="5">May</option>
+                <option value="6">June</option>
+                <option value="7">July</option>
+                <option value="8">August</option>
+                <option value="9">September</option>
+                <option value="10">October</option>
+                <option value="11">November</option>
+                <option value="12">December</option>
+              </select>
+
+              {/* Year Selector */}
+              {selectedMonth && (
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(e.target.value)}
+                  className="input-field"
+                  style={{ width: '90px', fontSize: '12.5px', height: '40px' }}
+                >
+                  <option value="2025">2025</option>
+                  <option value="2026">2026</option>
+                  <option value="2027">2027</option>
+                </select>
+              )}
+
+              {/* Export Excel Button */}
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                disabled={exportingExcel}
+                className="btn btn-secondary"
+                style={{ height: '40px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+              >
+                <FileSpreadsheet size={16} color="#059669" />
+                <span>{exportingExcel ? 'Exporting...' : 'Export Excel'}</span>
+              </button>
+
+              {/* Add New Day Button */}
+              <button
+                type="button"
+                onClick={() => handleOpenNewEntry()}
+                className="btn btn-primary"
+                style={{ height: '40px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800 }}
+              >
+                <PlusCircle size={16} />
+                <span>+ Record Day</span>
+              </button>
+
+            </div>
+          </div>
+
+          {/* Visual Analytics Chart */}
+          {chartData.length > 0 && (
+            <div className="glass-panel" style={{ padding: '16px 20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div>
+                  <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0, color: 'var(--text-main)' }}>
+                    Daily Cash Inflow, UPI Inflow & Expense Trend
+                  </h3>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                    Visual day-by-day comparison of intake vs payouts
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <span className="badge badge-emerald">Cash In</span>
+                  <span className="badge badge-cyan">UPI In</span>
+                  <span className="badge badge-rose">Paid Out</span>
+                  <span className="badge badge-purple">Firm Balance</span>
+                </div>
+              </div>
+
+              <div style={{ height: '220px', width: '100%' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" opacity={0.6} />
+                    <XAxis dataKey="date" stroke="#94a3b8" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} tickFormatter={(v) => `${currency}${v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}`} />
+                    <Tooltip 
+                      contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }} 
+                      formatter={(value, name) => [`${currency}${parseFloat(value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, name]}
+                      labelFormatter={(label, payload) => payload?.[0]?.payload?.fullDate || label}
+                    />
+                    <Bar dataKey="cash" name="Cash Received" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                    <Bar dataKey="upi" name="UPI Received" fill="#0284c7" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                    <Bar dataKey="paid" name="Money Paid" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                    <Line type="monotone" dataKey="balance" name="Firm Balance" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 3 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Main Ledger Table */}
+          <div className="glass-panel" style={{ padding: '0', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Receipt size={17} color="#0284c7" />
+                <span>Financial Ledger History</span>
+                <span className="badge badge-gray" style={{ fontSize: '11px' }}>{records.length} Recorded Days</span>
+              </div>
+            </div>
+
+            <div className="data-table-container" style={{ maxHeight: '600px', overflowY: 'auto' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '110px' }}>Date</th>
+                    <th style={{ textAlign: 'right' }}>Daily Sales ({currency})</th>
+                    <th style={{ textAlign: 'right' }}>Cash In ({currency})</th>
+                    <th style={{ textAlign: 'right' }}>UPI In ({currency})</th>
+                    <th style={{ textAlign: 'right' }}>Total In ({currency})</th>
+                    <th style={{ textAlign: 'right' }}>Total Paid ({currency})</th>
+                    <th style={{ textAlign: 'right' }}>Opening Bal ({currency})</th>
+                    <th style={{ textAlign: 'right' }}>Net Day Change ({currency})</th>
+                    <th style={{ textAlign: 'right' }}>Firm Balance ({currency})</th>
+                    <th>Expense Vouchers</th>
+                    <th style={{ textAlign: 'center', width: '110px' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan="11" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                        <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 8px' }} />
+                        <div>Loading accounts ledger...</div>
+                      </td>
+                    </tr>
+                  ) : records.length === 0 ? (
+                    <tr>
+                      <td colSpan="11" style={{ textAlign: 'center', padding: '50px 20px', color: '#94a3b8' }}>
+                        <Landmark size={36} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+                        <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-main)' }}>No accounts records yet</div>
+                        <div style={{ fontSize: '12px', marginTop: '4px' }}>Click below to record today's daily accounts & expenses</div>
+                        <button
+                          onClick={() => handleOpenNewEntry()}
+                          className="btn btn-primary btn-sm"
+                          style={{ marginTop: '14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                        >
+                          <PlusCircle size={14} /> Record Today's Accounts
+                        </button>
+                      </td>
+                    </tr>
+                  ) : (
+                    records.map((r) => {
+                      const netVal = parseFloat(r.net_day_change) || 0;
+                      const isPositive = netVal >= 0;
+                      const dateFormatted = new Date(r.date).toLocaleDateString('en-GB', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric'
+                      });
+
+                      const details = Array.isArray(r.payment_details) ? r.payment_details : [];
+                      const vendorCount = details.filter(d => d.type === 'VENDOR' || d.type === 'Supplier').length;
+                      const staffCount = details.filter(d => d.type === 'STAFF').length;
+                      const vehicleCount = details.filter(d => d.type === 'VEHICLE').length;
+
+                      return (
+                        <tr key={r.id}>
+                          {/* Date */}
+                          <td style={{ fontWeight: 800, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Calendar size={13} color="#0284c7" />
+                              <span>{dateFormatted}</span>
+                            </div>
+                          </td>
+
+                          {/* Daily Sales */}
+                          <td style={{ textAlign: 'right', fontWeight: 800, color: '#0284c7' }} className="mono">
+                            {currency}{parseFloat(r.daily_sales || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Cash Received */}
+                          <td style={{ textAlign: 'right' }} className="mono">
+                            <span style={{ color: '#059669', fontWeight: 800, background: '#ecfdf5', padding: '2px 6px', borderRadius: '4px' }}>
+                              {currency}{parseFloat(r.cash_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </span>
+                          </td>
+
+                          {/* UPI Received */}
+                          <td style={{ textAlign: 'right' }} className="mono">
+                            <span style={{ color: '#0284c7', fontWeight: 800, background: '#f0f9ff', padding: '2px 6px', borderRadius: '4px' }}>
+                              {currency}{parseFloat(r.upi_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </span>
+                          </td>
+
+                          {/* Total Earned */}
+                          <td style={{ textAlign: 'right', fontWeight: 900, color: '#10b981' }} className="mono">
+                            {currency}{parseFloat(r.total_earned || (parseFloat(r.cash_earned||0)+parseFloat(r.upi_earned||0))).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Total Paid */}
+                          <td style={{ textAlign: 'right', fontWeight: 900, color: '#e11d48' }} className="mono">
+                            {currency}{parseFloat(r.total_paid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Opening Balance */}
+                          <td style={{ textAlign: 'right', color: '#64748b' }} className="mono">
+                            {currency}{parseFloat(r.opening_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Net Day Change */}
+                          <td style={{ textAlign: 'right' }} className="mono">
+                            <span style={{
+                              color: isPositive ? '#059669' : '#dc2626',
+                              fontWeight: 800,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '2px'
+                            }}>
+                              {isPositive ? '+' : ''}{currency}{netVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </span>
+                          </td>
+
+                          {/* Closing Balance */}
+                          <td style={{ textAlign: 'right' }} className="mono">
+                            <span style={{
+                              fontSize: '13px',
+                              fontWeight: 900,
+                              color: '#0369a1',
+                              background: '#e0f2fe',
+                              padding: '3px 8px',
+                              borderRadius: '6px'
+                            }}>
+                              {currency}{parseFloat(r.closing_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </span>
+                          </td>
+
+                          {/* Expense Breakdown */}
+                          <td style={{ maxWidth: '240px', fontSize: '11.5px' }}>
+                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                              {vendorCount > 0 && (
+                                <span className="badge badge-purple" style={{ fontSize: '10px', padding: '1px 5px' }}>
+                                  🏢 {vendorCount} Vendors
+                                </span>
+                              )}
+                              {staffCount > 0 && (
+                                <span className="badge badge-cyan" style={{ fontSize: '10px', padding: '1px 5px' }}>
+                                  👤 {staffCount} Staff
+                                </span>
+                              )}
+                              {vehicleCount > 0 && (
+                                <span className="badge badge-amber" style={{ fontSize: '10px', padding: '1px 5px' }}>
+                                  🚗 Vehicle
+                                </span>
+                              )}
+                              {r.notes && (
+                                <span style={{ color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>
+                                  {r.notes}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Actions */}
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                              <button
+                                onClick={() => setViewingRecord(r)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '4px 6px' }}
+                                title="View Statement Voucher"
+                              >
+                                <Eye size={13} color="#0284c7" />
+                              </button>
+                              <button
+                                onClick={() => handleOpenEdit(r, true)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '4px 6px' }}
+                                title="Edit in Table Register"
+                              >
+                                <Edit3 size={13} color="#059669" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteRecord(r)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '4px 6px', color: '#dc2626' }}
+                                title="Delete Record"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* =========================================================================
+          VIEW MODAL: PRINTABLE DAY CLOSE VOUCHER / STATEMENT
+          ========================================================================= */}
+      {viewingRecord && (
+        <div className="modal-backdrop" style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '16px'
+        }}>
+          <div className="modal-panel" style={{
+            background: 'var(--bg-card)',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '640px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.25)',
+            border: '1px solid var(--border-subtle)',
+            overflow: 'hidden'
+          }}>
+            
+            {/* Voucher Header */}
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid var(--border-subtle)',
+              background: '#0f172a',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div>
+                <div style={{ fontSize: '16px', fontWeight: 900, letterSpacing: '0.02em' }}>
+                  {profile?.name || 'TOP MEDICAL PHARMACY'}
+                </div>
+                <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '2px' }}>
+                  Daily Financial Statement & Expense Settlement Voucher
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingRecord(null)}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Voucher Content */}
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed var(--border-subtle)', paddingBottom: '10px' }}>
+                <span style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>Date of Record:</span>
+                <strong style={{ fontSize: '14px', color: 'var(--text-main)' }}>
+                  {new Date(viewingRecord.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
+                </strong>
+              </div>
+
+              {/* Inflow Breakdown */}
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#059669', textTransform: 'uppercase', marginBottom: '8px' }}>
+                  Money Inflows (Earned)
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
+                  <span style={{ color: '#475569' }}>Total Gross Sales:</span>
+                  <span className="mono" style={{ fontWeight: 700 }}>{currency}{parseFloat(viewingRecord.daily_sales || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
+                  <span style={{ color: '#059669', fontWeight: 700 }}>• Cash Received:</span>
+                  <span className="mono" style={{ fontWeight: 800, color: '#059669' }}>{currency}{parseFloat(viewingRecord.cash_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
+                  <span style={{ color: '#0284c7', fontWeight: 700 }}>• UPI Received:</span>
+                  <span className="mono" style={{ fontWeight: 800, color: '#0284c7' }}>{currency}{parseFloat(viewingRecord.upi_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', fontWeight: 900, borderTop: '1px solid #bbf7d0', paddingTop: '6px', marginTop: '6px' }}>
+                  <span>Total Money Earned:</span>
+                  <span className="mono" style={{ color: '#059669' }}>{currency}{parseFloat(viewingRecord.total_earned || (parseFloat(viewingRecord.cash_earned||0)+parseFloat(viewingRecord.upi_earned||0))).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+
+              {/* Outflow Breakdown */}
+              <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: '10px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#e11d48', textTransform: 'uppercase', marginBottom: '8px' }}>
+                  Money Outflows (Disbursements)
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
+                  <span style={{ color: '#475569' }}>• Vendor / Supplier Payouts:</span>
+                  <span className="mono">{currency}{parseFloat(viewingRecord.supplier_payments || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
+                  <span style={{ color: '#475569' }}>• Staff Expenses (Charge Code Mapped):</span>
+                  <span className="mono">{currency}{parseFloat(viewingRecord.staff_expenses || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
+                  <span style={{ color: '#475569' }}>• Vehicle & Fuel Expenses:</span>
+                  <span className="mono">{currency}{parseFloat(viewingRecord.vehicle_expenses || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
+                  <span style={{ color: '#475569' }}>• Shop & Operating Expenses:</span>
+                  <span className="mono">{currency}{parseFloat(viewingRecord.expenses || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', fontWeight: 900, borderTop: '1px solid #fecdd3', paddingTop: '6px', marginTop: '6px' }}>
+                  <span style={{ color: '#e11d48' }}>Total Money Paid:</span>
+                  <span className="mono" style={{ color: '#e11d48' }}>{currency}{parseFloat(viewingRecord.total_paid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+
+              {/* Itemized Entries List */}
+              {Array.isArray(viewingRecord.payment_details) && viewingRecord.payment_details.length > 0 && (
+                <div style={{ border: '1px solid var(--border-subtle)', borderRadius: '10px', padding: '12px 14px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-main)', marginBottom: '8px' }}>
+                    Itemized Payment Entries ({viewingRecord.payment_details.length}):
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {viewingRecord.payment_details.map((it, idx) => (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '6px 10px', background: 'var(--bg-main)', borderRadius: '8px', alignItems: 'center' }}>
+                        <div>
+                          <strong style={{ color: 'var(--text-main)' }}>
+                            {it.type === 'VENDOR' ? '🏢 ' : (it.type === 'STAFF' ? '👤 ' : (it.type === 'VEHICLE' ? '🚗 ' : '☕ '))}
+                            {it.recipient || it.staff_name || it.vehicle_info || it.category || 'Expense'}
+                          </strong>
+                          {it.charge_code && (
+                            <span className="badge badge-cyan mono" style={{ fontSize: '10.5px', marginLeft: '6px', fontWeight: 800 }}>
+                              [{it.charge_code}]
+                            </span>
+                          )}
+                          {it.purpose && (
+                            <span style={{ color: '#64748b', fontSize: '11px', marginLeft: '6px' }}>
+                              ({it.purpose})
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span className="badge badge-gray" style={{ fontSize: '10px' }}>{it.payment_mode || 'CASH'}</span>
+                          <span className="mono" style={{ fontWeight: 800, color: '#e11d48' }}>
+                            {currency}{parseFloat(it.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Firm Balances */}
+              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '12px 14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
+                  <span style={{ color: '#475569' }}>Opening Balance:</span>
+                  <span className="mono">{currency}{parseFloat(viewingRecord.opening_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
+                  <span style={{ color: '#475569' }}>Net Day Change:</span>
+                  <span className="mono" style={{ fontWeight: 800, color: parseFloat(viewingRecord.net_day_change) >= 0 ? '#059669' : '#e11d48' }}>
+                    {parseFloat(viewingRecord.net_day_change) >= 0 ? '+' : ''}{currency}{parseFloat(viewingRecord.net_day_change || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14.5px', fontWeight: 900, borderTop: '1px solid #bae6fd', paddingTop: '8px', marginTop: '6px' }}>
+                  <span style={{ color: '#0369a1' }}>Closing Balance in Firm:</span>
+                  <span className="mono" style={{ color: '#0284c7', fontSize: '17px' }}>{currency}{parseFloat(viewingRecord.closing_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+
+              {/* Remarks */}
+              {viewingRecord.notes && (
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', background: 'var(--bg-main)', padding: '8px 12px', borderRadius: '6px' }}>
+                  <strong>Notes:</strong> {viewingRecord.notes}
+                </div>
+              )}
+            </div>
+
+            {/* Voucher Footer */}
+            <div style={{
+              padding: '14px 20px',
+              borderTop: '1px solid var(--border-subtle)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: 'var(--bg-card)'
+            }}>
+              <button
+                onClick={() => {
+                  const rec = viewingRecord;
+                  setViewingRecord(null);
+                  handleOpenEdit(rec, true);
+                }}
+                className="btn btn-secondary btn-sm"
+                style={{ fontWeight: 700 }}
+              >
+                <Edit3 size={14} /> Edit in Register
+              </button>
+
+              <button
+                onClick={() => window.print()}
+                className="btn btn-primary btn-sm"
+                style={{ fontWeight: 800 }}
+              >
+                <Printer size={15} /> Print Voucher
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}

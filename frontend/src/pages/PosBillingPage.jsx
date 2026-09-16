@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Search, 
   ShoppingCart, 
@@ -71,6 +71,11 @@ export default function PosBillingPage({
   const searchInputRef = useRef(null);
   const currency = profile?.currency_symbol || '₹';
 
+  // Quick Chocolate / Candy State
+  const [customChocolateAmount, setCustomChocolateAmount] = useState('5');
+  const [isAddingChocolate, setIsAddingChocolate] = useState(false);
+  const chocolateItemRef = useRef(null);
+
   // Sync staff default if staffList loads after initial render
   useEffect(() => {
     if (staffList.length > 0 && !staffList.find(s => s.charge_code === selectedStaffCode)) {
@@ -81,7 +86,7 @@ export default function PosBillingPage({
 
   const catalogCacheRef = useRef([]);
 
-  // Pre-load medicines catalog in background for 0ms instant keystroke lookups
+  // Pre-load medicines catalog & designated chocolate item for 0ms instant billing
   useEffect(() => {
     inventoryAPI.searchPOS('')
       .then(res => {
@@ -90,6 +95,14 @@ export default function PosBillingPage({
         }
       })
       .catch(err => console.error('Failed to pre-cache medicines:', err));
+
+    inventoryAPI.getQuickChocolateItem()
+      .then(res => {
+        if (res && res.id) {
+          chocolateItemRef.current = res;
+        }
+      })
+      .catch(err => console.error('Failed to pre-load chocolate item:', err));
   }, []);
 
   // Instant Alphabet Search: 0ms local in-memory filter + background API sync
@@ -223,17 +236,19 @@ export default function PosBillingPage({
       updated[existingIndex].strip_quantity = (updated[existingIndex].strip_quantity || 0) + 1;
       setCart(updated);
     } else {
-      const stripMrp = parseFloat(bestBatch.mrp);
-      const stripSp = parseFloat(bestBatch.selling_price);
-      const tabMrp = parseFloat((stripMrp / packSize).toFixed(2));
-      const tabSp = parseFloat((stripSp / packSize).toFixed(2));
+      const isChoc = medicine.name === 'CHOCOLATE / CANDY (OTC)' || medicine.name?.toLowerCase().includes('chocolate');
+      const stripMrp = parseFloat(bestBatch.mrp) || (isChoc ? 1.0 : 0);
+      const stripSp = parseFloat(bestBatch.selling_price) || (isChoc ? 1.0 : 0);
+      const tabMrp = isChoc ? stripMrp : parseFloat((stripMrp / packSize).toFixed(2));
+      const tabSp = isChoc ? stripSp : parseFloat((stripSp / packSize).toFixed(2));
 
       const newItem = {
         medicine,
         batch: bestBatch,
         availableBatches: activeBatches,
-        pack_size: packSize,
-        is_loose_allowed: isLooseAllowed,
+        pack_size: isChoc ? 1 : packSize,
+        is_loose_allowed: isChoc ? false : isLooseAllowed,
+        is_chocolate: isChoc,
         strip_quantity: 1,
         loose_quantity: 0,
         strip_mrp: stripMrp,
@@ -241,7 +256,7 @@ export default function PosBillingPage({
         tab_mrp: tabMrp,
         tab_selling_price: tabSp,
         discount_percent: 0,
-        gst_rate: parseFloat(medicine.gst_rate) || 12.0,
+        gst_rate: isChoc ? 0.0 : (parseFloat(medicine.gst_rate) || 12.0),
       };
       setCart([...cart, newItem]);
     }
@@ -348,6 +363,88 @@ export default function PosBillingPage({
     setCart(cart.filter((_, i) => i !== index));
   };
 
+  // Add Quick Chocolate / Counter Candy item to cart
+  const addQuickChocolate = async (customAmt = null) => {
+    const rawVal = customAmt !== null ? customAmt : customChocolateAmount;
+    const amount = Math.max(0.5, parseFloat(rawVal) || 1.0);
+
+    try {
+      setIsAddingChocolate(true);
+      let chocMed = chocolateItemRef.current;
+      if (!chocMed || !chocMed.batches || chocMed.batches.length === 0) {
+        chocMed = await inventoryAPI.getQuickChocolateItem();
+        chocolateItemRef.current = chocMed;
+      }
+
+      const bestBatch = (chocMed?.batches && chocMed.batches.length > 0)
+        ? chocMed.batches[0]
+        : { id: 1, batch_number: 'CHOC-OTC', mrp: amount, selling_price: amount, pack_size: 1 };
+
+      // 1. If there is an existing chocolate item with 0 price in cart, update it
+      const zeroChocIdx = cart.findIndex(item =>
+        (item.is_chocolate || item.medicine?.name === 'CHOCOLATE / CANDY (OTC)') &&
+        (parseFloat(item.strip_selling_price) || 0) === 0
+      );
+
+      if (zeroChocIdx > -1) {
+        const updated = [...cart];
+        updated[zeroChocIdx].strip_selling_price = amount;
+        updated[zeroChocIdx].strip_mrp = amount;
+        updated[zeroChocIdx].tab_selling_price = amount;
+        updated[zeroChocIdx].tab_mrp = amount;
+        if ((updated[zeroChocIdx].strip_quantity || 0) === 0) {
+          updated[zeroChocIdx].strip_quantity = 1;
+        }
+        setCart(updated);
+        return;
+      }
+
+      // 2. Check if chocolate already in cart with exact same price
+      const existingIdx = cart.findIndex(item => 
+        (item.is_chocolate || item.medicine?.name === 'CHOCOLATE / CANDY (OTC)') && 
+        parseFloat(item.strip_selling_price) === amount
+      );
+
+      if (existingIdx > -1) {
+        const updated = [...cart];
+        updated[existingIdx].strip_quantity = (updated[existingIdx].strip_quantity || 0) + 1;
+        setCart(updated);
+      } else {
+        const newItem = {
+          medicine: chocMed,
+          batch: bestBatch,
+          availableBatches: [bestBatch],
+          pack_size: 1,
+          is_loose_allowed: false,
+          is_chocolate: true,
+          strip_quantity: 1,
+          loose_quantity: 0,
+          strip_mrp: amount,
+          strip_selling_price: amount,
+          tab_mrp: amount,
+          tab_selling_price: amount,
+          discount_percent: 0,
+          gst_rate: 0.0,
+        };
+        setCart(prev => [...prev, newItem]);
+      }
+    } catch (err) {
+      console.error('Failed to add quick chocolate:', err);
+      alert(`Could not add chocolate: ${err.message}`);
+    } finally {
+      setIsAddingChocolate(false);
+    }
+  };
+
+  const updateItemPrice = (index, newPrice) => {
+    const updated = [...cart];
+    updated[index].strip_selling_price = newPrice;
+    updated[index].strip_mrp = newPrice;
+    updated[index].tab_selling_price = newPrice;
+    updated[index].tab_mrp = newPrice;
+    setCart(updated);
+  };
+
   const clearCart = () => {
     setCart([]);
     setDiscountPreset('0');
@@ -371,11 +468,13 @@ export default function PosBillingPage({
   cart.forEach(item => {
     const strips = item.strip_quantity || 0;
     const loose = item.loose_quantity || 0;
-    const itemGross = (strips * item.strip_selling_price) + (loose * item.tab_selling_price);
+    const stripPrice = parseFloat(item.strip_selling_price) || 0;
+    const tabPrice = parseFloat(item.tab_selling_price) || 0;
+    const itemGross = (strips * stripPrice) + (loose * tabPrice);
     const disc = (itemGross * (item.discount_percent || 0)) / 100;
     const net = itemGross - disc; // Net selling amount inclusive of GST
-    const gstRate = item.gst_rate || 12.0;
-    const taxableBase = net / (1 + (gstRate / 100));
+    const gstRate = parseFloat(item.gst_rate) || 0.0;
+    const taxableBase = gstRate > 0 ? (net / (1 + (gstRate / 100))) : net;
     const tax = net - taxableBase;
     grossSubtotal += net;
     totalTax += tax;
@@ -395,6 +494,32 @@ export default function PosBillingPage({
   const cgst = (effectiveTax / 2).toFixed(2);
   const sgst = (effectiveTax / 2).toFixed(2);
   const subtotal = grossSubtotal;
+
+  // Smart Change & Round-Off Suggestions (e.g. if Total is ₹21, suggest +₹1 to make ₹22, +₹4 to make ₹25, +₹9 to make ₹30)
+  const quickRoundSuggestions = useMemo(() => {
+    if (cart.length === 0 || grandTotal <= 0) return [];
+    const suggestions = [];
+    
+    // Suggest +1, +2
+    suggestions.push({ diff: 1, target: grandTotal + 1 });
+    suggestions.push({ diff: 2, target: grandTotal + 2 });
+
+    // Suggest next multiple of 5
+    const next5 = Math.ceil((grandTotal + 0.01) / 5) * 5;
+    const diff5 = next5 - grandTotal;
+    if (diff5 > 0 && !suggestions.some(s => s.diff === diff5)) {
+      suggestions.push({ diff: diff5, target: next5 });
+    }
+
+    // Suggest next multiple of 10
+    const next10 = Math.ceil((grandTotal + 0.01) / 10) * 10;
+    const diff10 = next10 - grandTotal;
+    if (diff10 > 0 && diff10 <= 10 && !suggestions.some(s => s.diff === diff10)) {
+      suggestions.push({ diff: diff10, target: next10 });
+    }
+
+    return suggestions.sort((a, b) => a.diff - b.diff).slice(0, 4);
+  }, [cart, grandTotal]);
 
   const tenderedNum = parseFloat(cashTendered) || 0;
   const changeDue = Math.max(0, tenderedNum - grandTotal);
@@ -453,10 +578,10 @@ export default function PosBillingPage({
             is_loose: false,
             quantity: strips,
             pack_size: item.pack_size,
-            unit_mrp: item.strip_mrp,
-            unit_selling_price: item.strip_selling_price,
-            discount_percent: item.discount_percent || 0,
-            gst_rate: item.gst_rate || 12.0,
+            unit_mrp: parseFloat(item.strip_mrp) || 0,
+            unit_selling_price: parseFloat(item.strip_selling_price) || 0,
+            discount_percent: parseFloat(item.discount_percent) || 0,
+            gst_rate: parseFloat(item.gst_rate) || 0.0,
           });
         }
 
@@ -467,10 +592,10 @@ export default function PosBillingPage({
             is_loose: true,
             quantity: loose,
             pack_size: item.pack_size,
-            unit_mrp: item.tab_mrp,
-            unit_selling_price: item.tab_selling_price,
-            discount_percent: item.discount_percent || 0,
-            gst_rate: item.gst_rate || 12.0,
+            unit_mrp: parseFloat(item.tab_mrp) || 0,
+            unit_selling_price: parseFloat(item.tab_selling_price) || 0,
+            discount_percent: parseFloat(item.discount_percent) || 0,
+            gst_rate: parseFloat(item.gst_rate) || 0.0,
           });
         }
       });
@@ -686,6 +811,120 @@ export default function PosBillingPage({
           )}
         </div>
 
+        {/* Quick Chocolate / Counter Candy Quick Action Bar */}
+        <div className="glass-panel" style={{
+          padding: '10px 14px',
+          background: 'linear-gradient(135deg, #fffdf5 0%, #fef3c7 100%)',
+          borderRadius: '12px',
+          border: '1.5px solid #fde68a',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '8px',
+          boxShadow: '0 2px 8px rgba(217, 119, 6, 0.08)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '20px' }}>🍫</span>
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 900, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.02em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>Quick Chocolate / Counter Candy</span>
+                <span className="badge badge-amber" style={{ fontSize: '9.5px', padding: '1px 5px', fontWeight: 800 }}>Change Bill</span>
+              </div>
+              <div style={{ fontSize: '11px', color: '#b45309' }}>
+                Quick 1-click chocolate sale & coin change round-off
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            {[1, 2, 5, 10, 20].map((amt) => (
+              <button
+                key={amt}
+                type="button"
+                onClick={() => addQuickChocolate(amt)}
+                disabled={isAddingChocolate}
+                style={{
+                  padding: '6px 11px',
+                  borderRadius: '8px',
+                  border: '1.5px solid #f59e0b',
+                  background: '#ffffff',
+                  color: '#92400e',
+                  fontSize: '12px',
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                  boxShadow: '0 2px 5px rgba(245, 158, 11, 0.15)',
+                  transition: 'all 0.12s'
+                }}
+                title={`Add ${currency}${amt} Chocolate to bill`}
+              >
+                <span>+ {currency}{amt}</span>
+              </button>
+            ))}
+
+            {/* Custom Rupee Amount Input */}
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              background: '#ffffff',
+              borderRadius: '8px',
+              padding: '2px 4px',
+              border: '1.5px solid #f59e0b'
+            }}>
+              <span style={{ fontSize: '11.5px', fontWeight: 900, color: '#b45309', paddingLeft: '4px' }}>{currency}</span>
+              <input
+                type="number"
+                min="0.5"
+                step="any"
+                value={customChocolateAmount}
+                onChange={(e) => setCustomChocolateAmount(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                onClick={(e) => e.target.select()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addQuickChocolate(customChocolateAmount);
+                  }
+                }}
+                placeholder="Amt"
+                style={{
+                  width: '46px',
+                  height: '26px',
+                  textAlign: 'center',
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: '12.5px',
+                  fontWeight: 900,
+                  color: '#92400e',
+                  padding: '0'
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => addQuickChocolate(customChocolateAmount)}
+                disabled={isAddingChocolate}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: '#f59e0b',
+                  color: '#ffffff',
+                  fontSize: '11.5px',
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 4px rgba(245, 158, 11, 0.25)'
+                }}
+              >
+                + Add
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Active Cart Panel */}
         <div className="glass-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{
@@ -735,11 +974,145 @@ export default function PosBillingPage({
                     </thead>
                     <tbody>
                       {cart.map((item, idx) => {
+                        const isChoc = item.is_chocolate || item.medicine?.name === 'CHOCOLATE / CANDY (OTC)';
                         const strips = item.strip_quantity || 0;
                         const loose = item.loose_quantity || 0;
-                        const lineGross = (strips * item.strip_selling_price) + (loose * item.tab_selling_price);
+                        const stripPrice = parseFloat(item.strip_selling_price) || 0;
+                        const tabPrice = parseFloat(item.tab_selling_price) || 0;
+                        const lineGross = (strips * stripPrice) + (loose * tabPrice);
                         const lineDisc = (lineGross * (item.discount_percent || 0)) / 100;
                         const lineTotal = lineGross - lineDisc;
+
+                        if (isChoc) {
+                          return (
+                            <tr key={idx} style={{ background: '#fffdf5' }}>
+                              {/* 1. Chocolate Name */}
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ fontSize: '18px' }}>🍫</span>
+                                  <div>
+                                    <div style={{ fontWeight: 900, fontSize: '13.5px', color: '#92400e' }}>
+                                      CHOCOLATE / CANDY (OTC)
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: '#b45309', marginTop: '1px' }}>
+                                      Counter Change / Round-off Item
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* 2. Batch */}
+                              <td>
+                                <span className="badge badge-amber mono" style={{ fontSize: '11px', fontWeight: 800 }}>
+                                  CHOC-OTC
+                                </span>
+                                <div style={{ fontSize: '10.5px', color: '#059669', marginTop: '2px', fontWeight: 700 }}>
+                                  🟢 Always Available
+                                </div>
+                              </td>
+
+                              {/* 3. Quantity Controls */}
+                              <td style={{ textAlign: 'center' }}>
+                                <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => updateStripQuantity(idx, -1)}
+                                      style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1.5px solid #f59e0b', background: '#ffffff', color: '#92400e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                    >
+                                      <Minus size={11} />
+                                    </button>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={item.strip_quantity}
+                                      onChange={(e) => setDirectStripQuantity(idx, e.target.value)}
+                                      className="mono"
+                                      style={{ width: '38px', height: '22px', textAlign: 'center', border: '1.5px solid #f59e0b', borderRadius: '4px', fontSize: '12px', fontWeight: 900, background: '#fffbeb', color: '#92400e' }}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => updateStripQuantity(idx, 1)}
+                                      style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1.5px solid #f59e0b', background: '#ffffff', color: '#92400e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                    >
+                                      <Plus size={11} />
+                                    </button>
+                                  </div>
+                                  <span style={{ fontSize: '10px', color: '#92400e', fontWeight: 700 }}>
+                                    {item.strip_quantity} Unit{item.strip_quantity > 1 ? 's' : ''}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* 4. Loose */}
+                              <td style={{ textAlign: 'center' }}>
+                                <span style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic' }}>Single Unit</span>
+                              </td>
+
+                              {/* 5. Editable Unit Price & Quick Pills */}
+                              <td style={{ textAlign: 'right' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px' }}>
+                                    <span style={{ fontSize: '12px', fontWeight: 900, color: '#92400e' }}>{currency}</span>
+                                    <input
+                                      type="number"
+                                      min="0.5"
+                                      step="any"
+                                      value={item.strip_selling_price}
+                                      onChange={(e) => updateItemPrice(idx, e.target.value)}
+                                      onFocus={(e) => e.target.select()}
+                                      onClick={(e) => e.target.select()}
+                                      placeholder="0"
+                                      className="mono"
+                                      style={{ width: '62px', height: '26px', textAlign: 'right', border: '2px solid #f59e0b', borderRadius: '5px', fontSize: '13px', fontWeight: 900, color: '#92400e', background: '#ffffff', padding: '2px 4px', outline: 'none' }}
+                                      title="Type chocolate amount"
+                                    />
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '2px' }}>
+                                    {[1, 2, 5, 10, 20].map(p => (
+                                      <button
+                                        key={p}
+                                        type="button"
+                                        onClick={() => updateItemPrice(idx, p)}
+                                        style={{
+                                          padding: '1px 4px',
+                                          fontSize: '9.5px',
+                                          fontWeight: parseFloat(item.strip_selling_price) === p ? 900 : 700,
+                                          borderRadius: '3px',
+                                          border: parseFloat(item.strip_selling_price) === p ? '1.5px solid #d97706' : '1px solid #fde68a',
+                                          background: parseFloat(item.strip_selling_price) === p ? '#fef3c7' : '#ffffff',
+                                          color: '#92400e',
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        {currency}{p}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* 6. Line Total */}
+                              <td style={{ textAlign: 'right' }} className="mono">
+                                <span style={{ fontSize: '14px', fontWeight: 900, color: '#92400e' }}>
+                                  {currency}{lineTotal.toFixed(2)}
+                                </span>
+                              </td>
+
+                              {/* 7. Remove */}
+                              <td style={{ textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => removeFromCart(idx)}
+                                  style={{ background: '#fef2f2', border: '1px solid #fecdd3', color: '#e11d48', padding: '5px', borderRadius: '6px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                                  title="Remove Chocolate"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        }
 
                         return (
                           <tr key={idx}>
@@ -920,11 +1293,119 @@ export default function PosBillingPage({
                 {/* 2. MOBILE CART CARDS VIEW */}
                 <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px' }}>
                   {cart.map((item, idx) => {
+                    const isChoc = item.is_chocolate || item.medicine?.name === 'CHOCOLATE / CANDY (OTC)';
                     const strips = item.strip_quantity || 0;
                     const loose = item.loose_quantity || 0;
-                    const lineGross = (strips * item.strip_selling_price) + (loose * item.tab_selling_price);
+                    const stripPrice = parseFloat(item.strip_selling_price) || 0;
+                    const tabPrice = parseFloat(item.tab_selling_price) || 0;
+                    const lineGross = (strips * stripPrice) + (loose * tabPrice);
                     const lineDisc = (lineGross * (item.discount_percent || 0)) / 100;
                     const lineTotal = lineGross - lineDisc;
+
+                    if (isChoc) {
+                      return (
+                        <div
+                          key={idx}
+                          style={{
+                            background: '#fffdf5',
+                            border: '1.5px solid #fde68a',
+                            borderRadius: '12px',
+                            padding: '12px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                            boxShadow: '0 2px 6px rgba(217, 119, 6, 0.08)'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '16px' }}>🍫</span>
+                              <strong style={{ fontSize: '13.5px', color: '#92400e' }}>CHOCOLATE / CANDY (OTC)</strong>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeFromCart(idx)}
+                              style={{ background: '#fef2f2', border: '1px solid #fecdd3', color: '#e11d48', padding: '5px', borderRadius: '6px', cursor: 'pointer' }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ffffff', padding: '8px 10px', borderRadius: '8px', border: '1px solid #fef3c7', flexWrap: 'wrap', gap: '6px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontSize: '11px', fontWeight: 800, color: '#92400e' }}>Qty:</span>
+                              <button
+                                type="button"
+                                onClick={() => updateStripQuantity(idx, -1)}
+                                style={{ width: '26px', height: '26px', borderRadius: '4px', border: '1px solid #f59e0b', background: '#ffffff', color: '#92400e' }}
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={item.strip_quantity}
+                                onChange={(e) => setDirectStripQuantity(idx, e.target.value)}
+                                className="mono"
+                                style={{ width: '36px', height: '26px', textAlign: 'center', border: '1px solid #f59e0b', borderRadius: '4px', fontSize: '12px', fontWeight: 900, color: '#92400e' }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => updateStripQuantity(idx, 1)}
+                                style={{ width: '26px', height: '26px', borderRadius: '4px', border: '1px solid #f59e0b', background: '#ffffff', color: '#92400e' }}
+                              >
+                                +
+                              </button>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 800, color: '#92400e' }}>Price: {currency}</span>
+                                <input
+                                  type="number"
+                                  min="0.5"
+                                  step="any"
+                                  value={item.strip_selling_price}
+                                  onChange={(e) => updateItemPrice(idx, e.target.value)}
+                                  onFocus={(e) => e.target.select()}
+                                  onClick={(e) => e.target.select()}
+                                  className="mono"
+                                  style={{ width: '56px', height: '26px', textAlign: 'right', border: '1.5px solid #f59e0b', borderRadius: '4px', fontSize: '12.5px', fontWeight: 900, color: '#92400e', padding: '2px 4px' }}
+                                />
+                              </div>
+                              <div style={{ display: 'flex', gap: '2px' }}>
+                                {[1, 2, 5, 10, 20].map(p => (
+                                  <button
+                                    key={p}
+                                    type="button"
+                                    onClick={() => updateItemPrice(idx, p)}
+                                    style={{
+                                      padding: '1px 4px',
+                                      fontSize: '9.5px',
+                                      fontWeight: parseFloat(item.strip_selling_price) === p ? 900 : 700,
+                                      borderRadius: '3px',
+                                      border: parseFloat(item.strip_selling_price) === p ? '1.5px solid #d97706' : '1px solid #fde68a',
+                                      background: parseFloat(item.strip_selling_price) === p ? '#fef3c7' : '#ffffff',
+                                      color: '#92400e',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    {currency}{p}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #fef3c7', paddingTop: '4px' }}>
+                            <span style={{ fontSize: '11px', color: '#b45309', fontWeight: 700 }}>Total:</span>
+                            <span className="mono" style={{ fontSize: '15px', fontWeight: 900, color: '#92400e' }}>
+                              {currency}{lineTotal.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }
 
                     return (
                       <div
@@ -1308,6 +1789,54 @@ export default function PosBillingPage({
                 {currency}{grandTotal.toFixed(2)}
               </div>
             </div>
+
+            {/* Smart Change / Chocolate Round-off Quick Chips */}
+            {quickRoundSuggestions.length > 0 && (
+              <div style={{
+                background: '#fffdf5',
+                border: '1.5px dashed #f59e0b',
+                borderRadius: '8px',
+                padding: '8px 10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11.5px', fontWeight: 900, color: '#92400e', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span>🍫</span> Round bill with Chocolate:
+                  </span>
+                  <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 700 }}>1-Click Coin Change</span>
+                </div>
+                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                  {quickRoundSuggestions.map(s => (
+                    <button
+                      key={s.diff}
+                      type="button"
+                      onClick={() => addQuickChocolate(s.diff)}
+                      disabled={isAddingChocolate}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        border: '1px solid #f59e0b',
+                        background: '#ffffff',
+                        color: '#92400e',
+                        fontSize: '11.5px',
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        boxShadow: '0 1px 3px rgba(245, 158, 11, 0.15)'
+                      }}
+                      title={`Add +${currency}${s.diff} chocolate to make ${currency}${s.target}`}
+                    >
+                      <span>+{currency}{s.diff}</span>
+                      <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 700 }}>({currency}{s.target})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Payment Method Selector */}

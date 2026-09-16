@@ -46,6 +46,7 @@ export const inventoryAPI = {
   }),
   updateMedicine: (id, data) => request(`/inventory/medicines/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteMedicine: (id) => request(`/inventory/medicines/${id}/`, { method: 'DELETE' }),
+  getQuickChocolateItem: () => request('/inventory/medicines/quick_chocolate_item/'),
 
   // Batches
   getBatches: (params = '') => request(`/inventory/batches/${params ? `?${params}` : ''}`),
@@ -185,3 +186,39 @@ export const analyticsAPI = {
   getTopSelling: () => request('/analytics/top-selling/'),
   getDailySoldReport: (params = '') => request(`/analytics/daily-sold-report/${params ? `?${params}` : ''}`),
 };
+
+export const dailyFinanceAPI = {
+  getRecords: (params = '') => request(`/billing/daily-finance/${params ? `?${params}` : ''}`),
+  getRecord: (id) => request(`/billing/daily-finance/${id}/`),
+  createRecord: (data) => request('/billing/daily-finance/', { method: 'POST', body: JSON.stringify(data) }),
+  updateRecord: (id, data) => request(`/billing/daily-finance/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
+  patchRecord: (id, data) => request(`/billing/daily-finance/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteRecord: (id) => request(`/billing/daily-finance/${id}/`, { method: 'DELETE' }),
+  autoFetchDay: (date = '') => request(`/billing/daily-finance/auto_fetch_pos_day/${date ? `?date=${encodeURIComponent(date)}` : ''}`),
+  getSummaryStats: () => request('/billing/daily-finance/summary_stats/'),
+  exportExcel: async (params = '') => {
+    const url = `${API_BASE_URL}/billing/daily-finance/export_excel/${params ? `?${params}` : ''}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to download Excel report' }));
+      throw new Error(err.error || err.detail || 'Failed to download Excel report.');
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    let filename = `TopMedical_DailyFinance_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    if (match && match[1]) {
+      filename = match[1];
+    }
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(blobUrl);
+    return { success: true, filename };
+  },
+};
+

@@ -16,7 +16,8 @@ import {
   CreditCard,
   Sparkles,
   Wallet,
-  ClipboardList
+  ClipboardList,
+  Landmark
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, Bar, Cell } from 'recharts';
 
@@ -203,13 +204,23 @@ export default function DashboardPage({
               Real-time cash drawer tracking and digital UPI settlement
             </div>
           </div>
-          <button
-            onClick={() => setActiveTab('invoices')}
-            className="btn btn-secondary btn-sm"
-            style={{ fontSize: '11.5px' }}
-          >
-            View Invoices Archive →
-          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              onClick={() => setActiveTab('finance')}
+              className="btn btn-primary btn-sm"
+              style={{ fontSize: '11.5px', boxShadow: '0 2px 8px rgba(2, 132, 199, 0.2)' }}
+            >
+              <Landmark size={13} />
+              <span>Daily Accounts Register →</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('invoices')}
+              className="btn btn-secondary btn-sm"
+              style={{ fontSize: '11.5px' }}
+            >
+              View Invoices Archive →
+            </button>
+          </div>
         </div>
 
         {/* 2 Big Visual Columns */}

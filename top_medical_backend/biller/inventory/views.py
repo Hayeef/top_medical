@@ -98,6 +98,56 @@ class MedicineViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(medicines, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get', 'post'])
+    @transaction.atomic
+    def quick_chocolate_item(self, request):
+        """
+        Retrieves or provisions the designated OTC Chocolate / Candy / Confectionery item
+        with active stock for instant POS change adjustment and candy sales.
+        """
+        category, _ = Category.objects.get_or_create(
+            name="OTC & Confectionery",
+            defaults={"description": "Over the counter items, chocolates, toffees, and change adjustment items."}
+        )
+        
+        medicine, _ = Medicine.objects.get_or_create(
+            name="CHOCOLATE / CANDY (OTC)",
+            defaults={
+                "generic_name": "Confectionery & Change Round-off",
+                "category": category,
+                "dosage_form": "Other",
+                "strength": "1 Unit",
+                "manufacturer": "Counter Misc",
+                "hsn_code": "21069091",
+                "gst_rate": Decimal("0.00"),
+                "is_active": True,
+                "min_stock_alert": 0,
+                "requires_prescription": False,
+                "rack_location": "Front Counter"
+            }
+        )
+
+        batch, _ = Batch.objects.get_or_create(
+            medicine=medicine,
+            batch_number="CHOC-OTC",
+            defaults={
+                "expiry_date": date(2035, 12, 31),
+                "purchase_price": Decimal("0.50"),
+                "mrp": Decimal("1.00"),
+                "selling_price": Decimal("1.00"),
+                "pack_size": 1,
+                "pack_quantity": 99999,
+                "loose_quantity": 0,
+            }
+        )
+
+        if batch.pack_quantity < 1000:
+            batch.pack_quantity = 99999
+            batch.save()
+
+        serializer = self.get_serializer(medicine)
+        return Response(serializer.data)
+
     @action(detail=False, methods=['post'])
     @transaction.atomic
     def quick_add_tablet_stock(self, request):

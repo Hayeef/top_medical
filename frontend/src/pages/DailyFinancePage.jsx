@@ -4908,7 +4908,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" opacity={0.6} />
                     <XAxis dataKey="date" stroke="#94a3b8" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} tickFormatter={(v) => `${currency}${v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}`} />
+                    <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} tickFormatter={(v) => `${currency}${Math.abs(v) >= 1000 ? `${(v/1000).toFixed(0)}k` : v}`} />
                     <Tooltip 
                       contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }} 
                       formatter={(value, name) => [`${currency}${parseFloat(value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, name]}
@@ -4935,37 +4935,33 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             </div>
 
             <div className="data-table-container" style={{ maxHeight: '600px', overflowY: 'auto' }}>
-              <table className="data-table">
+              <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                 <thead>
-                  <tr>
-                    <th style={{ width: '110px' }}>Date</th>
-                    <th style={{ textAlign: 'right' }}>Daily Sales ({currency})</th>
-                    <th style={{ textAlign: 'right' }}>Cash In ({currency})</th>
-                    <th style={{ textAlign: 'right' }}>UPI In ({currency})</th>
-                    <th style={{ textAlign: 'right' }}>Total In ({currency})</th>
-                    <th style={{ textAlign: 'right' }}>Total Paid ({currency})</th>
-                    <th style={{ textAlign: 'right' }}>Opening Bal ({currency})</th>
-                    <th style={{ textAlign: 'right' }}>Net Day Change ({currency})</th>
-                    <th style={{ textAlign: 'right' }}>Firm Balance ({currency})</th>
-                    <th>Expense Vouchers</th>
-                    <th style={{ textAlign: 'center', width: '110px' }}>Actions</th>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', textAlign: 'left' }}>
+                    <th style={{ width: '140px', padding: '12px 14px', fontWeight: 800, color: '#334155' }}>Date</th>
+                    <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: '#0284c7' }}>Daily Sales ({currency})</th>
+                    <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: '#be123c' }}>Daily Total Expense ({currency})</th>
+                    <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: '#0369a1' }}>Closing Balance ({currency})</th>
+                    <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: '#059669' }}>Remaining Net (+/-) ({currency})</th>
+                    <th style={{ textAlign: 'center', width: '120px', padding: '12px 10px', fontWeight: 800, color: '#334155' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="11" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                      <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
                         <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 8px' }} />
                         <div>Loading accounts ledger...</div>
                       </td>
                     </tr>
                   ) : records.length === 0 ? (
                     <tr>
-                      <td colSpan="11" style={{ textAlign: 'center', padding: '50px 20px', color: '#94a3b8' }}>
+                      <td colSpan="6" style={{ textAlign: 'center', padding: '50px 20px', color: '#94a3b8' }}>
                         <Landmark size={36} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
                         <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-main)' }}>No accounts records yet</div>
                         <div style={{ fontSize: '12px', marginTop: '4px' }}>Click below to record today's daily accounts & expenses</div>
                         <button
+                          type="button"
                           onClick={() => handleOpenNewEntry()}
                           className="btn btn-primary btn-sm"
                           style={{ marginTop: '14px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
@@ -4975,7 +4971,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                       </td>
                     </tr>
                   ) : (
-                    records.map((r) => {
+                    records.map((r, idx) => {
                       const netVal = parseFloat(r.net_day_change) || 0;
                       const isPositive = netVal >= 0;
                       const dateFormatted = new Date(r.date).toLocaleDateString('en-GB', {
@@ -4984,148 +4980,106 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                         year: 'numeric'
                       });
 
-                      const details = Array.isArray(r.payment_details) ? r.payment_details : [];
-                      const vendorCount = details.filter(d => d.type === 'VENDOR' || d.type === 'Supplier').length;
-                      const staffCount = details.filter(d => d.type === 'STAFF').length;
-                      const vehicleCount = details.filter(d => d.type === 'VEHICLE').length;
-
                       return (
                         <tr
-                          key={r.id}
+                          key={r.id || idx}
                           onClick={() => handleOpenEdit(r, true)}
-                          style={{ cursor: 'pointer' }}
+                          style={{
+                            cursor: 'pointer',
+                            background: idx % 2 === 0 ? '#ffffff' : '#fcfcfd',
+                            borderBottom: '1px solid #e2e8f0',
+                            transition: 'background 0.15s'
+                          }}
                           title="Click row to edit accounts for this date"
                         >
-                          {/* Date */}
-                          <td style={{ fontWeight: 800, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
+                          {/* 1. Date */}
+                          <td style={{ fontWeight: 800, color: 'var(--text-main)', whiteSpace: 'nowrap', padding: '12px 14px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <Calendar size={13} color="#0284c7" />
+                              <Calendar size={14} color="#0284c7" />
                               <span>{dateFormatted}</span>
                             </div>
                           </td>
 
-                          {/* Daily Sales */}
-                          <td style={{ textAlign: 'right', fontWeight: 800, color: '#0284c7' }} className="mono">
+                          {/* 2. Daily Sales */}
+                          <td style={{ textAlign: 'right', fontWeight: 800, color: '#0284c7', padding: '12px 14px' }} className="mono">
                             {currency}{parseFloat(r.daily_sales || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </td>
 
-                          {/* Cash Received */}
-                          <td style={{ textAlign: 'right' }} className="mono">
-                            <span style={{ color: '#059669', fontWeight: 800, background: '#ecfdf5', padding: '2px 6px', borderRadius: '4px' }}>
-                              {currency}{parseFloat(r.cash_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          {/* 3. Daily Total Expense */}
+                          <td style={{ textAlign: 'right', fontWeight: 900, color: '#be123c', padding: '12px 14px' }} className="mono">
+                            <span style={{ background: '#fff1f2', padding: '4px 9px', borderRadius: '6px', border: '1px solid #fecdd3' }}>
+                              {currency}{parseFloat(r.total_paid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                             </span>
                           </td>
 
-                          {/* UPI Received */}
-                          <td style={{ textAlign: 'right' }} className="mono">
-                            <span style={{ color: '#0284c7', fontWeight: 800, background: '#f0f9ff', padding: '2px 6px', borderRadius: '4px' }}>
-                              {currency}{parseFloat(r.upi_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                            </span>
-                          </td>
-
-                          {/* Total Earned */}
-                          <td style={{ textAlign: 'right', fontWeight: 900, color: '#10b981' }} className="mono">
-                            {currency}{parseFloat(r.total_earned || (parseFloat(r.cash_earned||0)+parseFloat(r.upi_earned||0))).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                          </td>
-
-                          {/* Total Paid */}
-                          <td style={{ textAlign: 'right', fontWeight: 900, color: '#e11d48' }} className="mono">
-                            {currency}{parseFloat(r.total_paid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                          </td>
-
-                          {/* Opening Balance */}
-                          <td style={{ textAlign: 'right', color: '#64748b' }} className="mono">
-                            {currency}{parseFloat(r.opening_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                          </td>
-
-                          {/* Net Day Change */}
-                          <td style={{ textAlign: 'right' }} className="mono">
+                          {/* 4. Closing Balance */}
+                          <td style={{ textAlign: 'right', padding: '12px 14px' }} className="mono">
                             <span style={{
-                              color: isPositive ? '#059669' : '#dc2626',
-                              fontWeight: 800,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '2px'
-                            }}>
-                              {isPositive ? '+' : ''}{currency}{netVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                            </span>
-                          </td>
-
-                          {/* Closing Balance */}
-                          <td style={{ textAlign: 'right' }} className="mono">
-                            <span style={{
-                              fontSize: '13px',
+                              fontSize: '13.5px',
                               fontWeight: 900,
                               color: '#0369a1',
                               background: '#e0f2fe',
-                              padding: '3px 8px',
-                              borderRadius: '6px'
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              border: '1.5px solid #bae6fd'
                             }}>
                               {currency}{parseFloat(r.closing_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                             </span>
                           </td>
 
-                          {/* Expense Breakdown */}
-                          <td style={{ maxWidth: '240px', fontSize: '11.5px' }}>
-                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
-                              {vendorCount > 0 && (
-                                <span className="badge badge-purple" style={{ fontSize: '10px', padding: '1px 5px' }}>
-                                  🏢 {vendorCount} Vendors
-                                </span>
-                              )}
-                              {staffCount > 0 && (
-                                <span className="badge badge-cyan" style={{ fontSize: '10px', padding: '1px 5px' }}>
-                                  👤 {staffCount} Staff
-                                </span>
-                              )}
-                              {vehicleCount > 0 && (
-                                <span className="badge badge-amber" style={{ fontSize: '10px', padding: '1px 5px' }}>
-                                  🚗 Vehicle
-                                </span>
-                              )}
-                              {r.notes && (
-                                <span style={{ color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>
-                                  {r.notes}
-                                </span>
-                              )}
-                            </div>
+                          {/* 5. Remaining Net / Outstanding Balance */}
+                          <td style={{ textAlign: 'right', padding: '12px 14px' }} className="mono">
+                            <span style={{
+                              color: isPositive ? '#059669' : '#dc2626',
+                              fontWeight: 800,
+                              fontSize: '13px',
+                              background: isPositive ? '#f0fdf4' : '#fef2f2',
+                              padding: '4px 9px',
+                              borderRadius: '6px',
+                              border: '1px solid ' + (isPositive ? '#bbf7d0' : '#fecdd3')
+                            }}>
+                              {isPositive ? '+' : ''}{currency}{netVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </span>
                           </td>
 
-                          {/* Actions */}
-                          <td style={{ textAlign: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          {/* 6. Actions */}
+                          <td style={{ textAlign: 'center', padding: '12px 10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
                               <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setViewingRecord(r);
                                 }}
                                 className="btn btn-secondary btn-sm"
-                                style={{ padding: '4px 6px' }}
+                                style={{ padding: '5px 8px', color: '#0284c7', background: '#f0f9ff', border: '1px solid #bae6fd' }}
                                 title="View Statement Voucher"
                               >
-                                <Eye size={13} color="#0284c7" />
+                                <Eye size={14} />
                               </button>
                               <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleOpenEdit(r, true);
                                 }}
                                 className="btn btn-secondary btn-sm"
-                                style={{ padding: '4px 6px' }}
+                                style={{ padding: '5px 8px', color: '#059669', background: '#f0fdf4', border: '1px solid #bbf7d0', fontWeight: 800 }}
                                 title="Edit in Table Register"
                               >
-                                <Edit3 size={13} color="#059669" />
+                                <Edit3 size={14} />
                               </button>
                               <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleDeleteRecord(r);
                                 }}
                                 className="btn btn-secondary btn-sm"
-                                style={{ padding: '4px 6px', color: '#dc2626' }}
+                                style={{ padding: '5px 8px', color: '#ef4444', background: '#fef2f2', border: '1px solid #fecdd3' }}
                                 title="Delete Record"
                               >
-                                <Trash2 size={13} />
+                                <Trash2 size={14} />
                               </button>
                             </div>
                           </td>

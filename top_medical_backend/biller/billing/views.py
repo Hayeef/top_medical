@@ -512,7 +512,85 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user if self.request.user.is_authenticated else None
-        serializer.save(created_by=user)
+        daily_record = serializer.save(created_by=user)
+        self._sync_vendor_bills(daily_record, user)
+
+    def perform_update(self, serializer):
+        user = self.request.user if self.request.user.is_authenticated else None
+        daily_record = serializer.save()
+        self._sync_vendor_bills(daily_record, user)
+
+    def _sync_vendor_bills(self, daily_record, user):
+        """
+        Auto-sync vendor line items from daily register to VendorBill:
+        - CREDIT -> Created or updated as PENDING wholesale credit bills with due dates & remaining days.
+        - CASH / UPI -> Created or updated as PAID / CLEARED bills.
+        """
+        details = daily_record.payment_details or []
+        for idx, item in enumerate(details):
+            item_type = str(item.get('type', '')).upper()
+            if item_type in ['VENDOR', 'SUPPLIER']:
+                recipient = (item.get('recipient') or '').strip()
+                if not recipient:
+                    continue
+                try:
+                    amt = Decimal(str(item.get('amount', '0.00')))
+                except Exception:
+                    amt = Decimal('0.00')
+                if amt <= Decimal('0.00'):
+                    continue
+
+                mode = str(item.get('payment_mode', 'CASH')).upper()
+                raw_note = str(item.get('note') or item.get('bill_number') or '').strip()
+                bill_number = raw_note if raw_note else f"BILL-{daily_record.date.strftime('%Y%m%d')}-{idx+1}"
+                credit_days = int(item.get('credit_days') or 21)
+                
+                due_date_str = item.get('due_date')
+                if due_date_str:
+                    try:
+                        due_date_val = datetime.strptime(due_date_str, '%Y-%m-%d').date()
+                    except ValueError:
+                        due_date_val = daily_record.date + timedelta(days=credit_days)
+                else:
+                    due_date_val = daily_record.date + timedelta(days=credit_days)
+
+                bill = VendorBill.objects.filter(supplier_name__iexact=recipient, bill_number=bill_number).first()
+                if not bill:
+                    bill = VendorBill(
+                        supplier_name=recipient,
+                        bill_number=bill_number,
+                        bill_date=daily_record.date,
+                        credit_days=credit_days,
+                        due_date=due_date_val,
+                        total_amount=amt,
+                        created_by=user,
+                        notes=f"Auto-logged from Daily Register ({daily_record.date})"
+                    )
+                else:
+                    bill.bill_date = daily_record.date
+                    bill.credit_days = credit_days
+                    bill.due_date = due_date_val
+                    bill.total_amount = amt
+
+                if mode == 'CREDIT':
+                    bill.paid_amount = Decimal('0.00')
+                    bill.status = 'PENDING'
+                else:
+                    bill.paid_amount = amt
+                    bill.status = 'PAID'
+                    if not bill.payment_history:
+                        bill.payment_history = [{
+                            "id": 1,
+                            "date": daily_record.date.isoformat(),
+                            "amount": float(amt),
+                            "payment_mode": mode,
+                            "reference_number": "Daily Register Payout",
+                            "notes": f"Paid via Daily Register ({mode})",
+                            "logged_by": user.username if user else 'Staff',
+                            "created_at": timezone.now().isoformat()
+                        }]
+
+                bill.save()
 
     @action(detail=False, methods=['get'], url_path='auto_fetch_pos_day')
     def auto_fetch_pos_day(self, request):

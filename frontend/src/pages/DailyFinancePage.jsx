@@ -134,6 +134,25 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   };
   const [paymentFormData, setPaymentFormData] = useState(initialPaymentFormState);
 
+  // Helper to calculate due date given base date and days
+  const computeDueDate = (baseDateStr, days = 21) => {
+    const numDays = parseInt(days) || 0;
+    const base = new Date(baseDateStr || new Date().toISOString().slice(0, 10));
+    base.setDate(base.getDate() + numDays);
+    return base.toISOString().slice(0, 10);
+  };
+
+  // Helper to calculate days left given a due date
+  const computeDaysLeft = (dueDateStr) => {
+    if (!dueDateStr) return 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(dueDateStr);
+    due.setHours(0, 0, 0, 0);
+    const diffTime = due - today;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+
   // Form State for Table Entry Register
   const initialFormState = {
     date: new Date().toISOString().slice(0, 10),
@@ -161,7 +180,13 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
         vehicle_info: '',
         category: '',
         amount: '',
-        payment_mode: 'CASH',
+        payment_mode: 'CASH', // 'CASH' | 'UPI' | 'CREDIT'
+        credit_days: 21,
+        due_date: (() => {
+          const d = new Date();
+          d.setDate(d.getDate() + 21);
+          return d.toISOString().slice(0, 10);
+        })(),
         note: ''
       }
     ]
@@ -548,26 +573,71 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
     }
   };
 
-  // Spreadsheet Itemized Calculations by Type
+  // Spreadsheet Itemized Calculations by Type & Payment Mode
   const itemizedSums = useMemo(() => {
-    let vendorSum = 0;
+    let vendorCashSum = 0;
+    let vendorUpiSum = 0;
+    let vendorCreditSum = 0;
     let staffSum = 0;
     let vehicleSum = 0;
     let shopSum = 0;
     let otherSum = 0;
-    let totalTableSum = 0;
+    let totalCashPaidOut = 0;
+    let totalUpiPaidOut = 0;
+    let totalCreditPending = 0;
 
     (formData.payment_details || []).forEach(item => {
       const amt = parseFloat(item.amount) || 0;
-      totalTableSum += amt;
-      if (item.type === 'VENDOR' || item.type === 'Supplier') vendorSum += amt;
-      else if (item.type === 'STAFF') staffSum += amt;
-      else if (item.type === 'VEHICLE') vehicleSum += amt;
-      else if (item.type === 'SHOP' || item.type === 'Expense') shopSum += amt;
-      else otherSum += amt;
+      const mode = (item.payment_mode || 'CASH').toUpperCase();
+      const isCredit = mode === 'CREDIT';
+
+      if (isCredit) {
+        totalCreditPending += amt;
+      } else if (mode === 'UPI') {
+        totalUpiPaidOut += amt;
+      } else {
+        totalCashPaidOut += amt;
+      }
+
+      if (item.type === 'VENDOR' || item.type === 'Supplier') {
+        if (isCredit) {
+          vendorCreditSum += amt;
+        } else if (mode === 'UPI') {
+          vendorUpiSum += amt;
+        } else {
+          vendorCashSum += amt;
+        }
+      } else if (item.type === 'STAFF') {
+        staffSum += amt;
+      } else if (item.type === 'VEHICLE') {
+        vehicleSum += amt;
+      } else if (item.type === 'SHOP' || item.type === 'Expense') {
+        shopSum += amt;
+      } else {
+        otherSum += amt;
+      }
     });
 
-    return { vendorSum, staffSum, vehicleSum, shopSum, otherSum, totalTableSum };
+    const vendorActualPaid = vendorCashSum + vendorUpiSum;
+    const totalActualPaidSum = totalCashPaidOut + totalUpiPaidOut;
+    const totalGrossSum = totalActualPaidSum + totalCreditPending;
+
+    return {
+      vendorCashSum,
+      vendorUpiSum,
+      vendorCreditSum,
+      vendorActualPaid,
+      vendorTotal: vendorActualPaid + vendorCreditSum,
+      staffSum,
+      vehicleSum,
+      shopSum,
+      otherSum,
+      totalCashPaidOut,
+      totalUpiPaidOut,
+      totalCreditPending,
+      totalActualPaidSum,
+      totalGrossSum
+    };
   }, [formData.payment_details]);
 
   // Live Math Calculations
@@ -575,12 +645,17 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   const formUpiEarned = parseFloat(formData.upi_earned) || 0;
   const formTotalEarned = formCashEarned + formUpiEarned;
 
-  const formSupplierPaid = itemizedSums.vendorSum;
+  const formSupplierPaid = itemizedSums.vendorActualPaid;
+  const formSupplierCredit = itemizedSums.vendorCreditSum;
   const formStaffPaid = itemizedSums.staffSum;
   const formVehiclePaid = itemizedSums.vehicleSum;
   const formShopExpenses = itemizedSums.shopSum;
   const formOtherOutflow = itemizedSums.otherSum;
-  const formTotalPaid = itemizedSums.totalTableSum;
+  
+  // Total Money Paid Out from Drawer / Bank (Cash + UPI)
+  const formTotalPaid = itemizedSums.totalActualPaidSum;
+  const formTotalCredit = itemizedSums.totalCreditPending;
+  const formGrossExpense = itemizedSums.totalGrossSum;
 
   const formOpeningBalance = parseFloat(formData.opening_balance) || 0;
   const formNetChange = formTotalEarned - formTotalPaid;
@@ -588,6 +663,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
   // Add Row to Expense Table
   const handleAddExpenseRow = (type = 'VENDOR') => {
+    const defaultDue = computeDueDate(formData.date, 21);
     let newRow = {
       id: Date.now() + Math.random(),
       type: type,
@@ -599,7 +675,9 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
       vehicle_info: '',
       category: type === 'SHOP' ? 'Tea / Snacks' : '',
       amount: '',
-      payment_mode: 'CASH',
+      payment_mode: 'CASH', // 'CASH' | 'UPI' | 'CREDIT'
+      credit_days: 21,
+      due_date: defaultDue,
       note: ''
     };
 
@@ -624,6 +702,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   const handleRemoveExpenseRow = (id) => {
     setFormData(prev => {
       const filtered = (prev.payment_details || []).filter(item => item.id !== id);
+      const defaultDue = computeDueDate(prev.date, 21);
       return {
         ...prev,
         payment_details: filtered.length > 0 ? filtered : [{
@@ -638,6 +717,8 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
           category: '',
           amount: '',
           payment_mode: 'CASH',
+          credit_days: 21,
+          due_date: defaultDue,
           note: ''
         }]
       };
@@ -661,6 +742,24 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             }
           }
 
+          // If mode changes to CREDIT, ensure due_date & credit_days are set
+          if (field === 'payment_mode') {
+            if (value === 'CREDIT') {
+              updated.credit_days = updated.credit_days || 21;
+              updated.due_date = updated.due_date || computeDueDate(prev.date, updated.credit_days);
+            }
+          }
+
+          // If credit_days is updated, sync due_date
+          if (field === 'credit_days') {
+            updated.due_date = computeDueDate(prev.date, value);
+          }
+
+          // If due_date is updated, sync credit_days
+          if (field === 'due_date') {
+            updated.credit_days = computeDaysLeft(value);
+          }
+
           // If type changes, apply smart defaults
           if (field === 'type') {
             if (value === 'STAFF') {
@@ -677,6 +776,8 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
               updated.staff_id = '';
               updated.staff_name = '';
               updated.charge_code = '';
+              updated.credit_days = updated.credit_days || 21;
+              updated.due_date = updated.due_date || computeDueDate(prev.date, updated.credit_days);
             } else if (value === 'VEHICLE') {
               updated.purpose = 'Fuel / Petrol';
               updated.staff_id = '';
@@ -742,7 +843,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
         showToast(`✅ Successfully Saved Daily Accounts for ${formData.date}`);
       }
 
-      await loadFinanceData();
+      await Promise.allSettled([
+        loadFinanceData(),
+        loadVendorBills()
+      ]);
     } catch (err) {
       console.error('Save failed:', err);
       alert(`Could not save record: ${err.message}`);
@@ -1793,13 +1897,13 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                   <thead>
                     <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
-                      <th style={{ padding: '12px 10px', width: '40px', textAlign: 'center', fontWeight: 800, color: '#334155' }}>#</th>
-                      <th style={{ padding: '12px 10px', width: '160px', fontWeight: 800, color: '#334155' }}>Expense Category</th>
-                      <th style={{ padding: '12px 10px', minWidth: '220px', fontWeight: 800, color: '#334155' }}>Paid To / Description</th>
-                      <th style={{ padding: '12px 10px', width: '160px', fontWeight: 800, color: '#334155' }}>Charge Code / Purpose</th>
+                      <th style={{ padding: '12px 10px', width: '36px', textAlign: 'center', fontWeight: 800, color: '#334155' }}>#</th>
+                      <th style={{ padding: '12px 10px', width: '150px', fontWeight: 800, color: '#334155' }}>Expense Category</th>
+                      <th style={{ padding: '12px 10px', minWidth: '200px', fontWeight: 800, color: '#334155' }}>Paid To / Description</th>
+                      <th style={{ padding: '12px 10px', width: '150px', fontWeight: 800, color: '#334155' }}>Charge Code / Purpose</th>
                       <th style={{ padding: '12px 10px', width: '140px', fontWeight: 800, color: '#be123c', textAlign: 'right' }}>Amount ({currency}) *</th>
-                      <th style={{ padding: '12px 10px', width: '120px', fontWeight: 800, color: '#334155' }}>Payment Mode</th>
-                      <th style={{ padding: '12px 10px', width: '45px', textAlign: 'center' }}></th>
+                      <th style={{ padding: '12px 10px', minWidth: '240px', fontWeight: 800, color: '#334155' }}>Payment Mode & Due Date</th>
+                      <th style={{ padding: '12px 10px', width: '40px', textAlign: 'center' }}></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1809,11 +1913,16 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                       const isVehicle = row.type === 'VEHICLE';
                       const isShop = row.type === 'SHOP' || row.type === 'Expense';
                       const isOther = row.type === 'OTHER';
+                      const isCredit = row.payment_mode === 'CREDIT';
 
                       const rowBg = index % 2 === 0 ? '#ffffff' : '#fcfcfd';
 
                       return (
-                        <tr key={row.id || index} style={{ background: rowBg, borderBottom: '1px solid #e2e8f0' }}>
+                        <tr key={row.id || index} style={{
+                          background: isCredit ? '#fffdf7' : rowBg,
+                          borderBottom: '1px solid #e2e8f0',
+                          borderLeft: isCredit ? '3.5px solid #f59e0b' : 'none'
+                        }}>
                           
                           {/* 1. Row Index */}
                           <td style={{ textAlign: 'center', fontWeight: 800, color: '#64748b', padding: '10px 4px' }}>
@@ -2096,7 +2205,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                           {/* 5. Amount (₹) */}
                           <td style={{ padding: '8px 10px', textAlign: 'right' }}>
                             <div style={{ position: 'relative' }}>
-                              <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px', fontWeight: 900, color: '#e11d48' }}>
+                              <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px', fontWeight: 900, color: isCredit ? '#b45309' : '#e11d48' }}>
                                 {currency}
                               </span>
                               <input
@@ -2111,39 +2220,148 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                                   width: '100%',
                                   padding: '8px 10px 8px 24px',
                                   borderRadius: '8px',
-                                  border: '1.5px solid #f87171',
+                                  border: '1.5px solid ' + (isCredit ? '#f59e0b' : '#f87171'),
                                   fontSize: '16px',
                                   fontWeight: 900,
-                                  color: '#be123c',
+                                  color: isCredit ? '#b45309' : '#be123c',
                                   textAlign: 'right',
-                                  background: '#ffffff',
+                                  background: isCredit ? '#fffbeb' : '#ffffff',
                                   outline: 'none'
                                 }}
                               />
                             </div>
+                            <div style={{ marginTop: '3px', fontSize: '10.5px', fontWeight: 800 }}>
+                              {isCredit ? (
+                                <span style={{ color: '#b45309', background: '#fef3c7', padding: '1px 5px', borderRadius: '4px', border: '1px solid #fde68a' }}>
+                                  ⏳ Credit (Yet to Pay)
+                                </span>
+                              ) : (
+                                <span style={{ color: '#059669' }}>
+                                  💸 Paid Out Today
+                                </span>
+                              )}
+                            </div>
                           </td>
 
-                          {/* 6. Payment Mode (Cash vs UPI) */}
+                          {/* 6. Payment Mode & Due Date (3 Modes: CASH, UPI, CREDIT) */}
                           <td style={{ padding: '8px 10px' }}>
-                            <select
-                              value={row.payment_mode || 'CASH'}
-                              onChange={(e) => handleUpdateExpenseRow(row.id, 'payment_mode', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '8px 8px',
-                                borderRadius: '8px',
-                                border: '1.5px solid ' + (row.payment_mode === 'UPI' ? '#93c5fd' : '#86efac'),
-                                fontSize: '12px',
-                                fontWeight: 800,
-                                color: row.payment_mode === 'UPI' ? '#0284c7' : '#059669',
-                                background: row.payment_mode === 'UPI' ? '#f0f9ff' : '#f0fdf4',
-                                cursor: 'pointer',
-                                outline: 'none'
-                              }}
-                            >
-                              <option value="CASH">💵 CASH</option>
-                              <option value="UPI">📱 UPI</option>
-                            </select>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <select
+                                value={row.payment_mode || 'CASH'}
+                                onChange={(e) => handleUpdateExpenseRow(row.id, 'payment_mode', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '7px 8px',
+                                  borderRadius: '8px',
+                                  border: '1.5px solid ' + (row.payment_mode === 'CREDIT' ? '#f59e0b' : (row.payment_mode === 'UPI' ? '#93c5fd' : '#86efac')),
+                                  fontSize: '12px',
+                                  fontWeight: 800,
+                                  color: row.payment_mode === 'CREDIT' ? '#b45309' : (row.payment_mode === 'UPI' ? '#0284c7' : '#059669'),
+                                  background: row.payment_mode === 'CREDIT' ? '#fffbeb' : (row.payment_mode === 'UPI' ? '#f0f9ff' : '#f0fdf4'),
+                                  cursor: 'pointer',
+                                  outline: 'none'
+                                }}
+                              >
+                                <option value="CASH">💵 CASH (Paid Today)</option>
+                                <option value="UPI">📱 UPI (Paid Today)</option>
+                                <option value="CREDIT">⏳ CREDIT (To Pay Later)</option>
+                              </select>
+
+                              {/* If CREDIT Mode: Show interactive Due Date picker, Quick Day Chips & Countdown */}
+                              {isCredit && (
+                                <div style={{
+                                  background: '#fffbeb',
+                                  border: '1.5px solid #fde68a',
+                                  borderRadius: '8px',
+                                  padding: '6px 8px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '5px'
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#92400e', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                      <Calendar size={12} /> Due Date:
+                                    </span>
+                                    <input
+                                      type="date"
+                                      value={row.due_date || computeDueDate(formData.date, row.credit_days || 21)}
+                                      onChange={(e) => handleUpdateExpenseRow(row.id, 'due_date', e.target.value)}
+                                      style={{
+                                        padding: '3px 6px',
+                                        fontSize: '11px',
+                                        fontWeight: 800,
+                                        borderRadius: '6px',
+                                        border: '1px solid #f59e0b',
+                                        color: '#92400e',
+                                        background: '#ffffff',
+                                        outline: 'none'
+                                      }}
+                                    />
+                                  </div>
+
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px', flexWrap: 'wrap' }}>
+                                    <div style={{ display: 'flex', gap: '3px' }}>
+                                      {[15, 21, 30, 45].map(days => (
+                                        <button
+                                          key={days}
+                                          type="button"
+                                          onClick={() => {
+                                            const newDue = computeDueDate(formData.date, days);
+                                            handleUpdateExpenseRow(row.id, 'credit_days', days);
+                                            handleUpdateExpenseRow(row.id, 'due_date', newDue);
+                                          }}
+                                          style={{
+                                            padding: '2px 5px',
+                                            borderRadius: '4px',
+                                            fontSize: '10px',
+                                            fontWeight: 800,
+                                            border: (parseInt(row.credit_days) === days) ? '1px solid #b45309' : '1px solid #fde68a',
+                                            background: (parseInt(row.credit_days) === days) ? '#fef3c7' : '#ffffff',
+                                            color: '#92400e',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          +{days}d
+                                        </button>
+                                      ))}
+                                    </div>
+
+                                    {/* Days left badge */}
+                                    {(() => {
+                                      const daysLeft = computeDaysLeft(row.due_date);
+                                      const isOverdue = daysLeft < 0;
+                                      const isToday = daysLeft === 0;
+                                      return (
+                                        <span style={{
+                                          fontSize: '10px',
+                                          fontWeight: 900,
+                                          padding: '2px 6px',
+                                          borderRadius: '5px',
+                                          background: isOverdue ? '#fee2e2' : (isToday ? '#fef3c7' : '#ecfdf5'),
+                                          color: isOverdue ? '#b91c1c' : (isToday ? '#b45309' : '#047857'),
+                                          border: '1px solid ' + (isOverdue ? '#fca5a5' : (isToday ? '#fde68a' : '#a7f3d0'))
+                                        }}>
+                                          {isOverdue ? `⚠️ Overdue ${Math.abs(daysLeft)}d` : (isToday ? '🟠 Due Today' : `⏳ ${daysLeft}d left`)}
+                                        </span>
+                                      );
+                                    })()}
+                                  </div>
+                                </div>
+                              )}
+
+                              {row.payment_mode === 'CASH' && (
+                                <div style={{ fontSize: '10.5px', color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                  <CheckCircle2 size={11} color="#10b981" /> Paid today from drawer cash
+                                </div>
+                              )}
+
+                              {row.payment_mode === 'UPI' && (
+                                <div style={{ fontSize: '10.5px', color: '#0284c7', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                  <CheckCircle2 size={11} color="#0284c7" /> Paid today via soundbox / UPI
+                                </div>
+                              )}
+
+                            </div>
                           </td>
 
                           {/* 7. Remove Button */}
@@ -2177,8 +2395,13 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   <tfoot>
                     <tr style={{ background: '#fff1f2', borderTop: '2px solid #fecdd3', fontWeight: 800 }}>
                       <td colSpan="4" style={{ padding: '12px 14px', color: '#9f1239' }}>
-                        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center', fontSize: '12.5px' }}>
-                          <span>🏢 Vendors: <strong>{currency}{formSupplierPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></span>
+                        <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center', fontSize: '12.5px' }}>
+                          <span>🏢 Vendors Paid: <strong style={{ color: '#047857' }}>{currency}{formSupplierPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></span>
+                          {formSupplierCredit > 0 && (
+                            <span style={{ background: '#fef3c7', padding: '2px 8px', borderRadius: '6px', border: '1px solid #fde68a', color: '#92400e' }}>
+                              ⏳ Vendor Credit (Yet to Pay): <strong>{currency}{formSupplierCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                            </span>
+                          )}
                           <span>👤 Staff: <strong>{currency}{formStaffPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></span>
                           <span>🚗 Vehicle: <strong>{currency}{formVehiclePaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></span>
                           <span>☕ Shop: <strong>{currency}{formShopExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></span>
@@ -2188,9 +2411,15 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                         <div style={{ fontSize: '18px', fontWeight: 900, color: '#be123c' }}>
                           {currency}{formTotalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </div>
+                        {formTotalCredit > 0 && (
+                          <div style={{ fontSize: '11px', color: '#92400e', fontWeight: 800, marginTop: '2px' }}>
+                            + {currency}{formTotalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })} Credit
+                          </div>
+                        )}
                       </td>
                       <td colSpan="2" style={{ padding: '12px 10px', fontSize: '11px', color: '#be123c', fontWeight: 800, textTransform: 'uppercase' }}>
-                        Total Paid Out
+                        <div>Total Paid Out (Cash + UPI)</div>
+                        {formTotalCredit > 0 && <div style={{ fontSize: '10px', color: '#92400e', textTransform: 'none', fontWeight: 700 }}>Credit tracked in Vendor Bills tab</div>}
                       </td>
                     </tr>
                   </tfoot>
@@ -2207,12 +2436,13 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   const isVehicle = row.type === 'VEHICLE';
                   const isShop = row.type === 'SHOP' || row.type === 'Expense';
                   const isOther = row.type === 'OTHER';
+                  const isCredit = row.payment_mode === 'CREDIT';
 
                   return (
                     <div key={row.id || index} style={{
-                      background: '#ffffff',
+                      background: isCredit ? '#fffdf7' : '#ffffff',
                       borderRadius: '12px',
-                      border: '1.5px solid ' + (isVendor ? '#d8b4fe' : (isStaff ? '#7dd3fc' : (isVehicle ? '#fde68a' : '#fecdd3'))),
+                      border: isCredit ? '2px solid #f59e0b' : ('1.5px solid ' + (isVendor ? '#d8b4fe' : (isStaff ? '#7dd3fc' : (isVehicle ? '#fde68a' : '#fecdd3')))),
                       padding: '12px 14px',
                       display: 'flex',
                       flexDirection: 'column',
@@ -2225,13 +2455,13 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                           width: '26px',
                           height: '26px',
                           borderRadius: '8px',
-                          background: '#f1f5f9',
+                          background: isCredit ? '#fef3c7' : '#f1f5f9',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           fontSize: '12px',
                           fontWeight: 900,
-                          color: '#475569',
+                          color: isCredit ? '#92400e' : '#475569',
                           flexShrink: 0
                         }}>
                           #{index + 1}
@@ -2518,30 +2748,40 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
                       {/* Bottom Row: Amount + Payment Mode */}
                       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '8px', alignItems: 'center' }}>
-                        <div style={{ position: 'relative' }}>
-                          <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px', fontWeight: 900, color: '#e11d48' }}>
-                            {currency}
-                          </span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0.00"
-                            value={row.amount || ''}
-                            onChange={(e) => handleUpdateExpenseRow(row.id, 'amount', e.target.value)}
-                            className="mono"
-                            style={{
-                              width: '100%',
-                              padding: '8px 8px 8px 24px',
-                              borderRadius: '8px',
-                              border: '1.5px solid #f87171',
-                              fontSize: '16px',
-                              fontWeight: 900,
-                              color: '#be123c',
-                              textAlign: 'right',
-                              outline: 'none'
-                            }}
-                          />
+                        <div>
+                          <div style={{ position: 'relative' }}>
+                            <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px', fontWeight: 900, color: isCredit ? '#b45309' : '#e11d48' }}>
+                              {currency}
+                            </span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0.00"
+                              value={row.amount || ''}
+                              onChange={(e) => handleUpdateExpenseRow(row.id, 'amount', e.target.value)}
+                              className="mono"
+                              style={{
+                                width: '100%',
+                                padding: '8px 8px 8px 24px',
+                                borderRadius: '8px',
+                                border: '1.5px solid ' + (isCredit ? '#f59e0b' : '#f87171'),
+                                fontSize: '16px',
+                                fontWeight: 900,
+                                color: isCredit ? '#b45309' : '#be123c',
+                                textAlign: 'right',
+                                background: isCredit ? '#fffbeb' : '#ffffff',
+                                outline: 'none'
+                              }}
+                            />
+                          </div>
+                          <div style={{ fontSize: '10px', fontWeight: 800, marginTop: '2px', textAlign: 'right' }}>
+                            {isCredit ? (
+                              <span style={{ color: '#b45309' }}>⏳ Credit (Yet to Pay)</span>
+                            ) : (
+                              <span style={{ color: '#059669' }}>💸 Paid Out Today</span>
+                            )}
+                          </div>
                         </div>
 
                         <select
@@ -2551,18 +2791,100 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                             width: '100%',
                             padding: '8px',
                             borderRadius: '8px',
-                            border: '1.5px solid ' + (row.payment_mode === 'UPI' ? '#93c5fd' : '#86efac'),
+                            border: '1.5px solid ' + (row.payment_mode === 'CREDIT' ? '#f59e0b' : (row.payment_mode === 'UPI' ? '#93c5fd' : '#86efac')),
                             fontSize: '12px',
                             fontWeight: 800,
-                            color: row.payment_mode === 'UPI' ? '#0284c7' : '#059669',
-                            background: row.payment_mode === 'UPI' ? '#f0f9ff' : '#f0fdf4',
+                            color: row.payment_mode === 'CREDIT' ? '#b45309' : (row.payment_mode === 'UPI' ? '#0284c7' : '#059669'),
+                            background: row.payment_mode === 'CREDIT' ? '#fffbeb' : (row.payment_mode === 'UPI' ? '#f0f9ff' : '#f0fdf4'),
                             outline: 'none'
                           }}
                         >
                           <option value="CASH">💵 CASH</option>
                           <option value="UPI">📱 UPI</option>
+                          <option value="CREDIT">⏳ CREDIT</option>
                         </select>
                       </div>
+
+                      {/* If CREDIT Mode: Mobile Due Date picker & countdown */}
+                      {isCredit && (
+                        <div style={{
+                          background: '#fffbeb',
+                          border: '1.5px solid #fde68a',
+                          borderRadius: '8px',
+                          padding: '8px 10px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                            <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#92400e', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Calendar size={13} /> Due Date:
+                            </span>
+                            <input
+                              type="date"
+                              value={row.due_date || computeDueDate(formData.date, row.credit_days || 21)}
+                              onChange={(e) => handleUpdateExpenseRow(row.id, 'due_date', e.target.value)}
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: '12px',
+                                fontWeight: 800,
+                                borderRadius: '6px',
+                                border: '1px solid #f59e0b',
+                                color: '#92400e',
+                                background: '#ffffff',
+                                outline: 'none'
+                              }}
+                            />
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              {[15, 21, 30, 45].map(days => (
+                                <button
+                                  key={days}
+                                  type="button"
+                                  onClick={() => {
+                                    const newDue = computeDueDate(formData.date, days);
+                                    handleUpdateExpenseRow(row.id, 'credit_days', days);
+                                    handleUpdateExpenseRow(row.id, 'due_date', newDue);
+                                  }}
+                                  style={{
+                                    padding: '3px 6px',
+                                    borderRadius: '5px',
+                                    fontSize: '11px',
+                                    fontWeight: 800,
+                                    border: (parseInt(row.credit_days) === days) ? '1px solid #b45309' : '1px solid #fde68a',
+                                    background: (parseInt(row.credit_days) === days) ? '#fef3c7' : '#ffffff',
+                                    color: '#92400e',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  +{days}d
+                                </button>
+                              ))}
+                            </div>
+
+                            {(() => {
+                              const daysLeft = computeDaysLeft(row.due_date);
+                              const isOverdue = daysLeft < 0;
+                              const isToday = daysLeft === 0;
+                              return (
+                                <span style={{
+                                  fontSize: '11px',
+                                  fontWeight: 900,
+                                  padding: '2px 8px',
+                                  borderRadius: '5px',
+                                  background: isOverdue ? '#fee2e2' : (isToday ? '#fef3c7' : '#ecfdf5'),
+                                  color: isOverdue ? '#b91c1c' : (isToday ? '#b45309' : '#047857'),
+                                  border: '1px solid ' + (isOverdue ? '#fca5a5' : (isToday ? '#fde68a' : '#a7f3d0'))
+                                }}>
+                                  {isOverdue ? `⚠️ Overdue ${Math.abs(daysLeft)}d` : (isToday ? '🟠 Due Today' : `⏳ ${daysLeft}d left`)}
+                                </span>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      )}
 
                     </div>
                   );
@@ -2570,20 +2892,32 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
                 {/* Mobile Bottom Expense Totals Summary */}
                 <div style={{
-                  padding: '12px',
+                  padding: '12px 14px',
                   background: '#fff1f2',
                   borderRadius: '10px',
                   border: '1.5px solid #fecdd3',
                   display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
+                  flexDirection: 'column',
+                  gap: '4px'
                 }}>
-                  <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#9f1239' }}>
-                    Total Expenses:
-                  </span>
-                  <span className="mono" style={{ fontSize: '18px', fontWeight: 900, color: '#be123c' }}>
-                    {currency}{formTotalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#9f1239' }}>
+                      Total Paid Out Today (Cash + UPI):
+                    </span>
+                    <span className="mono" style={{ fontSize: '18px', fontWeight: 900, color: '#be123c' }}>
+                      {currency}{formTotalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  {formTotalCredit > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed #fecdd3', paddingTop: '4px' }}>
+                      <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#92400e' }}>
+                        ⏳ Vendor Credit (Yet to Pay):
+                      </span>
+                      <span className="mono" style={{ fontSize: '15px', fontWeight: 900, color: '#b45309' }}>
+                        {currency}{formTotalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2699,7 +3033,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                     -{currency}{formTotalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </div>
                   <div style={{ fontSize: '10.5px', color: '#be123c', marginTop: '4px', fontWeight: 700 }}>
-                    From expense table above
+                    Actual Cash & UPI out of drawer
                   </div>
                 </div>
 
@@ -2723,6 +3057,28 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                 </div>
 
               </div>
+
+              {/* Wholesale Credit Note Callout */}
+              {formTotalCredit > 0 && (
+                <div style={{
+                  marginTop: '14px',
+                  padding: '10px 14px',
+                  background: '#fffbeb',
+                  borderRadius: '10px',
+                  border: '1.5px solid #fde68a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  fontSize: '12px',
+                  color: '#92400e',
+                  fontWeight: 700
+                }}>
+                  <Clock size={18} color="#d97706" style={{ flexShrink: 0 }} />
+                  <div>
+                    <strong>Supplier Credit Note:</strong> {currency}{formTotalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })} in wholesale bills are on credit (yet to pay). These do not reduce today's physical counter cash drawer balance and are automatically scheduled in the <strong>🏢 Vendor Bills & Credit Tracker</strong> tab.
+                  </div>
+                </div>
+              )}
 
             </div>
 

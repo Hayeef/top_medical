@@ -36,10 +36,15 @@ export default function DailySoldReportModal({
     (typeof user?.username === 'string' && (user.username.toLowerCase().includes('admin') || user.username.toLowerCase().includes('owner')))
   );
 
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const d = new Date();
-    return d.toISOString().split('T')[0];
-  });
+  const getTodayStr = () => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const [selectedDate, setSelectedDate] = useState(() => getTodayStr());
   const [datePreset, setDatePreset] = useState('today'); // 'today', 'yesterday', 'custom'
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSupplier, setSelectedSupplier] = useState('');
@@ -84,12 +89,15 @@ export default function DailySoldReportModal({
   // Handle Preset Date changes
   const handlePresetChange = (preset) => {
     setDatePreset(preset);
-    const d = new Date();
+    const now = new Date();
     if (preset === 'today') {
-      setSelectedDate(d.toISOString().split('T')[0]);
+      setSelectedDate(getTodayStr());
     } else if (preset === 'yesterday') {
-      d.setDate(d.getDate() - 1);
-      setSelectedDate(d.toISOString().split('T')[0]);
+      now.setDate(now.getDate() - 1);
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      setSelectedDate(`${y}-${m}-${d}`);
     }
   };
 
@@ -645,7 +653,7 @@ export default function DailySoldReportModal({
 
                             {isAdmin && (
                               <td className="mono" style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
-                                Rs. {item.total_sales_amount.toFixed(2)}
+                                Rs. {parseFloat(item.total_sales_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                               </td>
                             )}
                           </tr>
@@ -658,7 +666,7 @@ export default function DailySoldReportModal({
                           Total Summary ({items.length} Medicines):
                         </td>
                         <td style={{ padding: '10px 8px', textAlign: 'center', color: '#0284c7' }} className="mono">
-                          {reportData?.total_packs_sold || 0} pk
+                          {reportData?.total_packs_sold || 0} pk {reportData?.total_loose_sold > 0 ? `+ ${reportData?.total_loose_sold} un` : ''}
                         </td>
                         <td></td>
                         <td style={{ padding: '10px 8px', textAlign: 'center', color: '#b45309' }} className="mono">
@@ -667,7 +675,7 @@ export default function DailySoldReportModal({
                         <td></td>
                         {isAdmin && (
                           <td style={{ padding: '10px 8px', textAlign: 'right', color: '#0f172a' }} className="mono">
-                            Rs. {(reportData?.total_sales_value || 0).toFixed(2)}
+                            Rs. {parseFloat(reportData?.total_sales_value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </td>
                         )}
                       </tr>

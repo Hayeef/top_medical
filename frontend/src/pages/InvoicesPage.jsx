@@ -24,16 +24,58 @@ import { billingAPI } from '../api';
 import UpdateDiscountModal from '../components/UpdateDiscountModal';
 import BillsExcelExportModal from '../components/BillsExcelExportModal';
 
-export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDailyReport }) {
+const getTodayStr = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const getYesterdayStr = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+export default function InvoicesPage({ profile, user, staffList: propStaffList = [], onOpenReceipt, onOpenDailyReport }) {
+  const todayStr = getTodayStr();
   const [invoices, setInvoices] = useState([]);
-  const [staffList, setStaffList] = useState([]);
+  const [staffList, setStaffList] = useState(() => {
+    if (Array.isArray(propStaffList) && propStaffList.length > 0) return propStaffList;
+    try {
+      const saved = localStorage.getItem('tm_cached_staff');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [
+      { id: 1, charge_code: 'TP01', name: 'RSH', role: 'Senior Pharmacist' },
+      { id: 2, charge_code: 'TP02', name: 'TAS', role: 'Pharmacist / Cashier' },
+      { id: 3, charge_code: 'TP03', name: 'RAY', role: 'Assistant Pharmacist' }
+    ];
+  });
+
+  useEffect(() => {
+    if (Array.isArray(propStaffList) && propStaffList.length > 0) {
+      setStaffList(propStaffList);
+    }
+  }, [propStaffList]);
+
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [staffFilter, setStaffFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(todayStr);
+  const [endDate, setEndDate] = useState(todayStr);
+  const [dateFilterPreset, setDateFilterPreset] = useState('today'); // 'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom'
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [expandedInvoiceId, setExpandedInvoiceId] = useState(null);
   const [discountModalInvoice, setDiscountModalInvoice] = useState(null);
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
@@ -102,6 +144,11 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
     loadInvoicesAndStaff();
   }, [staffFilter, statusFilter, paymentFilter, startDate, endDate]);
 
+  // Reset page to 1 whenever filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, staffFilter, statusFilter, paymentFilter, startDate, endDate]);
+
   const handleCancelInvoice = async (invoiceId, invNum) => {
     if (!window.confirm(`Are you sure you want to CANCEL Invoice #${invNum}? This will restore the sold medicines back to inventory.`)) {
       return;
@@ -136,8 +183,8 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
   // Staff summary calculation for active filtered results
   const staffSalesSummary = invoices.reduce((acc, inv) => {
     if (inv.payment_status !== 'CANCELLED') {
-      const code = inv.staff_code || 'SC-101';
-      const name = inv.staff_name || 'Staff 1';
+      const code = inv.staff_code || (staffList[0]?.charge_code || 'TP01');
+      const name = inv.staff_name || (staffList[0]?.name || 'RSH');
       if (!acc[code]) acc[code] = { code, name, count: 0, revenue: 0, cash: 0, upi: 0 };
       acc[code].count += 1;
       acc[code].revenue += parseFloat(inv.grand_total) || 0;
@@ -146,6 +193,19 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
     }
     return acc;
   }, {});
+
+  // Pagination Computations (10 bills per page by default)
+  const totalItems = invoices.length;
+  const effectivePerPage = itemsPerPage === -1 ? (totalItems || 1) : itemsPerPage;
+  const totalPages = Math.max(1, Math.ceil(totalItems / effectivePerPage));
+  const validCurrentPage = Math.min(currentPage, totalPages);
+
+  const paginatedInvoices = itemsPerPage === -1
+    ? invoices
+    : invoices.slice((validCurrentPage - 1) * itemsPerPage, validCurrentPage * itemsPerPage);
+
+  const startItemIndex = totalItems === 0 ? 0 : (validCurrentPage - 1) * effectivePerPage + 1;
+  const endItemIndex = itemsPerPage === -1 ? totalItems : Math.min(validCurrentPage * itemsPerPage, totalItems);
 
   return (
     <div className="main-page-wrapper">
@@ -234,9 +294,9 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
       {isAdmin && (
         <div className="mobile-scroll-pills" style={{ display: 'flex', gap: '10px' }}>
           {(staffList.length > 0 ? staffList : [
-            { charge_code: 'SC-101', name: 'Ahmed (Staff 1)' },
-            { charge_code: 'SC-102', name: 'Fatima (Staff 2)' },
-            { charge_code: 'SC-103', name: 'Bilal (Staff 3)' },
+            { charge_code: 'TP01', name: 'RSH' },
+            { charge_code: 'TP02', name: 'TAS' },
+            { charge_code: 'TP03', name: 'RAY' },
           ]).map((stf) => {
             const stats = staffSalesSummary[stf.charge_code] || { count: 0, revenue: 0, cash: 0, upi: 0 };
             const isSelected = staffFilter === stf.charge_code;
@@ -282,6 +342,110 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
       {/* Search & Filter Bar */}
       <div className="glass-panel" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         
+        {/* Quick Date Range Preset Pills */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
+          <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginRight: '4px' }}>
+            📅 View Bills:
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const t = getTodayStr();
+              setDateFilterPreset('today');
+              setStartDate(t);
+              setEndDate(t);
+            }}
+            className={`btn btn-sm ${dateFilterPreset === 'today' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{
+              padding: '4px 12px',
+              fontSize: '11.5px',
+              fontWeight: 800,
+              borderRadius: '20px',
+              background: dateFilterPreset === 'today' ? '#059669' : undefined,
+              borderColor: dateFilterPreset === 'today' ? '#059669' : undefined,
+              color: dateFilterPreset === 'today' ? '#ffffff' : undefined
+            }}
+          >
+            ⭐ Today's Bills
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const y = getYesterdayStr();
+              setDateFilterPreset('yesterday');
+              setStartDate(y);
+              setEndDate(y);
+            }}
+            className={`btn btn-sm ${dateFilterPreset === 'yesterday' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{
+              padding: '4px 12px',
+              fontSize: '11.5px',
+              fontWeight: 800,
+              borderRadius: '20px'
+            }}
+          >
+            📅 Yesterday
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const d7 = new Date();
+              d7.setDate(d7.getDate() - 7);
+              const start = `${d7.getFullYear()}-${String(d7.getMonth()+1).padStart(2,'0')}-${String(d7.getDate()).padStart(2,'0')}`;
+              const end = getTodayStr();
+              setDateFilterPreset('week');
+              setStartDate(start);
+              setEndDate(end);
+            }}
+            className={`btn btn-sm ${dateFilterPreset === 'week' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{
+              padding: '4px 12px',
+              fontSize: '11.5px',
+              fontWeight: 800,
+              borderRadius: '20px'
+            }}
+          >
+            📆 Last 7 Days
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const now = new Date();
+              const start = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+              const end = getTodayStr();
+              setDateFilterPreset('month');
+              setStartDate(start);
+              setEndDate(end);
+            }}
+            className={`btn btn-sm ${dateFilterPreset === 'month' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{
+              padding: '4px 12px',
+              fontSize: '11.5px',
+              fontWeight: 800,
+              borderRadius: '20px'
+            }}
+          >
+            🗓️ This Month
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDateFilterPreset('all');
+              setStartDate('');
+              setEndDate('');
+            }}
+            className={`btn btn-sm ${dateFilterPreset === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{
+              padding: '4px 12px',
+              fontSize: '11.5px',
+              fontWeight: 800,
+              borderRadius: '20px'
+            }}
+          >
+            🌐 All History
+          </button>
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: '2 1 220px' }}>
             <Search size={16} color="#0284c7" style={{ position: 'absolute', left: '12px', top: '11px' }} />
@@ -327,15 +491,18 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
           </button>
         </div>
 
-        {/* Date Filter Row */}
+        {/* Custom Date Filter Row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', fontSize: '12px', color: '#475569' }}>
-          <span>From:</span>
+          <span>Custom Date:</span>
           <input
             type="date"
             className="input-field"
             style={{ width: '130px', height: '32px', fontSize: '11.5px', padding: '2px 6px' }}
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => {
+              setStartDate(e.target.value);
+              setDateFilterPreset('custom');
+            }}
           />
           <span>To:</span>
           <input
@@ -343,7 +510,10 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
             className="input-field"
             style={{ width: '130px', height: '32px', fontSize: '11.5px', padding: '2px 6px' }}
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={(e) => {
+              setEndDate(e.target.value);
+              setDateFilterPreset('custom');
+            }}
           />
           {(startDate || endDate || staffFilter || paymentFilter || search) && (
             <button
@@ -352,13 +522,14 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
                 setStaffFilter('');
                 setPaymentFilter('');
                 setStatusFilter('');
-                setStartDate('');
-                setEndDate('');
+                setStartDate(getTodayStr());
+                setEndDate(getTodayStr());
+                setDateFilterPreset('today');
               }}
               className="btn btn-secondary btn-sm"
               style={{ padding: '2px 8px', fontSize: '11px' }}
             >
-              Clear Filters
+              Reset to Today
             </button>
           )}
 
@@ -434,13 +605,20 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
           flexWrap: 'wrap',
           gap: '8px'
         }}>
-          <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>
-              Invoices Ledger Archive ({invoices.length} entries)
+              Invoices Ledger Archive ({totalItems} {totalItems === 1 ? 'bill' : 'bills'})
             </div>
-            <span style={{ fontSize: '11px', color: '#64748b' }}>
-              Official pharmacy GST billing log
-            </span>
+            {dateFilterPreset === 'today' && (
+              <span className="badge badge-emerald" style={{ fontSize: '10px', padding: '2px 8px', fontWeight: 800 }}>
+                ⭐ Today's Bills
+              </span>
+            )}
+            {totalPages > 1 && (
+              <span className="badge badge-cyan mono" style={{ fontSize: '10px', padding: '2px 6px' }}>
+                Page {validCurrentPage} of {totalPages}
+              </span>
+            )}
           </div>
 
           <button
@@ -480,14 +658,14 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
               </tr>
             </thead>
             <tbody>
-              {invoices.length === 0 ? (
+              {paginatedInvoices.length === 0 ? (
                 <tr>
                   <td colSpan="9" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
-                    No invoices matching current filter criteria.
+                    {loading ? 'Loading bills...' : "No invoices found for the selected date & filter criteria."}
                   </td>
                 </tr>
               ) : (
-                invoices.map((inv) => {
+                paginatedInvoices.map((inv) => {
                   const isExpanded = expandedInvoiceId === inv.id;
                   const isCancelled = inv.payment_status === 'CANCELLED';
 
@@ -529,7 +707,7 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
 
                         <td>
                           <span className="mono" style={{ background: '#f1f5f9', color: '#0284c7', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, fontSize: '11px' }}>
-                            {inv.staff_code || 'SC-101'}
+                            {inv.staff_code || 'TP01'}
                           </span>
                         </td>
 
@@ -649,12 +827,12 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
 
         {/* 2. MOBILE INVOICE CARDS VIEW */}
         <div className="mobile-only" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px' }}>
-          {invoices.length === 0 ? (
+          {paginatedInvoices.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
-              No bills match your search criteria.
+              {loading ? 'Loading bills...' : "No bills match your search criteria."}
             </div>
           ) : (
-            invoices.map((inv) => {
+            paginatedInvoices.map((inv) => {
               const isExpanded = expandedInvoiceId === inv.id;
               const isCancelled = inv.payment_status === 'CANCELLED';
 
@@ -707,7 +885,7 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
                       {inv.customer_phone && <span> ({inv.customer_phone})</span>}
                     </div>
                     <span className="mono" style={{ fontSize: '10.5px', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>
-                      Staff: {inv.staff_code || 'SC-101'}
+                      Staff: {inv.staff_code || 'TP01'}
                     </span>
                   </div>
 
@@ -774,6 +952,138 @@ export default function InvoicesPage({ profile, user, onOpenReceipt, onOpenDaily
             })
           )}
         </div>
+
+        {/* 3. PAGINATION CONTROL BAR */}
+        {totalItems > 0 && (
+          <div style={{
+            padding: '12px 18px',
+            borderTop: '1px solid #e2e8f0',
+            background: '#ffffff',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+            fontSize: '12.5px',
+            color: '#475569'
+          }}>
+            {/* Left: Summary Count */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontWeight: 700, color: '#1e293b' }}>
+                Showing <span style={{ color: '#0284c7', fontWeight: 900 }}>{startItemIndex} - {endItemIndex}</span> of <span style={{ color: '#0284c7', fontWeight: 900 }}>{totalItems}</span> bills
+              </span>
+              {dateFilterPreset === 'today' && (
+                <span className="badge badge-emerald" style={{ fontSize: '10px', padding: '2px 6px' }}>
+                  Today
+                </span>
+              )}
+            </div>
+
+            {/* Middle: Page navigation buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(1)}
+                disabled={validCurrentPage === 1}
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '4px 8px', fontSize: '11px', opacity: validCurrentPage === 1 ? 0.4 : 1, cursor: validCurrentPage === 1 ? 'not-allowed' : 'pointer' }}
+                title="First Page"
+              >
+                « First
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={validCurrentPage === 1}
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '4px 8px', fontSize: '11px', opacity: validCurrentPage === 1 ? 0.4 : 1, cursor: validCurrentPage === 1 ? 'not-allowed' : 'pointer' }}
+                title="Previous Page"
+              >
+                ‹ Prev
+              </button>
+
+              {/* Numbered Page Buttons */}
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - validCurrentPage) <= 1)
+                .reduce((acc, p, idx, arr) => {
+                  if (idx > 0 && p - arr[idx - 1] > 1) {
+                    acc.push('...');
+                  }
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, idx) => {
+                  if (p === '...') {
+                    return <span key={`ellipsis-${idx}`} style={{ padding: '0 4px', color: '#94a3b8' }}>...</span>;
+                  }
+                  const isCur = p === validCurrentPage;
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setCurrentPage(p)}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        fontWeight: isCur ? 900 : 700,
+                        background: isCur ? '#0284c7' : '#ffffff',
+                        color: isCur ? '#ffffff' : '#334155',
+                        border: isCur ? '1.5px solid #0284c7' : '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        minWidth: '28px',
+                        textAlign: 'center'
+                      }}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={validCurrentPage === totalPages}
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '4px 8px', fontSize: '11px', opacity: validCurrentPage === totalPages ? 0.4 : 1, cursor: validCurrentPage === totalPages ? 'not-allowed' : 'pointer' }}
+                title="Next Page"
+              >
+                Next ›
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={validCurrentPage === totalPages}
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '4px 8px', fontSize: '11px', opacity: validCurrentPage === totalPages ? 0.4 : 1, cursor: validCurrentPage === totalPages ? 'not-allowed' : 'pointer' }}
+                title="Last Page"
+              >
+                Last »
+              </button>
+            </div>
+
+            {/* Right: Per-page selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '11.5px', color: '#64748b' }}>Rows / page:</span>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="input-field"
+                style={{ padding: '3px 8px', fontSize: '11.5px', height: '28px', width: 'auto' }}
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={-1}>All ({totalItems})</option>
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Post-Generation Discount / Bargaining Modal */}

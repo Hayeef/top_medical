@@ -41,8 +41,8 @@ export default function PosBillingPage({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [cart, setCart] = useState([]);
   
-  // Staff Charge Code State (Default to first staff member or SC-101)
-  const defaultStaff = staffList[0] || { charge_code: 'SC-101', name: 'Ahmed (Staff 1)' };
+  // Staff Charge Code State (Default to first staff member or TP01)
+  const defaultStaff = staffList[0] || { charge_code: 'TP01', name: 'RSH' };
   const [selectedStaffCode, setSelectedStaffCode] = useState(defaultStaff.charge_code);
   const [selectedStaffName, setSelectedStaffName] = useState(defaultStaff.name);
 
@@ -76,13 +76,20 @@ export default function PosBillingPage({
   const [isAddingChocolate, setIsAddingChocolate] = useState(false);
   const chocolateItemRef = useRef(null);
 
-  // Sync staff default if staffList loads after initial render
+  // Sync staff default & live name updates when staffList is updated in Settings
   useEffect(() => {
-    if (staffList.length > 0 && !staffList.find(s => s.charge_code === selectedStaffCode)) {
-      setSelectedStaffCode(staffList[0].charge_code);
-      setSelectedStaffName(staffList[0].name);
+    if (staffList.length > 0) {
+      const match = staffList.find(s => s.charge_code === selectedStaffCode);
+      if (match) {
+        if (match.name !== selectedStaffName) {
+          setSelectedStaffName(match.name);
+        }
+      } else {
+        setSelectedStaffCode(staffList[0].charge_code);
+        setSelectedStaffName(staffList[0].name);
+      }
     }
-  }, [staffList]);
+  }, [staffList, selectedStaffCode, selectedStaffName]);
 
   const catalogCacheRef = useRef([]);
 
@@ -601,8 +608,8 @@ export default function PosBillingPage({
       });
 
       const payload = {
-        staff_code: selectedStaffCode || 'SC-101',
-        staff_name: selectedStaffName || 'Staff 1',
+        staff_code: selectedStaffCode || staffList[0]?.charge_code || 'TP01',
+        staff_name: selectedStaffName || staffList[0]?.name || 'RSH',
         customer: selectedCust ? selectedCust.id : null,
         customer_name: finalCustName,
         customer_phone: finalCustPhone,
@@ -664,9 +671,9 @@ export default function PosBillingPage({
 
           <div className="mobile-scroll-pills" style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
             {(staffList.length > 0 ? staffList : [
-              { charge_code: 'SC-101', name: 'Ahmed (Staff 1)' },
-              { charge_code: 'SC-102', name: 'Fatima (Staff 2)' },
-              { charge_code: 'SC-103', name: 'Bilal (Staff 3)' },
+              { charge_code: 'TP01', name: 'RSH' },
+              { charge_code: 'TP02', name: 'TAS' },
+              { charge_code: 'TP03', name: 'RAY' },
             ]).map((staff) => {
               const active = selectedStaffCode === staff.charge_code;
               return (

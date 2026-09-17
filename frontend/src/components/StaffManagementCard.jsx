@@ -176,7 +176,7 @@ export default function StaffManagementCard({ onStaffUpdated }) {
               Billing Staff & Custom Charge Codes
             </h3>
             <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0 0' }}>
-              Assign and modify custom short codes (e.g. SC-101, PH-01) used to track sales and cash reconciliation.
+              Assign and modify custom short codes (e.g. TP01, TP02, TP04) used to track sales and cash reconciliation.
             </p>
           </div>
         </div>
@@ -252,7 +252,7 @@ export default function StaffManagementCard({ onStaffUpdated }) {
                 required
                 className="input-field mono"
                 style={{ height: '34px', fontSize: '12.5px', textTransform: 'uppercase', fontWeight: 800, color: '#0284c7' }}
-                placeholder="e.g. SC-104 or PH-02"
+                placeholder="e.g. TP04 or PH-02"
                 value={newForm.charge_code}
                 onChange={(e) => setNewForm({ ...newForm, charge_code: e.target.value.toUpperCase() })}
               />
@@ -334,7 +334,7 @@ export default function StaffManagementCard({ onStaffUpdated }) {
                           style={{ height: '32px', fontSize: '12.5px', fontWeight: 800, textTransform: 'uppercase', color: '#0284c7' }}
                           value={editForm.charge_code}
                           onChange={(e) => setEditForm({ ...editForm, charge_code: e.target.value.toUpperCase() })}
-                          placeholder="e.g. SC-101"
+                          placeholder="e.g. TP01"
                         />
                       </td>
 

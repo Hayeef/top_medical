@@ -118,7 +118,7 @@ export default function Header({
           </h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: 'var(--text-dim)', marginTop: '2px' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: '#059669', fontWeight: 600, whiteSpace: 'nowrap' }}>
-              <ShieldCheck size={12} /> {profile?.dl_number_20b || 'DL 20B'}
+              <ShieldCheck size={12} /> {profile?.dl_number_20b || 'KA-MN1-300667'}
             </span>
             <span className="desktop-only">•</span>
             <span className="mono desktop-only" style={{ color: 'var(--text-dim)' }}>

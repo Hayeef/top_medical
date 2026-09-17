@@ -400,7 +400,7 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                   <span>{formattedTime}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-                  <span>STAFF: [{invoice.staff_code || 'SC-101'}] {invoice.staff_name || 'Staff 1'}</span>
+                  <span>STAFF: [{invoice.staff_code || 'TP01'}] {invoice.staff_name || 'RSH'}</span>
                   {invoice.customer_phone && <span>Ph: {invoice.customer_phone}</span>}
                 </div>
                 {invoice.doctor_name && (
@@ -580,7 +580,7 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                     Date: {formattedDate} {formattedTime}
                   </div>
                   <div style={{ fontSize: '11px', color: '#0284c7', fontWeight: 700, marginTop: '2px' }}>
-                    Billed By: [{invoice.staff_code || 'SC-101'}] {invoice.staff_name || 'Staff 1'}
+                    Billed By: [{invoice.staff_code || 'TP01'}] {invoice.staff_name || 'RSH'}
                   </div>
                 </div>
               </div>

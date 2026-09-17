@@ -744,12 +744,23 @@ def generate_daily_finance_excel(records_qs, profile, filter_info="", report_tit
         details_list = record.payment_details if isinstance(record.payment_details, list) else []
         item_summaries = []
         for it in details_list:
-            t = it.get('type') or it.get('category', 'Expense')
+            t = (it.get('type') or 'EXPENSE').upper()
             amt = it.get('amount', '')
-            recip = it.get('recipient') or it.get('staff_name') or it.get('vehicle_info') or ''
+            if t in ['VENDOR', 'SUPPLIER']:
+                recip = it.get('recipient') or 'Supplier'
+            elif t == 'STAFF':
+                recip = it.get('staff_name') or it.get('recipient') or 'Staff'
+            elif t == 'VEHICLE':
+                recip = it.get('vehicle_info') or it.get('purpose') or 'Vehicle'
+            elif t in ['SHOP', 'EXPENSE']:
+                recip = it.get('category') or it.get('note') or 'Shop/Tea'
+            else:
+                recip = it.get('recipient') or it.get('note') or it.get('category') or 'Expense'
+
             code = f" [{it.get('charge_code')}]" if it.get('charge_code') else ""
+            mode = f" ({it.get('payment_mode')})" if it.get('payment_mode') else ""
             if recip and amt:
-                item_summaries.append(f"{t}: {recip}{code} ₹{amt}")
+                item_summaries.append(f"{t}: {recip}{code}{mode} ₹{amt}")
         
         full_notes_parts = []
         if item_summaries:

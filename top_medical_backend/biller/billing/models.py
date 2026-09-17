@@ -260,23 +260,75 @@ class DailyFinanceRecord(models.Model):
         # Total money earned is strictly Cash + UPI
         self.total_earned = self.cash_earned + self.upi_earned
         
-        self.supplier_payments = Decimal(str(self.supplier_payments or '0.00'))
-        self.staff_expenses = Decimal(str(self.staff_expenses or '0.00'))
-        self.vehicle_expenses = Decimal(str(self.vehicle_expenses or '0.00'))
-        self.expenses = Decimal(str(self.expenses or '0.00'))
-        self.other_outflow = Decimal(str(self.other_outflow or '0.00'))
-        
-        breakdown_outflow = (
-            self.supplier_payments + 
-            self.staff_expenses + 
-            self.vehicle_expenses + 
-            self.expenses + 
-            self.other_outflow
-        )
-        if Decimal(str(self.total_paid or '0.00')) == Decimal('0.00') and breakdown_outflow > Decimal('0.00'):
-            self.total_paid = breakdown_outflow
+        # If payment_details list is present and non-empty, auto-compute breakdown
+        if isinstance(self.payment_details, list) and len(self.payment_details) > 0:
+            v_cash = Decimal('0.00')
+            v_upi = Decimal('0.00')
+            st_sum = Decimal('0.00')
+            veh_sum = Decimal('0.00')
+            sh_sum = Decimal('0.00')
+            oth_sum = Decimal('0.00')
+            tot_cash = Decimal('0.00')
+            tot_upi = Decimal('0.00')
+            
+            for item in self.payment_details:
+                try:
+                    amt = Decimal(str(item.get('amount') or '0.00'))
+                except Exception:
+                    amt = Decimal('0.00')
+                mode = str(item.get('payment_mode') or 'CASH').upper()
+                itype = str(item.get('type') or '').upper()
+                is_credit = (mode == 'CREDIT')
+                
+                if not is_credit:
+                    if mode == 'UPI':
+                        tot_upi += amt
+                    else:
+                        tot_cash += amt
+                
+                if itype in ['VENDOR', 'SUPPLIER']:
+                    if not is_credit:
+                        if mode == 'UPI':
+                            v_upi += amt
+                        else:
+                            v_cash += amt
+                elif itype == 'STAFF':
+                    if not is_credit:
+                        st_sum += amt
+                elif itype == 'VEHICLE':
+                    if not is_credit:
+                        veh_sum += amt
+                elif itype in ['SHOP', 'EXPENSE']:
+                    if not is_credit:
+                        sh_sum += amt
+                else:
+                    if not is_credit:
+                        oth_sum += amt
+            
+            self.supplier_payments = v_cash + v_upi
+            self.staff_expenses = st_sum
+            self.vehicle_expenses = veh_sum
+            self.expenses = sh_sum
+            self.other_outflow = oth_sum
+            self.total_paid = tot_cash + tot_upi
         else:
-            self.total_paid = Decimal(str(self.total_paid or '0.00'))
+            self.supplier_payments = Decimal(str(self.supplier_payments or '0.00'))
+            self.staff_expenses = Decimal(str(self.staff_expenses or '0.00'))
+            self.vehicle_expenses = Decimal(str(self.vehicle_expenses or '0.00'))
+            self.expenses = Decimal(str(self.expenses or '0.00'))
+            self.other_outflow = Decimal(str(self.other_outflow or '0.00'))
+            
+            breakdown_outflow = (
+                self.supplier_payments + 
+                self.staff_expenses + 
+                self.vehicle_expenses + 
+                self.expenses + 
+                self.other_outflow
+            )
+            if Decimal(str(self.total_paid or '0.00')) == Decimal('0.00') and breakdown_outflow > Decimal('0.00'):
+                self.total_paid = breakdown_outflow
+            else:
+                self.total_paid = Decimal(str(self.total_paid or '0.00'))
             
         self.opening_balance = Decimal(str(self.opening_balance or '0.00'))
         self.net_day_change = self.total_earned - self.total_paid

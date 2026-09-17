@@ -50,8 +50,43 @@ export default function App() {
   const [suppliers, setSuppliers] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [doctors, setDoctors] = useState([]);
-  const [staffList, setStaffList] = useState([]);
-  const [profile, setProfile] = useState(null);
+  const [staffList, setStaffList] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tm_cached_staff');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [
+      { id: 1, charge_code: 'TP01', name: 'RSH', role: 'Senior Pharmacist' },
+      { id: 2, charge_code: 'TP02', name: 'TAS', role: 'Pharmacist / Cashier' },
+      { id: 3, charge_code: 'TP03', name: 'RAY', role: 'Assistant Pharmacist' }
+    ];
+  });
+
+  const [profile, setProfile] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tm_cached_profile');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.name) return parsed;
+      }
+    } catch {}
+    return {
+      name: "TOP MEDICAL PHARMACY",
+      tagline: "Quality Care & Trusted Medications",
+      address: "3-79/4, R.B.COMPLEX, GROUND FLOOR, UNIVERSITY ROAD, DERALAKATTE, ULLAL TALUK, DERALAKATTE, MANGALORE 575018",
+      phone: "9148240793",
+      email: "billing@topmedical.com",
+      gstin: "29AJPPU6288G1Z7",
+      dl_number_20b: "KA-MN1-300667",
+      dl_number_21b: "KA-MN1-300667",
+      fssai_number: "11223344556677",
+      currency_symbol: "₹",
+      upi_id: "topmedical@upi"
+    };
+  });
 
   // Modal dialog states
   const [isAddMedicineOpen, setIsAddMedicineOpen] = useState(false);
@@ -105,8 +140,21 @@ export default function App() {
       if (suppsData.status === 'fulfilled') setSuppliers(suppsData.value?.results || suppsData.value || []);
       if (custsData.status === 'fulfilled') setCustomers(custsData.value?.results || custsData.value || []);
       if (docsData.status === 'fulfilled') setDoctors(docsData.value?.results || docsData.value || []);
-      if (staffData.status === 'fulfilled') setStaffList(staffData.value?.results || staffData.value || []);
-      if (profData.status === 'fulfilled') setProfile(profData.value);
+      if (staffData.status === 'fulfilled') {
+        const list = staffData.value?.results || staffData.value || [];
+        if (Array.isArray(list) && list.length > 0) {
+          setStaffList(list);
+          try {
+            localStorage.setItem('tm_cached_staff', JSON.stringify(list));
+          } catch {}
+        }
+      }
+      if (profData.status === 'fulfilled' && profData.value) {
+        setProfile(profData.value);
+        try {
+          localStorage.setItem('tm_cached_profile', JSON.stringify(profData.value));
+        } catch {}
+      }
     } catch (err) {
       console.error('Initial data loading failed:', err);
     } finally {
@@ -178,6 +226,26 @@ export default function App() {
     localStorage.removeItem('tm_auth_token');
     setAuthUser(null);
     setActiveTab('pos');
+  };
+
+  const handleStaffUpdated = (updatedList) => {
+    if (Array.isArray(updatedList) && updatedList.length > 0) {
+      setStaffList(updatedList);
+      try {
+        localStorage.setItem('tm_cached_staff', JSON.stringify(updatedList));
+      } catch {}
+    } else {
+      loadInitialData();
+    }
+  };
+
+  const handleProfileUpdated = (updated) => {
+    if (updated) {
+      setProfile(updated);
+      try {
+        localStorage.setItem('tm_cached_profile', JSON.stringify(updated));
+      } catch {}
+    }
   };
 
   // If not authenticated, display Login Interface
@@ -295,6 +363,7 @@ export default function App() {
               <InvoicesPage
                 profile={profile}
                 user={authUser}
+                staffList={staffList}
                 onOpenReceipt={(inv) => setReceiptInvoice(inv)}
                 onOpenDailyReport={() => setIsDailyReportOpen(true)}
               />
@@ -315,8 +384,8 @@ export default function App() {
             {activeTab === 'settings' && (
               <SettingsPage
                 profile={profile}
-                onProfileUpdated={(updated) => setProfile(updated)}
-                onStaffUpdated={loadInitialData}
+                onProfileUpdated={handleProfileUpdated}
+                onStaffUpdated={handleStaffUpdated}
               />
             )}
           </ErrorBoundary>

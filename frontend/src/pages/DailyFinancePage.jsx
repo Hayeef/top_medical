@@ -56,13 +56,69 @@ import {
   Tooltip, 
   CartesianGrid 
 } from 'recharts';
-import { dailyFinanceAPI, vendorBillsAPI } from '../api';
+import { dailyFinanceAPI, vendorBillsAPI, inventoryAPI } from '../api';
 
 export default function DailyFinancePage({ profile, user, suppliers = [], staffList = [] }) {
   const currency = profile?.currency_symbol || '₹';
 
   // Page View Modes: 'register' (Daily Register Entry), 'vendor_bills' (Wholesale Bills & Credit Tracker), or 'ledger' (Full History)
   const [activeViewMode, setActiveViewMode] = useState('register');
+
+  // Supplier state with live dynamic reload & curated known list
+  const [localSuppliers, setLocalSuppliers] = useState([]);
+
+  // Merge, deduplicate and sort suppliers alphabetically
+  const effectiveSuppliers = useMemo(() => {
+    const rawList = [...(localSuppliers.length > 0 ? localSuppliers : suppliers)];
+    
+    // Default known vendors to guarantee Ullal Traders, Swarnadeep Agencies, and Johnsons Agencies are always accessible
+    const defaultKnown = [
+      { id: 'supp-ullal', name: 'Ullal Traders' },
+      { id: 'supp-swarnadeep', name: 'Swarnadeep Agencies' },
+      { id: 'supp-johnsons', name: 'Johnsons Agencies' },
+      { id: 'supp-ak', name: 'A.K Pharma (Unit of AKP Healthcare Pvt Ltd)' },
+      { id: 'supp-sairadha', name: 'Sai Radha Pharma (India) Pvt. Ltd.' },
+      { id: 'supp-direct', name: 'Direct Wholesale' },
+      { id: 'supp-aamish', name: 'Aamish Traders' },
+      { id: 'supp-kanara', name: 'Kanara Distributors' },
+      { id: 'supp-kp', name: 'K P Associates' },
+      { id: 'supp-lifeline', name: 'Lifeline Surgical & Pharma' },
+      { id: 'supp-shakthi', name: 'Shakthi Life Lines' },
+      { id: 'supp-kateel', name: 'Sri Kateel Agencies' },
+      { id: 'supp-gk', name: 'G.K. Pharma' },
+      { id: 'supp-micro', name: 'Micro Labs Wholesale Distributors' },
+      { id: 'supp-sun', name: 'Sun Pharma Direct Agency' },
+      { id: 'supp-cipla', name: 'Cipla Pharma Logistics' },
+      { id: 'supp-amazon', name: 'Amazon Distributors Pvt. Ltd. (P & G)' },
+      { id: 'supp-as', name: 'A S Traders (Unicharm Healthcare)' },
+      { id: 'supp-rafais', name: 'RAFAIS' }
+    ];
+
+    const seen = new Set();
+    const merged = [];
+
+    // Prioritize actual database suppliers first
+    for (const item of rawList) {
+      if (item && item.name) {
+        const key = item.name.toLowerCase().trim();
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push(item);
+        }
+      }
+    }
+
+    // Add fallback vendors if not already in list
+    for (const item of defaultKnown) {
+      const key = item.name.toLowerCase().trim();
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(item);
+      }
+    }
+
+    return merged.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [localSuppliers, suppliers]);
 
   // Data states
   const [records, setRecords] = useState([]);
@@ -106,19 +162,46 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [isSavingBill, setIsSavingBill] = useState(false);
 
+  // Local machine date helper (avoids UTC offset day shifts)
+  const getTodayStr = () => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  // Helper to calculate due date given base date and days
+  const computeDueDate = (baseDateStr, days = 21) => {
+    const numDays = parseInt(days) || 0;
+    const base = new Date(baseDateStr ? `${baseDateStr}T00:00:00` : new Date());
+    base.setDate(base.getDate() + numDays);
+    const y = base.getFullYear();
+    const m = String(base.getMonth() + 1).padStart(2, '0');
+    const d = String(base.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  // Helper to calculate days left given a due date
+  const computeDaysLeft = (dueDateStr) => {
+    if (!dueDateStr) return 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(`${dueDateStr}T00:00:00`);
+    due.setHours(0, 0, 0, 0);
+    const diffTime = due - today;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+
   const initialBillFormState = {
     supplier: '',
     supplier_name: '',
     supplier_phone: '',
     supplier_gstin: '',
     bill_number: '',
-    bill_date: new Date().toISOString().slice(0, 10),
+    bill_date: getTodayStr(),
     credit_days: 21,
-    due_date: (() => {
-      const d = new Date();
-      d.setDate(d.getDate() + 21);
-      return d.toISOString().slice(0, 10);
-    })(),
+    due_date: computeDueDate(getTodayStr(), 21),
     total_amount: '',
     notes: ''
   };
@@ -127,35 +210,16 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   const initialPaymentFormState = {
     amount: '',
     payment_mode: 'CASH',
-    payment_date: new Date().toISOString().slice(0, 10),
+    payment_date: getTodayStr(),
     reference_number: '',
     notes: '',
     sync_to_daily_accounts: true
   };
   const [paymentFormData, setPaymentFormData] = useState(initialPaymentFormState);
 
-  // Helper to calculate due date given base date and days
-  const computeDueDate = (baseDateStr, days = 21) => {
-    const numDays = parseInt(days) || 0;
-    const base = new Date(baseDateStr || new Date().toISOString().slice(0, 10));
-    base.setDate(base.getDate() + numDays);
-    return base.toISOString().slice(0, 10);
-  };
-
-  // Helper to calculate days left given a due date
-  const computeDaysLeft = (dueDateStr) => {
-    if (!dueDateStr) return 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const due = new Date(dueDateStr);
-    due.setHours(0, 0, 0, 0);
-    const diffTime = due - today;
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
-
   // Form State for Table Entry Register
   const initialFormState = {
-    date: new Date().toISOString().slice(0, 10),
+    date: getTodayStr(),
     daily_sales: '',
     cash_earned: '',
     upi_earned: '',
@@ -182,11 +246,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
         amount: '',
         payment_mode: 'CASH', // 'CASH' | 'UPI' | 'CREDIT'
         credit_days: 21,
-        due_date: (() => {
-          const d = new Date();
-          d.setDate(d.getDate() + 21);
-          return d.toISOString().slice(0, 10);
-        })(),
+        due_date: computeDueDate(getTodayStr(), 21),
         note: ''
       }
     ]
@@ -270,27 +330,42 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
     }
   };
 
+  // Load fresh suppliers list directly from backend
+  const fetchSuppliers = async () => {
+    try {
+      const res = await inventoryAPI.getSuppliers();
+      const data = res?.results || res || [];
+      if (Array.isArray(data) && data.length > 0) {
+        setLocalSuppliers(data);
+      }
+    } catch (err) {
+      console.warn('Silent fallback for suppliers loading:', err);
+    }
+  };
+
   useEffect(() => {
     loadFinanceData();
+    fetchSuppliers();
   }, [selectedMonth, selectedYear, startDate, endDate]);
 
   useEffect(() => {
     loadVendorBills();
   }, [vendorBillsFilter, selectedSupplierFilter]);
 
-  // Initial auto-fetch for today when entering
+  // Initial auto-fetch for today and live supplier refresh when entering
   useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    triggerAutoFetch(today, false);
+    const today = getTodayStr();
+    triggerAutoFetch(today, false, false);
     loadVendorBills();
+    fetchSuppliers();
   }, []);
 
   // Vendor Bill Credit Days & Due Date Calculation Helper
   const handleUpdateBillCreditDays = (days, baseDate = billFormData.bill_date) => {
     const numDays = parseInt(days) || 0;
-    const base = new Date(baseDate || new Date().toISOString().slice(0, 10));
+    const base = new Date(baseDate ? `${baseDate}T00:00:00` : new Date());
     base.setDate(base.getDate() + numDays);
-    const dueDateStr = base.toISOString().slice(0, 10);
+    const dueDateStr = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}-${String(base.getDate()).padStart(2, '0')}`;
     setBillFormData(prev => ({
       ...prev,
       credit_days: days,
@@ -300,9 +375,9 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
   const handleUpdateBillDate = (newDate) => {
     const numDays = parseInt(billFormData.credit_days) || 0;
-    const base = new Date(newDate || new Date().toISOString().slice(0, 10));
+    const base = new Date(newDate ? `${newDate}T00:00:00` : new Date());
     base.setDate(base.getDate() + numDays);
-    const dueDateStr = base.toISOString().slice(0, 10);
+    const dueDateStr = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}-${String(base.getDate()).padStart(2, '0')}`;
     setBillFormData(prev => ({
       ...prev,
       bill_date: newDate,
@@ -313,14 +388,12 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   // Handle Open Add Bill Modal
   const handleOpenAddBill = () => {
     setEditingBill(null);
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const due = new Date();
-    due.setDate(due.getDate() + 21);
+    const todayStr = getTodayStr();
     setBillFormData({
       ...initialBillFormState,
       bill_date: todayStr,
       credit_days: 21,
-      due_date: due.toISOString().slice(0, 10),
+      due_date: computeDueDate(todayStr, 21),
       supplier: suppliers.length > 0 ? suppliers[0].id : '',
       supplier_name: suppliers.length > 0 ? suppliers[0].name : '',
       supplier_phone: suppliers.length > 0 ? (suppliers[0].phone || '') : '',
@@ -338,7 +411,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
       supplier_phone: bill.supplier_phone || '',
       supplier_gstin: bill.supplier_gstin || '',
       bill_number: bill.bill_number || '',
-      bill_date: bill.bill_date || new Date().toISOString().slice(0, 10),
+      bill_date: bill.bill_date || getTodayStr(),
       credit_days: bill.credit_days || 0,
       due_date: bill.due_date || '',
       total_amount: bill.total_amount?.toString() || '',
@@ -416,7 +489,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
     setPaymentFormData({
       amount: (parseFloat(bill.balance_due) || 0).toString(),
       payment_mode: 'CASH',
-      payment_date: new Date().toISOString().slice(0, 10),
+      payment_date: getTodayStr(),
       reference_number: '',
       notes: `Payment for Wholesale Invoice #${bill.bill_number}`,
       sync_to_daily_accounts: true
@@ -473,29 +546,23 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
   // Quick Date Navigation
   const handleShiftDate = (days) => {
-    const curr = new Date(formData.date || new Date().toISOString().slice(0, 10));
-    curr.setDate(curr.getDate() + days);
-    const newDateStr = curr.toISOString().slice(0, 10);
+    const base = formData.date ? new Date(`${formData.date}T00:00:00`) : new Date();
+    base.setDate(base.getDate() + days);
+    const y = base.getFullYear();
+    const m = String(base.getMonth() + 1).padStart(2, '0');
+    const d = String(base.getDate()).padStart(2, '0');
+    const newDateStr = `${y}-${m}-${d}`;
     handleChangeDate(newDateStr);
   };
 
   const handleChangeDate = async (newDate) => {
     setFormData(prev => ({ ...prev, date: newDate }));
-    
-    // 1. Check if a record already exists in local records state
-    const existing = records.find(r => r.date === newDate);
-    if (existing) {
-      handleOpenEdit(existing, false);
-      showToast(`📂 Loaded existing accounts for ${newDate} (${existing.payment_details?.length || 0} vouchers)`);
-      return;
-    }
-    
-    // 2. Fetch from backend auto_fetch_pos_day (which returns has_existing_record and existing_record if already made)
-    await triggerAutoFetch(newDate, true);
+    // Always trigger dynamic auto-fetch for the selected date
+    await triggerAutoFetch(newDate, false, true);
   };
 
   // Open Edit Mode (Loads all incomes, firm balances, and all expense vouchers into the form)
-  const handleOpenEdit = (record, switchView = true) => {
+  const handleOpenEdit = async (record, switchView = true) => {
     setEditingRecord(record);
     const defaultDue = computeDueDate(record.date, 21);
     const details = Array.isArray(record.payment_details) && record.payment_details.length > 0 
@@ -518,7 +585,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
       : [{
           id: Date.now(),
           type: 'VENDOR',
-          recipient: suppliers.length > 0 ? suppliers[0].name : '',
+          recipient: effectiveSuppliers.length > 0 ? effectiveSuppliers[0].name : '',
           staff_id: '',
           staff_name: '',
           charge_code: '',
@@ -552,11 +619,19 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
       setActiveViewMode('register');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+
+    // If recorded sales was 0, trigger auto-fetch in background to check if POS bills exist for that date
+    const recSales = parseFloat(record.daily_sales) || 0;
+    const recCash = parseFloat(record.cash_earned) || 0;
+    const recUpi = parseFloat(record.upi_earned) || 0;
+    if (recSales === 0 && recCash === 0 && recUpi === 0) {
+      await triggerAutoFetch(record.date, false, false);
+    }
   };
 
   // Open Clean New Entry
   const handleOpenNewEntry = async (targetDate = null) => {
-    const target = targetDate || new Date().toISOString().slice(0, 10);
+    const target = targetDate || getTodayStr();
     setEditingRecord(null);
     const defaultDue = computeDueDate(target, 21);
     setFormData({
@@ -565,7 +640,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
       payment_details: [{
         id: Date.now(),
         type: 'VENDOR',
-        recipient: suppliers.length > 0 ? suppliers[0].name : '',
+        recipient: effectiveSuppliers.length > 0 ? effectiveSuppliers[0].name : '',
         staff_id: '',
         staff_name: '',
         charge_code: '',
@@ -581,19 +656,99 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
     });
     setActiveViewMode('register');
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    await triggerAutoFetch(target, true);
+    await triggerAutoFetch(target, true, true);
   };
 
   // Trigger POS Auto-Fetch
-  const triggerAutoFetch = async (targetDate, showNotification = true) => {
+  const triggerAutoFetch = async (targetDate, forceAutoFill = false, showNotification = true) => {
     setIsAutoFetching(true);
     try {
       const data = await dailyFinanceAPI.autoFetchDay(targetDate);
       if (data) {
         if (data.has_existing_record && data.existing_record) {
-          handleOpenEdit(data.existing_record, false);
+          const rec = data.existing_record;
+          setEditingRecord(rec);
+          const defaultDue = computeDueDate(rec.date, 21);
+          const details = Array.isArray(rec.payment_details) && rec.payment_details.length > 0 
+            ? rec.payment_details.map((p, idx) => ({
+                id: p.id || (Date.now() + idx),
+                type: (p.type || 'VENDOR').toUpperCase(),
+                recipient: p.recipient || '',
+                staff_id: p.staff_id || '',
+                staff_name: p.staff_name || '',
+                charge_code: p.charge_code || '',
+                purpose: p.purpose || '',
+                vehicle_info: p.vehicle_info || '',
+                category: p.category || '',
+                amount: (p.amount !== undefined && p.amount !== null && p.amount !== '') ? p.amount.toString() : '',
+                payment_mode: (p.payment_mode || 'CASH').toUpperCase(),
+                credit_days: p.credit_days !== undefined ? p.credit_days : 21,
+                due_date: p.due_date || computeDueDate(rec.date, p.credit_days || 21),
+                note: p.note || ''
+              }))
+            : [{
+                id: Date.now(),
+                type: 'VENDOR',
+                recipient: suppliers.length > 0 ? suppliers[0].name : '',
+                staff_id: '',
+                staff_name: '',
+                charge_code: '',
+                purpose: '',
+                vehicle_info: '',
+                category: '',
+                amount: '',
+                payment_mode: 'CASH',
+                credit_days: 21,
+                due_date: defaultDue,
+                note: ''
+              }];
+
+          const existingSales = parseFloat(rec.daily_sales) || 0;
+          const existingCash = parseFloat(rec.cash_earned) || 0;
+          const existingUpi = parseFloat(rec.upi_earned) || 0;
+          const posHasSales = (data.pos_daily_sales > 0 || data.pos_cash_earned > 0 || data.pos_upi_earned > 0);
+          
+          // If forced, or existing record had 0s but POS has bills, auto-populate live POS numbers
+          const shouldUpdateSalesFromPos = forceAutoFill || ((existingSales === 0 && existingCash === 0 && existingUpi === 0) && posHasSales);
+
+          const salesVal = shouldUpdateSalesFromPos 
+            ? (data.pos_daily_sales || 0).toString() 
+            : (rec.daily_sales !== undefined && rec.daily_sales !== null && rec.daily_sales !== '' ? rec.daily_sales.toString() : (data.pos_daily_sales || 0).toString());
+          
+          const cashVal = shouldUpdateSalesFromPos 
+            ? (data.pos_cash_earned || 0).toString() 
+            : (rec.cash_earned !== undefined && rec.cash_earned !== null && rec.cash_earned !== '' ? rec.cash_earned.toString() : (data.pos_cash_earned || 0).toString());
+          
+          const upiVal = shouldUpdateSalesFromPos 
+            ? (data.pos_upi_earned || 0).toString() 
+            : (rec.upi_earned !== undefined && rec.upi_earned !== null && rec.upi_earned !== '' ? rec.upi_earned.toString() : (data.pos_upi_earned || 0).toString());
+          
+          const openingVal = (rec.opening_balance !== undefined && rec.opening_balance !== null && rec.opening_balance !== '') 
+            ? rec.opening_balance.toString() 
+            : (data.suggested_opening_balance !== undefined ? data.suggested_opening_balance.toString() : '0');
+
+          setFormData({
+            date: rec.date,
+            daily_sales: salesVal,
+            cash_earned: cashVal,
+            upi_earned: upiVal,
+            supplier_payments: (rec.supplier_payments !== undefined && rec.supplier_payments !== null) ? rec.supplier_payments.toString() : '',
+            staff_expenses: (rec.staff_expenses !== undefined && rec.staff_expenses !== null) ? rec.staff_expenses.toString() : '',
+            vehicle_expenses: (rec.vehicle_expenses !== undefined && rec.vehicle_expenses !== null) ? rec.vehicle_expenses.toString() : '',
+            expenses: (rec.expenses !== undefined && rec.expenses !== null) ? rec.expenses.toString() : '',
+            other_outflow: (rec.other_outflow !== undefined && rec.other_outflow !== null) ? rec.other_outflow.toString() : '',
+            total_paid: (rec.total_paid !== undefined && rec.total_paid !== null) ? rec.total_paid.toString() : '',
+            opening_balance: openingVal,
+            notes: rec.notes || '',
+            payment_details: details
+          });
+
           if (showNotification) {
-            showToast(`📂 Loaded existing accounts for ${targetDate} (${data.existing_record.payment_details?.length || 0} vouchers)`);
+            if (shouldUpdateSalesFromPos && posHasSales) {
+              showToast(`⚡ Filled ${data.invoices_count} POS bills: Cash ₹${data.pos_cash_earned} | UPI ₹${data.pos_upi_earned} with ${details.length} expense vouchers`, 'info');
+            } else {
+              showToast(`📂 Loaded accounts for ${targetDate} (${details.length} vouchers)`);
+            }
           }
         } else {
           setEditingRecord(null);
@@ -610,7 +765,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             expenses: '',
             other_outflow: '',
             total_paid: '',
-            opening_balance: (data.suggested_opening_balance || 0).toString(),
+            opening_balance: (data.suggested_opening_balance !== undefined ? data.suggested_opening_balance : 0).toString(),
             notes: '',
             payment_details: [{
               id: Date.now(),
@@ -629,8 +784,12 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
               note: ''
             }]
           }));
-          if (showNotification && data.invoices_count > 0) {
-            showToast(`⚡ Filled ${data.invoices_count} POS bills: Cash ₹${data.pos_cash_earned} | UPI ₹${data.pos_upi_earned}`, 'info');
+          if (showNotification) {
+            if (data.invoices_count > 0) {
+              showToast(`⚡ Filled ${data.invoices_count} POS bills: Cash ₹${data.pos_cash_earned} | UPI ₹${data.pos_upi_earned}`, 'info');
+            } else {
+              showToast(`📅 Ready for ${targetDate} (0 POS bills recorded)`);
+            }
           }
         }
       }
@@ -708,6 +867,157 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
     };
   }, [formData.payment_details]);
 
+  // Dynamic Voucher Calculations for Viewing Record Modal
+  const viewingVoucherData = useMemo(() => {
+    if (!viewingRecord) return null;
+
+    const rawDetails = Array.isArray(viewingRecord.payment_details) ? viewingRecord.payment_details : [];
+    
+    let vendorCash = 0;
+    let vendorUpi = 0;
+    let vendorCredit = 0;
+    let staffCash = 0;
+    let staffUpi = 0;
+    let vehicleCash = 0;
+    let vehicleUpi = 0;
+    let shopCash = 0;
+    let shopUpi = 0;
+    let otherCash = 0;
+    let otherUpi = 0;
+    let totalCashDisbursed = 0;
+    let totalUpiDisbursed = 0;
+    let totalCreditLogged = 0;
+
+    const parsedItems = rawDetails.map((it, idx) => {
+      const amt = parseFloat(it.amount) || 0;
+      const mode = (it.payment_mode || 'CASH').toUpperCase();
+      const type = (it.type || 'OTHER').toUpperCase();
+      const isCredit = mode === 'CREDIT';
+
+      if (isCredit) {
+        totalCreditLogged += amt;
+      } else if (mode === 'UPI') {
+        totalUpiDisbursed += amt;
+      } else {
+        totalCashDisbursed += amt;
+      }
+
+      if (type === 'VENDOR' || type === 'SUPPLIER') {
+        if (isCredit) {
+          vendorCredit += amt;
+        } else if (mode === 'UPI') {
+          vendorUpi += amt;
+        } else {
+          vendorCash += amt;
+        }
+      } else if (type === 'STAFF') {
+        if (mode === 'UPI') staffUpi += amt;
+        else staffCash += amt;
+      } else if (type === 'VEHICLE') {
+        if (mode === 'UPI') vehicleUpi += amt;
+        else vehicleCash += amt;
+      } else if (type === 'SHOP' || type === 'EXPENSE') {
+        if (mode === 'UPI') shopUpi += amt;
+        else shopCash += amt;
+      } else {
+        if (mode === 'UPI') otherUpi += amt;
+        else otherCash += amt;
+      }
+
+      // Title, Subtitle, Icon formatting
+      let icon = '🏢';
+      let title = '';
+      let subtitle = '';
+
+      if (type === 'VENDOR' || type === 'SUPPLIER') {
+        icon = '🏢';
+        title = it.recipient || 'Supplier / Wholesaler';
+        if (it.note) subtitle = `Inv/Bill #${it.note}`;
+      } else if (type === 'STAFF') {
+        icon = '👤';
+        title = it.staff_name || it.recipient || 'Staff Member';
+        subtitle = it.purpose || 'Daily Wage';
+      } else if (type === 'VEHICLE') {
+        icon = '🚗';
+        title = it.vehicle_info || it.purpose || 'Vehicle Expense';
+        if (it.purpose && it.vehicle_info && it.purpose !== it.vehicle_info) {
+          subtitle = it.purpose;
+        }
+      } else if (type === 'SHOP' || type === 'EXPENSE') {
+        icon = '☕';
+        title = it.category || 'Shop & Operating Expense';
+        if (it.note && it.note !== title) {
+          subtitle = it.note;
+        }
+      } else {
+        icon = '📦';
+        title = it.category || it.note || it.recipient || 'Other Expense';
+        if (it.note && it.note !== title) {
+          subtitle = it.note;
+        }
+      }
+
+      return {
+        ...it,
+        idx,
+        amt,
+        mode,
+        type,
+        icon,
+        title,
+        subtitle,
+        isCredit
+      };
+    });
+
+    const staffSum = staffCash + staffUpi;
+    const vehicleSum = vehicleCash + vehicleUpi;
+    const shopSum = shopCash + shopUpi;
+    const otherSum = otherCash + otherUpi;
+    const vendorActualPaid = vendorCash + vendorUpi;
+    const totalActualPaid = totalCashDisbursed + totalUpiDisbursed;
+
+    const hasItems = parsedItems.length > 0;
+    const vendorPaid = hasItems ? vendorActualPaid : (parseFloat(viewingRecord.supplier_payments) || 0);
+    const staffPaid = hasItems ? staffSum : (parseFloat(viewingRecord.staff_expenses) || 0);
+    const vehiclePaid = hasItems ? vehicleSum : (parseFloat(viewingRecord.vehicle_expenses) || 0);
+    const shopPaid = hasItems ? shopSum : (parseFloat(viewingRecord.expenses) || 0);
+    const otherPaid = hasItems ? otherSum : (parseFloat(viewingRecord.other_outflow) || 0);
+    const totalPaid = hasItems ? totalActualPaid : (parseFloat(viewingRecord.total_paid) || (vendorPaid + staffPaid + vehiclePaid + shopPaid + otherPaid));
+
+    const grossSales = parseFloat(viewingRecord.daily_sales) || 0;
+    const cashEarned = parseFloat(viewingRecord.cash_earned) || 0;
+    const upiEarned = parseFloat(viewingRecord.upi_earned) || 0;
+    const totalEarned = parseFloat(viewingRecord.total_earned) || (cashEarned + upiEarned);
+
+    const openingBal = parseFloat(viewingRecord.opening_balance) || 0;
+    const netChange = totalEarned - totalPaid;
+    const closingBal = openingBal + netChange;
+
+    return {
+      grossSales,
+      cashEarned,
+      upiEarned,
+      totalEarned,
+      vendorCash,
+      vendorUpi,
+      vendorCredit,
+      vendorPaid,
+      staffPaid,
+      vehiclePaid,
+      shopPaid,
+      otherPaid,
+      totalCashDisbursed,
+      totalUpiDisbursed,
+      totalCreditLogged,
+      totalPaid,
+      openingBal,
+      netChange,
+      closingBal,
+      items: parsedItems
+    };
+  }, [viewingRecord]);
+
   // Live Math Calculations
   const formCashEarned = parseFloat(formData.cash_earned) || 0;
   const formUpiEarned = parseFloat(formData.upi_earned) || 0;
@@ -776,7 +1086,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
         payment_details: filtered.length > 0 ? filtered : [{
           id: Date.now(),
           type: 'VENDOR',
-          recipient: '',
+          recipient: suppliers.length > 0 ? suppliers[0].name : '',
           staff_id: '',
           staff_name: '',
           charge_code: '',
@@ -828,7 +1138,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             updated.credit_days = computeDaysLeft(value);
           }
 
-          // If type changes, apply smart defaults
+          // If type changes, apply smart defaults and clean up mismatched fields
           if (field === 'type') {
             if (value === 'STAFF') {
               if (staffList.length > 0 && !updated.staff_id) {
@@ -837,6 +1147,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                 updated.charge_code = staffList[0].charge_code;
               }
               updated.purpose = updated.purpose || 'Daily Wage';
+              updated.recipient = '';
+              updated.vehicle_info = '';
+              updated.category = '';
+              updated.payment_mode = updated.payment_mode === 'CREDIT' ? 'CASH' : updated.payment_mode;
             } else if (value === 'VENDOR') {
               if (suppliers.length > 0 && !updated.recipient) {
                 updated.recipient = suppliers[0].name;
@@ -844,22 +1158,34 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
               updated.staff_id = '';
               updated.staff_name = '';
               updated.charge_code = '';
+              updated.vehicle_info = '';
+              updated.category = '';
               updated.credit_days = updated.credit_days || 21;
               updated.due_date = updated.due_date || computeDueDate(prev.date, updated.credit_days);
             } else if (value === 'VEHICLE') {
-              updated.purpose = 'Fuel / Petrol';
+              updated.purpose = updated.purpose || 'Fuel / Petrol';
+              updated.recipient = '';
               updated.staff_id = '';
               updated.staff_name = '';
               updated.charge_code = '';
+              updated.category = '';
+              updated.payment_mode = updated.payment_mode === 'CREDIT' ? 'CASH' : updated.payment_mode;
             } else if (value === 'SHOP') {
-              updated.category = 'Tea / Snacks';
+              updated.category = updated.category || 'Tea / Snacks';
+              updated.recipient = '';
               updated.staff_id = '';
               updated.staff_name = '';
               updated.charge_code = '';
+              updated.vehicle_info = '';
+              updated.payment_mode = updated.payment_mode === 'CREDIT' ? 'CASH' : updated.payment_mode;
             } else if (value === 'OTHER') {
+              updated.category = updated.category || 'Other';
+              updated.recipient = '';
               updated.staff_id = '';
               updated.staff_name = '';
               updated.charge_code = '';
+              updated.vehicle_info = '';
+              updated.payment_mode = updated.payment_mode === 'CREDIT' ? 'CASH' : updated.payment_mode;
             }
           }
 
@@ -1692,14 +2018,14 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
                       <button
                         type="button"
-                        onClick={() => handleChangeDate(new Date().toISOString().slice(0, 10))}
+                        onClick={() => handleChangeDate(getTodayStr())}
                         className="btn btn-secondary btn-sm"
                         style={{
                           padding: '7px 12px',
                           fontSize: '12.5px',
                           fontWeight: 800,
                           borderRadius: '8px',
-                          background: formData.date === new Date().toISOString().slice(0, 10) ? '#e0f2fe' : '#ffffff',
+                          background: formData.date === getTodayStr() ? '#e0f2fe' : '#ffffff',
                           border: '1.5px solid #0284c7',
                           color: '#0369a1'
                         }}
@@ -1726,7 +2052,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
               <div className="df-autofetch-wrap" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
                 <button
                   type="button"
-                  onClick={() => triggerAutoFetch(formData.date, true)}
+                  onClick={() => triggerAutoFetch(formData.date, true, true)}
                   disabled={isAutoFetching}
                   className="df-autofetch-btn"
                   style={{
@@ -1746,7 +2072,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   }}
                 >
                   <Sparkles size={18} className={isAutoFetching ? 'animate-spin' : ''} />
-                  <span>{isAutoFetching ? 'Reading POS Bills...' : '⚡ Auto-Fill Today’s Bills (POS)'}</span>
+                  <span>{isAutoFetching ? 'Reading POS Bills...' : `⚡ Auto-Fill ${formData.date ? new Date(formData.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Today'}'s Bills (POS)`}</span>
                 </button>
                 <span style={{ fontSize: '11px', color: '#059669', fontWeight: 700 }}>
                   Reads Cash & UPI directly from counter invoices
@@ -2302,7 +2628,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                           <td style={{ padding: '8px 10px' }}>
                             {isVendor && (
                               <div style={{ display: 'flex', gap: '6px' }}>
-                                {suppliers.length > 0 ? (
+                                {effectiveSuppliers.length > 0 ? (
                                   <select
                                     value={row.recipient || ''}
                                     onChange={(e) => handleUpdateExpenseRow(row.id, 'recipient', e.target.value)}
@@ -2319,8 +2645,8 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                                     }}
                                   >
                                     <option value="">-- Select Supplier / Wholesaler --</option>
-                                    {suppliers.map(s => (
-                                      <option key={s.id} value={s.name}>{s.name}</option>
+                                    {effectiveSuppliers.map(s => (
+                                      <option key={s.id || s.name} value={s.name}>{s.name}</option>
                                     ))}
                                   </select>
                                 ) : (
@@ -2861,7 +3187,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                       {/* Middle: Recipient / Details */}
                       <div>
                         {isVendor && (
-                          suppliers.length > 0 ? (
+                          effectiveSuppliers.length > 0 ? (
                             <div>
                               <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#7e22ce', marginBottom: '3px' }}>
                                 🏢 Supplier / Wholesaler:
@@ -2882,8 +3208,8 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                                 }}
                               >
                                 <option value="">-- Select Supplier / Wholesaler --</option>
-                                {suppliers.map(s => (
-                                  <option key={s.id} value={s.name}>{s.name}</option>
+                                {effectiveSuppliers.map(s => (
+                                  <option key={s.id || s.name} value={s.name}>{s.name}</option>
                                 ))}
                               </select>
                             </div>
@@ -4277,8 +4603,8 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   }}
                 >
                   <option value="">-- All Suppliers / Wholesalers --</option>
-                  {suppliers.map(s => (
-                    <option key={s.id} value={s.name}>{s.name}</option>
+                  {effectiveSuppliers.map(s => (
+                    <option key={s.id || s.name} value={s.name}>{s.name}</option>
                   ))}
                 </select>
               </div>
@@ -5096,7 +5422,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
       {/* =========================================================================
           VIEW MODAL: PRINTABLE DAY CLOSE VOUCHER / STATEMENT
           ========================================================================= */}
-      {viewingRecord && (
+      {viewingRecord && viewingVoucherData && (
         <div className="modal-backdrop" style={{
           position: 'fixed',
           top: 0,
@@ -5116,7 +5442,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             borderRadius: '16px',
             width: '100%',
             maxWidth: '640px',
-            maxHeight: '90vh',
+            maxHeight: '92vh',
             display: 'flex',
             flexDirection: 'column',
             boxShadow: '0 20px 40px rgba(0,0,0,0.25)',
@@ -5144,7 +5470,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
               </div>
               <button
                 onClick={() => setViewingRecord(null)}
-                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
               >
                 <X size={20} />
               </button>
@@ -5161,83 +5487,126 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
               {/* Inflow Breakdown */}
               <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '12px 14px' }}>
-                <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#059669', textTransform: 'uppercase', marginBottom: '8px' }}>
-                  Money Inflows (Earned)
+                <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#059669', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>🟢 Money Inflows (Earned)</span>
+                  <span className="badge badge-emerald" style={{ fontSize: '10px', padding: '1px 6px' }}>POS Receipts</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
                   <span style={{ color: '#475569' }}>Total Gross Sales:</span>
-                  <span className="mono" style={{ fontWeight: 700 }}>{currency}{parseFloat(viewingRecord.daily_sales || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="mono" style={{ fontWeight: 700 }}>{currency}{viewingVoucherData.grossSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
                   <span style={{ color: '#059669', fontWeight: 700 }}>• Cash Received:</span>
-                  <span className="mono" style={{ fontWeight: 800, color: '#059669' }}>{currency}{parseFloat(viewingRecord.cash_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="mono" style={{ fontWeight: 800, color: '#059669' }}>{currency}{viewingVoucherData.cashEarned.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
                   <span style={{ color: '#0284c7', fontWeight: 700 }}>• UPI Received:</span>
-                  <span className="mono" style={{ fontWeight: 800, color: '#0284c7' }}>{currency}{parseFloat(viewingRecord.upi_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="mono" style={{ fontWeight: 800, color: '#0284c7' }}>{currency}{viewingVoucherData.upiEarned.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', fontWeight: 900, borderTop: '1px solid #bbf7d0', paddingTop: '6px', marginTop: '6px' }}>
                   <span>Total Money Earned:</span>
-                  <span className="mono" style={{ color: '#059669' }}>{currency}{parseFloat(viewingRecord.total_earned || (parseFloat(viewingRecord.cash_earned||0)+parseFloat(viewingRecord.upi_earned||0))).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="mono" style={{ color: '#059669' }}>{currency}{viewingVoucherData.totalEarned.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
               </div>
 
               {/* Outflow Breakdown */}
               <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: '10px', padding: '12px 14px' }}>
-                <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#e11d48', textTransform: 'uppercase', marginBottom: '8px' }}>
-                  Money Outflows (Disbursements)
+                <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#e11d48', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>🔴 Money Outflows (Disbursements)</span>
+                  <span className="badge badge-rose" style={{ fontSize: '10px', padding: '1px 6px' }}>Cash & UPI Paid</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
                   <span style={{ color: '#475569' }}>• Vendor / Supplier Payouts:</span>
-                  <span className="mono">{currency}{parseFloat(viewingRecord.supplier_payments || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="mono" style={{ fontWeight: 700 }}>{currency}{viewingVoucherData.vendorPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
                   <span style={{ color: '#475569' }}>• Staff Expenses (Charge Code Mapped):</span>
-                  <span className="mono">{currency}{parseFloat(viewingRecord.staff_expenses || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="mono" style={{ fontWeight: 700 }}>{currency}{viewingVoucherData.staffPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
                   <span style={{ color: '#475569' }}>• Vehicle & Fuel Expenses:</span>
-                  <span className="mono">{currency}{parseFloat(viewingRecord.vehicle_expenses || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="mono" style={{ fontWeight: 700 }}>{currency}{viewingVoucherData.vehiclePaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
                   <span style={{ color: '#475569' }}>• Shop & Operating Expenses:</span>
-                  <span className="mono">{currency}{parseFloat(viewingRecord.expenses || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="mono" style={{ fontWeight: 700 }}>{currency}{viewingVoucherData.shopPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
+                {viewingVoucherData.otherPaid > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
+                    <span style={{ color: '#475569' }}>• Other Outflows:</span>
+                    <span className="mono" style={{ fontWeight: 700 }}>{currency}{viewingVoucherData.otherPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', fontWeight: 900, borderTop: '1px solid #fecdd3', paddingTop: '6px', marginTop: '6px' }}>
-                  <span style={{ color: '#e11d48' }}>Total Money Paid:</span>
-                  <span className="mono" style={{ color: '#e11d48' }}>{currency}{parseFloat(viewingRecord.total_paid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span style={{ color: '#e11d48' }}>Total Money Paid Out:</span>
+                  <span className="mono" style={{ color: '#e11d48' }}>{currency}{viewingVoucherData.totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
               </div>
 
+              {/* Wholesale Credit Summary If Any */}
+              {viewingVoucherData.totalCreditLogged > 0 && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{ fontSize: '12px', fontWeight: 800, color: '#b45309' }}>🟡 Wholesale Credit Bills (Pending Payment):</span>
+                    <div style={{ fontSize: '11px', color: '#92400e' }}>Recorded on credit terms, payable on future due date</div>
+                  </div>
+                  <span className="mono" style={{ fontWeight: 900, color: '#b45309', fontSize: '13px' }}>
+                    {currency}{viewingVoucherData.totalCreditLogged.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+
               {/* Itemized Entries List */}
-              {Array.isArray(viewingRecord.payment_details) && viewingRecord.payment_details.length > 0 && (
+              {viewingVoucherData.items.length > 0 && (
                 <div style={{ border: '1px solid var(--border-subtle)', borderRadius: '10px', padding: '12px 14px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-main)', marginBottom: '8px' }}>
-                    Itemized Payment Entries ({viewingRecord.payment_details.length}):
+                  <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-main)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Itemized Payment Entries ({viewingVoucherData.items.length}):</span>
+                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Detailed Expense Vouchers</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {viewingRecord.payment_details.map((it, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', padding: '6px 10px', background: 'var(--bg-main)', borderRadius: '8px', alignItems: 'center' }}>
-                        <div>
-                          <strong style={{ color: 'var(--text-main)' }}>
-                            {it.type === 'VENDOR' ? '🏢 ' : (it.type === 'STAFF' ? '👤 ' : (it.type === 'VEHICLE' ? '🚗 ' : '☕ '))}
-                            {it.recipient || it.staff_name || it.vehicle_info || it.category || 'Expense'}
+                    {viewingVoucherData.items.map((it) => (
+                      <div key={it.idx} style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        fontSize: '12px',
+                        padding: '7px 10px',
+                        background: it.isCredit ? '#fffdf7' : 'var(--bg-main)',
+                        borderLeft: it.isCredit ? '3.5px solid #f59e0b' : '1px solid var(--border-subtle)',
+                        borderRadius: '8px',
+                        alignItems: 'center'
+                      }}>
+                        <div style={{ minWidth: 0, paddingRight: '8px' }}>
+                          <strong style={{ color: 'var(--text-main)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <span>{it.icon}</span>
+                            <span>{it.title}</span>
                           </strong>
                           {it.charge_code && (
-                            <span className="badge badge-cyan mono" style={{ fontSize: '10.5px', marginLeft: '6px', fontWeight: 800 }}>
+                            <span className="badge badge-cyan mono" style={{ fontSize: '10px', marginLeft: '6px', fontWeight: 800 }}>
                               [{it.charge_code}]
                             </span>
                           )}
-                          {it.purpose && (
+                          {it.subtitle && (
                             <span style={{ color: '#64748b', fontSize: '11px', marginLeft: '6px' }}>
-                              ({it.purpose})
+                              ({it.subtitle})
                             </span>
                           )}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span className="badge badge-gray" style={{ fontSize: '10px' }}>{it.payment_mode || 'CASH'}</span>
-                          <span className="mono" style={{ fontWeight: 800, color: '#e11d48' }}>
-                            {currency}{parseFloat(it.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                          {it.isCredit ? (
+                            <span className="badge badge-amber" style={{ fontSize: '10px', fontWeight: 800 }}>
+                              CREDIT {it.due_date ? `Due ${new Date(it.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}` : ''}
+                            </span>
+                          ) : it.mode === 'UPI' ? (
+                            <span className="badge badge-cyan" style={{ fontSize: '10px', fontWeight: 800 }}>UPI</span>
+                          ) : (
+                            <span className="badge badge-emerald" style={{ fontSize: '10px', fontWeight: 800 }}>CASH</span>
+                          )}
+                          <span className="mono" style={{
+                            fontWeight: 800,
+                            color: it.isCredit ? '#b45309' : '#e11d48',
+                            fontSize: '12.5px'
+                          }}>
+                            {currency}{it.amt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </span>
                         </div>
                       </div>
@@ -5250,23 +5619,23 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
               <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '12px 14px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
                   <span style={{ color: '#475569' }}>Opening Balance:</span>
-                  <span className="mono">{currency}{parseFloat(viewingRecord.opening_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="mono">{currency}{viewingVoucherData.openingBal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
                   <span style={{ color: '#475569' }}>Net Day Change:</span>
-                  <span className="mono" style={{ fontWeight: 800, color: parseFloat(viewingRecord.net_day_change) >= 0 ? '#059669' : '#e11d48' }}>
-                    {parseFloat(viewingRecord.net_day_change) >= 0 ? '+' : ''}{currency}{parseFloat(viewingRecord.net_day_change || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  <span className="mono" style={{ fontWeight: 800, color: viewingVoucherData.netChange >= 0 ? '#059669' : '#e11d48' }}>
+                    {viewingVoucherData.netChange >= 0 ? '+' : ''}{currency}{viewingVoucherData.netChange.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14.5px', fontWeight: 900, borderTop: '1px solid #bae6fd', paddingTop: '8px', marginTop: '6px' }}>
                   <span style={{ color: '#0369a1' }}>Closing Balance in Firm:</span>
-                  <span className="mono" style={{ color: '#0284c7', fontSize: '17px' }}>{currency}{parseFloat(viewingRecord.closing_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  <span className="mono" style={{ color: '#0284c7', fontSize: '17px' }}>{currency}{viewingVoucherData.closingBal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
               </div>
 
               {/* Remarks */}
               {viewingRecord.notes && (
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', background: 'var(--bg-main)', padding: '8px 12px', borderRadius: '6px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', background: 'var(--bg-main)', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
                   <strong>Notes:</strong> {viewingRecord.notes}
                 </div>
               )}
@@ -5368,7 +5737,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                 <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
                   🏢 Supplier / Wholesaler Name *
                 </label>
-                {suppliers.length > 0 && (
+                {effectiveSuppliers.length > 0 && (
                   <select
                     value={billFormData.supplier}
                     onChange={(e) => {
@@ -5377,11 +5746,11 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                         setBillFormData(prev => ({ ...prev, supplier: '', supplier_name: '', supplier_phone: '', supplier_gstin: '' }));
                         return;
                       }
-                      const supp = suppliers.find(s => s.id.toString() === suppId.toString());
+                      const supp = effectiveSuppliers.find(s => s.id?.toString() === suppId.toString() || s.name === suppId);
                       if (supp) {
                         setBillFormData(prev => ({
                           ...prev,
-                          supplier: supp.id,
+                          supplier: typeof supp.id === 'number' ? supp.id : '',
                           supplier_name: supp.name,
                           supplier_phone: supp.phone || '',
                           supplier_gstin: supp.gstin || ''
@@ -5401,8 +5770,8 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                     }}
                   >
                     <option value="">-- Choose from Registered Suppliers --</option>
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.id}>{s.name} {s.phone ? `(${s.phone})` : ''}</option>
+                    {effectiveSuppliers.map(s => (
+                      <option key={s.id || s.name} value={s.id || s.name}>{s.name} {s.phone ? `(${s.phone})` : ''}</option>
                     ))}
                   </select>
                 )}

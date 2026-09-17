@@ -242,6 +242,7 @@ class DailySoldReportView(APIView):
     Daily Inventory Dispensing & Supplier Reorder Report.
     Aggregates all medicines sold on a specific date (or date range), with
     quantities sold, live remaining stock, stock status, and suggested reorder quantities.
+    Matches the exact net revenue of Daily Accounts (apportioning invoice discounts).
     """
     def get(self, request):
         date_str = request.query_params.get('date')
@@ -269,23 +270,25 @@ class DailySoldReportView(APIView):
         start_dt = timezone.make_aware(datetime.combine(start_d, datetime.min.time()))
         end_dt = timezone.make_aware(datetime.combine(end_d, datetime.max.time()))
 
-        # Query all items sold in valid (non-cancelled) invoices for this period
-        sold_items = InvoiceItem.objects.filter(
-            invoice__created_at__range=(start_dt, end_dt)
-        ).exclude(
-            invoice__payment_status__in=['CANCELLED', 'REFUNDED']
-        ).select_related(
-            'medicine',
-            'medicine__category',
-            'batch',
-            'batch__supplier',
-            'invoice'
-        ).order_by('medicine__name')
-
-        if supplier_id:
-            sold_items = sold_items.filter(batch__supplier_id=supplier_id)
-        if category_id:
-            sold_items = sold_items.filter(medicine__category_id=category_id)
+        # Query all valid (non-cancelled) invoices for this period
+        if start_d == end_d:
+            invoices = Invoice.objects.filter(
+                Q(created_at__range=(start_dt, end_dt)) | Q(created_at__date=start_d)
+            ).exclude(payment_status__in=['CANCELLED', 'REFUNDED']).prefetch_related(
+                'items__medicine',
+                'items__medicine__category',
+                'items__batch',
+                'items__batch__supplier'
+            )
+        else:
+            invoices = Invoice.objects.filter(
+                created_at__range=(start_dt, end_dt)
+            ).exclude(payment_status__in=['CANCELLED', 'REFUNDED']).prefetch_related(
+                'items__medicine',
+                'items__medicine__category',
+                'items__batch',
+                'items__batch__supplier'
+            )
 
         # Aggregate data by medicine
         medicine_map = {}
@@ -295,76 +298,95 @@ class DailySoldReportView(APIView):
         total_loose_sold = 0
         distinct_invoice_ids = set()
 
-        for item in sold_items:
-            med = item.medicine
-            if not med:
+        for inv in invoices:
+            inv_items = list(inv.items.all())
+            if not inv_items:
                 continue
 
-            if search:
-                m_name = (med.name or '').lower()
-                g_name = (med.generic_name or '').lower()
-                mfg = (med.manufacturer or '').lower()
-                if search not in m_name and search not in g_name and search not in mfg:
+            inv_items_sum = sum(it.total_amount for it in inv_items)
+
+            for item in inv_items:
+                med = item.medicine
+                if not med:
                     continue
 
-            distinct_invoice_ids.add(item.invoice_id)
-            total_sales_value += item.total_amount
+                if supplier_id and str(item.batch.supplier_id if item.batch else '') != str(supplier_id):
+                    continue
+                if category_id and str(med.category_id or '') != str(category_id):
+                    continue
 
-            batch = item.batch
-            if item.is_loose:
-                cost = (batch.purchase_price / Decimal(batch.pack_size or 10)) * Decimal(item.quantity)
-                total_loose_sold += item.quantity
-            else:
-                cost = batch.purchase_price * Decimal(item.quantity)
-                total_packs_sold += item.quantity
+                if search:
+                    m_name = (med.name or '').lower()
+                    g_name = (med.generic_name or '').lower()
+                    mfg = (med.manufacturer or '').lower()
+                    if search not in m_name and search not in g_name and search not in mfg:
+                        continue
 
-            total_cost_value += cost
+                distinct_invoice_ids.add(inv.id)
 
-            if med.id not in medicine_map:
-                # Calculate current active stock across unexpired batches
-                active_batches = med.batches.filter(expiry_date__gt=date.today())
-                current_packs = sum(b.pack_quantity for b in active_batches if b.pack_quantity > 0)
-                current_loose = sum(b.loose_quantity for b in active_batches if b.loose_quantity > 0)
+                # Apportion invoice grand_total across items proportionally
+                if inv_items_sum > Decimal('0.00'):
+                    effective_item_amount = (item.total_amount / inv_items_sum) * inv.grand_total
+                else:
+                    effective_item_amount = item.total_amount
 
-                primary_supplier = None
-                if batch and batch.supplier:
-                    primary_supplier = batch.supplier.name
-                elif med.batches.filter(supplier__isnull=False).exists():
-                    primary_supplier = med.batches.filter(supplier__isnull=False).first().supplier.name
+                total_sales_value += effective_item_amount
 
-                medicine_map[med.id] = {
-                    "medicine_id": med.id,
-                    "name": med.name,
-                    "generic_name": med.generic_name or "Standard Composition",
-                    "dosage_form": med.dosage_form or "Tablet",
-                    "strength": med.strength or "",
-                    "category_name": med.category.name if med.category else "General",
-                    "manufacturer": med.manufacturer or "Pharma Co",
-                    "rack_location": med.rack_location or "Main Shelf",
-                    "hsn_code": med.hsn_code or "3004",
-                    "min_stock_alert": med.min_stock_alert or 10,
-                    "current_stock_packs": current_packs,
-                    "current_stock_loose": current_loose,
-                    "packs_sold": 0,
-                    "loose_sold": 0,
-                    "total_sales_amount": Decimal('0.00'),
-                    "total_cost_amount": Decimal('0.00'),
-                    "unit_mrp": float(item.unit_mrp),
-                    "selling_price": float(item.unit_selling_price),
-                    "batches_dispensed": set(),
-                    "primary_supplier": primary_supplier or "Standard Distributor",
-                }
+                batch = item.batch
+                if item.is_loose:
+                    cost = (batch.purchase_price / Decimal(batch.pack_size or 10)) * Decimal(item.quantity) if batch else Decimal('0.00')
+                    total_loose_sold += item.quantity
+                else:
+                    cost = batch.purchase_price * Decimal(item.quantity) if batch else Decimal('0.00')
+                    total_packs_sold += item.quantity
 
-            entry = medicine_map[med.id]
-            if item.is_loose:
-                entry["loose_sold"] += item.quantity
-            else:
-                entry["packs_sold"] += item.quantity
+                total_cost_value += cost
 
-            entry["total_sales_amount"] += item.total_amount
-            entry["total_cost_amount"] += cost
-            if batch:
-                entry["batches_dispensed"].add(f"{batch.batch_number} (Exp: {batch.expiry_date})")
+                if med.id not in medicine_map:
+                    # Calculate current active stock across unexpired batches
+                    active_batches = med.batches.filter(expiry_date__gt=date.today())
+                    current_packs = sum(b.pack_quantity for b in active_batches if b.pack_quantity > 0)
+                    current_loose = sum(b.loose_quantity for b in active_batches if b.loose_quantity > 0)
+
+                    primary_supplier = None
+                    if batch and batch.supplier:
+                        primary_supplier = batch.supplier.name
+                    elif med.batches.filter(supplier__isnull=False).exists():
+                        primary_supplier = med.batches.filter(supplier__isnull=False).first().supplier.name
+
+                    medicine_map[med.id] = {
+                        "medicine_id": med.id,
+                        "name": med.name,
+                        "generic_name": med.generic_name or "Standard Composition",
+                        "dosage_form": med.dosage_form or "Tablet",
+                        "strength": med.strength or "",
+                        "category_name": med.category.name if med.category else "General",
+                        "manufacturer": med.manufacturer or "Pharma Co",
+                        "rack_location": med.rack_location or "Main Shelf",
+                        "hsn_code": med.hsn_code or "3004",
+                        "min_stock_alert": med.min_stock_alert or 10,
+                        "current_stock_packs": current_packs,
+                        "current_stock_loose": current_loose,
+                        "packs_sold": 0,
+                        "loose_sold": 0,
+                        "total_sales_amount": Decimal('0.00'),
+                        "total_cost_amount": Decimal('0.00'),
+                        "unit_mrp": float(item.unit_mrp),
+                        "selling_price": float(item.unit_selling_price),
+                        "batches_dispensed": set(),
+                        "primary_supplier": primary_supplier or "Standard Distributor",
+                    }
+
+                entry = medicine_map[med.id]
+                if item.is_loose:
+                    entry["loose_sold"] += item.quantity
+                else:
+                    entry["packs_sold"] += item.quantity
+
+                entry["total_sales_amount"] += effective_item_amount
+                entry["total_cost_amount"] += cost
+                if batch:
+                    entry["batches_dispensed"].add(f"{batch.batch_number} (Exp: {batch.expiry_date})")
 
         # Format items list with stock status & suggested reorders
         items_list = []

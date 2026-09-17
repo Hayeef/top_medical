@@ -111,10 +111,20 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         payment_method = self.request.query_params.get('payment_method')
         staff_code = self.request.query_params.get('staff_code')
 
-        if start_date:
-            qs = qs.filter(created_at__date__gte=start_date)
-        if end_date:
-            qs = qs.filter(created_at__date__lte=end_date)
+        if start_date and end_date and start_date == end_date:
+            try:
+                target_d = datetime.strptime(start_date, '%Y-%m-%d').date()
+                day_start = timezone.make_aware(datetime.combine(target_d, time.min))
+                day_end = timezone.make_aware(datetime.combine(target_d, time.max))
+                qs = qs.filter(Q(created_at__range=[day_start, day_end]) | Q(created_at__date=target_d))
+            except Exception:
+                qs = qs.filter(created_at__date=start_date)
+        else:
+            if start_date:
+                qs = qs.filter(created_at__date__gte=start_date)
+            if end_date:
+                qs = qs.filter(created_at__date__lte=end_date)
+
         if status_param:
             qs = qs.filter(payment_status=status_param)
         if payment_method:
@@ -633,12 +643,18 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
         end_dt = timezone.make_aware(datetime.combine(target_date, datetime.max.time()))
 
         invoices = Invoice.objects.filter(
-            created_at__range=(start_dt, end_dt)
+            Q(created_at__range=(start_dt, end_dt)) | Q(created_at__date=target_date)
         ).exclude(payment_status__in=['CANCELLED', 'REFUNDED'])
 
         pos_sales = invoices.aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
-        pos_cash = invoices.aggregate(total=Sum('cash_amount'))['total'] or Decimal('0.00')
-        pos_upi = invoices.aggregate(total=Sum('upi_amount'))['total'] or Decimal('0.00')
+        pos_cash = (
+            (invoices.filter(cash_amount__gt=0).aggregate(t=Sum('cash_amount'))['t'] or Decimal('0.00')) +
+            (invoices.filter(cash_amount=0, payment_method='CASH').aggregate(t=Sum('grand_total'))['t'] or Decimal('0.00'))
+        )
+        pos_upi = (
+            (invoices.filter(upi_amount__gt=0).aggregate(t=Sum('upi_amount'))['t'] or Decimal('0.00')) +
+            (invoices.filter(upi_amount=0, payment_method__in=['UPI', 'GPAY', 'PHONEPE', 'PAYTM', 'ONLINE', 'QR']).aggregate(t=Sum('grand_total'))['t'] or Decimal('0.00'))
+        )
         invoices_count = invoices.count()
 
         # Find previous daily record before this date to carry forward closing balance
@@ -674,10 +690,21 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
         today_d = date.today()
         today_record = DailyFinanceRecord.objects.filter(date=today_d).first()
         
-        pos_invoices_today = Invoice.objects.filter(invoice_date__date=today_d)
+        start_today = timezone.make_aware(datetime.combine(today_d, datetime.min.time()))
+        end_today = timezone.make_aware(datetime.combine(today_d, datetime.max.time()))
+        pos_invoices_today = Invoice.objects.filter(
+            Q(created_at__range=(start_today, end_today)) | Q(created_at__date=today_d)
+        ).exclude(payment_status__in=['CANCELLED', 'REFUNDED'])
+
         pos_sales_today = pos_invoices_today.aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
-        pos_cash_today = pos_invoices_today.filter(payment_mode='CASH').aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
-        pos_upi_today = pos_invoices_today.filter(payment_mode='UPI').aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
+        pos_cash_today = (
+            (pos_invoices_today.filter(cash_amount__gt=0).aggregate(t=Sum('cash_amount'))['t'] or Decimal('0.00')) +
+            (pos_invoices_today.filter(cash_amount=0, payment_method='CASH').aggregate(t=Sum('grand_total'))['t'] or Decimal('0.00'))
+        )
+        pos_upi_today = (
+            (pos_invoices_today.filter(upi_amount__gt=0).aggregate(t=Sum('upi_amount'))['t'] or Decimal('0.00')) +
+            (pos_invoices_today.filter(upi_amount=0, payment_method__in=['UPI', 'GPAY', 'PHONEPE', 'PAYTM', 'ONLINE', 'QR']).aggregate(t=Sum('grand_total'))['t'] or Decimal('0.00'))
+        )
         
         # All time sums
         all_time_totals = all_records.aggregate(
@@ -740,9 +767,6 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
                 "month_name": today_d.strftime('%B %Y'),
                 "sales": round(float(month_totals['month_sales'] or 0.0), 2),
                 "cash_earned": round(float(month_totals['month_cash'] or 0.0), 2),
-                "upi_earned": round(float(month_totals['month_upi'] or 0.0), 2),
-                "total_earned": round(float(month_earned), 2),
-                "total_paid": round(float(month_paid), 2),
                 "supplier_paid": round(float(month_totals['month_supplier'] or 0.0), 2),
                 "staff_paid": round(float(month_totals['month_staff'] or 0.0), 2),
                 "vehicle_paid": round(float(month_totals['month_vehicle'] or 0.0), 2),
@@ -751,6 +775,7 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
                 "days_count": month_records.count(),
             },
             "all_time": {
+                "sales": round(float(all_time_totals['total_sales'] or 0.0), 2),
                 "total_sales": round(float(all_time_totals['total_sales'] or 0.0), 2),
                 "cash_earned": round(float(all_time_totals['total_cash'] or 0.0), 2),
                 "upi_earned": round(float(all_time_totals['total_upi'] or 0.0), 2),
@@ -760,6 +785,7 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
                 "staff_paid": round(float(all_time_totals['total_staff'] or 0.0), 2),
                 "vehicle_paid": round(float(all_time_totals['total_vehicle'] or 0.0), 2),
                 "expenses": round(float(all_time_totals['total_expenses'] or 0.0), 2),
+                "other_outflow": round(float(all_time_totals['total_other_outflow'] or 0.0), 2),
                 "total_days_recorded": all_records.count(),
             }
         })

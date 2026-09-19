@@ -112,6 +112,9 @@ export const inventoryAPI = {
     return await res.json();
   },
 
+  // Daily Updated Inventory Stock
+  getDailyUpdated: (params = '') => request(`/inventory/batches/daily_updated/${params ? `?${params}` : ''}`),
+
   // Stock Movements / Logs
   getStockMovements: () => request('/inventory/stock-movements/'),
 };

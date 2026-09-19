@@ -29,11 +29,13 @@ import {
   Check,
   X,
   PlusCircle,
-  Tag
+  Tag,
+  Calendar
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { inventoryAPI } from '../api';
 import QuickBillDiscountLookupModal from '../components/QuickBillDiscountLookupModal';
+import DailyUpdatedInventoryModal from '../components/DailyUpdatedInventoryModal';
 
 export default function InventoryPage({ 
   medicines = [], 
@@ -65,6 +67,7 @@ export default function InventoryPage({
   // Quick Add Tablet Inline Form State
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isQuickBillDiscountOpen, setIsQuickBillDiscountOpen] = useState(false);
+  const [isDailyUpdatedOpen, setIsDailyUpdatedOpen] = useState(false);
   const [quickAddSubmitting, setQuickAddSubmitting] = useState(false);
   const [quickAddForm, setQuickAddForm] = useState({
     name: '',
@@ -243,6 +246,10 @@ export default function InventoryPage({
         matchesStatus = exp > todayStr && exp <= thresholdStr && qty > 0;
       } else if (statusFilter === 'expired') {
         matchesStatus = exp <= todayStr && qty > 0;
+      } else if (statusFilter === 'updated_today') {
+        const bUpdated = b.updated_at ? String(b.updated_at).split('T')[0] : '';
+        const bCreated = b.created_at ? String(b.created_at).split('T')[0] : '';
+        matchesStatus = bUpdated === todayStr || bCreated === todayStr;
       }
 
       return matchesSearch && matchesCat && matchesSupp && matchesRx && matchesStatus;
@@ -804,6 +811,14 @@ export default function InventoryPage({
             Expired Batches
           </button>
 
+          <button
+            onClick={() => setStatusFilter('updated_today')}
+            className={`badge ${statusFilter === 'updated_today' ? 'badge-cyan' : 'badge-secondary'}`}
+            style={{ cursor: 'pointer', padding: '5px 12px', fontSize: '11.5px', border: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
+          >
+            <Sparkles size={12} /> Updated Today
+          </button>
+
           {(searchInput || activeSearch || selectedCategory || selectedSupplier || statusFilter !== 'all' || filterRx) && (
             <button
               onClick={() => {
@@ -857,6 +872,16 @@ export default function InventoryPage({
           <button onClick={onOpenExcelUpload} className="btn btn-secondary btn-sm">
             <FileSpreadsheet size={14} color="#059669" />
             <span>Excel Import</span>
+          </button>
+
+          <button 
+            onClick={() => setIsDailyUpdatedOpen(true)} 
+            className="btn btn-secondary btn-sm"
+            style={{ borderColor: '#0284c7', color: '#0369a1', background: '#f0f9ff', fontWeight: 700 }}
+            title="View all inventory updated for any day"
+          >
+            <Calendar size={14} color="#0284c7" />
+            <span>Daily Updated Stock</span>
           </button>
 
           <button onClick={() => onOpenAddBatch(null)} className="btn btn-secondary btn-sm">
@@ -2415,6 +2440,17 @@ export default function InventoryPage({
         profile={profile}
         onReload={onReloadInventory}
       />
+
+      {/* Daily Updated Inventory Modal */}
+      {isDailyUpdatedOpen && (
+        <DailyUpdatedInventoryModal
+          isOpen={isDailyUpdatedOpen}
+          onClose={() => setIsDailyUpdatedOpen(false)}
+          suppliers={safeSuppliers}
+          profile={profile}
+          user={user}
+        />
+      )}
     </div>
   );
 }

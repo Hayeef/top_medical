@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  FileText, 
-  Search, 
-  Printer, 
-  XCircle, 
-  Eye, 
-  ChevronDown, 
-  ChevronUp, 
+import {
+  FileText,
+  Search,
+  Printer,
+  XCircle,
+  Eye,
+  ChevronDown,
+  ChevronUp,
   Package,
   Calendar,
   DollarSign,
@@ -52,7 +52,7 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
-    } catch {}
+    } catch { }
     return [
       { id: 1, charge_code: 'TP01', name: 'RSH', role: 'Senior Pharmacist' },
       { id: 2, charge_code: 'TP02', name: 'TAS', role: 'Pharmacist / Cashier' },
@@ -101,10 +101,10 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
   };
 
   const isAdmin = Boolean(
-    user?.is_superuser || 
-    user?.role === 'admin' || 
-    user?.role === 'Owner' || 
-    (typeof user?.email === 'string' && (user.email.toLowerCase().includes('admin') || user.email.toLowerCase().includes('owner'))) || 
+    user?.is_superuser ||
+    user?.role === 'admin' ||
+    user?.role === 'Owner' ||
+    (typeof user?.email === 'string' && (user.email.toLowerCase().includes('admin') || user.email.toLowerCase().includes('owner'))) ||
     (typeof user?.username === 'string' && (user.username.toLowerCase().includes('admin') || user.username.toLowerCase().includes('owner')))
   );
 
@@ -141,8 +141,11 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
   };
 
   useEffect(() => {
-    loadInvoicesAndStaff();
-  }, [staffFilter, statusFilter, paymentFilter, startDate, endDate]);
+    const timer = setTimeout(() => {
+      loadInvoicesAndStaff();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, staffFilter, statusFilter, paymentFilter, startDate, endDate]);
 
   // Reset page to 1 whenever filters change
   useEffect(() => {
@@ -209,11 +212,11 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
 
   return (
     <div className="main-page-wrapper">
-      
+
       {/* 1. Daily Account & Drawer Settlement Summary Cards (Admin Only) */}
       {isAdmin && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-          
+
           {/* Cash in Counter Drawer */}
           <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #10b981', background: '#f0fdf4' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -301,7 +304,7 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
             const stats = staffSalesSummary[stf.charge_code] || { count: 0, revenue: 0, cash: 0, upi: 0 };
             const isSelected = staffFilter === stf.charge_code;
             return (
-              <div 
+              <div
                 key={stf.charge_code}
                 onClick={() => setStaffFilter(isSelected ? '' : stf.charge_code)}
                 className="glass-panel glass-card-interactive"
@@ -341,7 +344,7 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
 
       {/* Search & Filter Bar */}
       <div className="glass-panel" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        
+
         {/* Quick Date Range Preset Pills */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
           <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginRight: '4px' }}>
@@ -391,7 +394,7 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
             onClick={() => {
               const d7 = new Date();
               d7.setDate(d7.getDate() - 7);
-              const start = `${d7.getFullYear()}-${String(d7.getMonth()+1).padStart(2,'0')}-${String(d7.getDate()).padStart(2,'0')}`;
+              const start = `${d7.getFullYear()}-${String(d7.getMonth() + 1).padStart(2, '0')}-${String(d7.getDate()).padStart(2, '0')}`;
               const end = getTodayStr();
               setDateFilterPreset('week');
               setStartDate(start);
@@ -411,7 +414,7 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
             type="button"
             onClick={() => {
               const now = new Date();
-              const start = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+              const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
               const end = getTodayStr();
               setDateFilterPreset('month');
               setStartDate(start);
@@ -453,7 +456,7 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
               type="text"
               className="input-field"
               style={{ paddingLeft: '36px', height: '38px', fontSize: '13px', background: '#f8fafc', borderColor: '#cbd5e1' }}
-              placeholder="Search Bill #, Patient, Phone, Doctor..."
+              placeholder="Search Bill #, Patient, Phone, Doctor, Amount..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && loadInvoicesAndStaff()}

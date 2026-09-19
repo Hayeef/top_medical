@@ -252,7 +252,7 @@ export default function QuickBillDiscountLookupModal({
                   type="text"
                   className="input-field"
                   style={{ height: '32px', fontSize: '11.5px', paddingLeft: '30px' }}
-                  placeholder="Search Bill # or Patient..."
+                  placeholder="Search Bill #, Patient, or Amount..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />

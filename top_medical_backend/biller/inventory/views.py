@@ -333,11 +333,18 @@ class MedicineViewSet(viewsets.ModelViewSet):
         Intelligently increases stock count if the medicine/tablet already exists,
         or creates a new medicine record if it does not exist.
         """
+        default_distributor = (
+            request.data.get('default_distributor') or 
+            request.data.get('supplier_name') or 
+            request.data.get('distributor') or 
+            ''
+        ).strip()
+
         # 1. Direct JSON items payload
         items_payload = request.data.get('items') if isinstance(request.data, dict) else None
         if items_payload and isinstance(items_payload, list) and len(items_payload) > 0:
             normalized_items = [self._normalize_excel_row(it) if isinstance(it, dict) else it for it in items_payload]
-            return self._process_bulk_items(normalized_items, source_name="Spreadsheet Table Preview")
+            return self._process_bulk_items(normalized_items, default_distributor=default_distributor, source_name="Spreadsheet Table Preview")
 
         # 2. File upload via FormData
         uploaded_file = request.FILES.get('excel_file') or request.FILES.get('file')
@@ -358,7 +365,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
                 headers = []
                 all_rows = list(sheet.iter_rows(values_only=True))
                 
-                header_keywords = {'medicine', 'name', 'item', 'drug', 'particulars', 'product', 'batch', 'exp', 'qty', 'rate', 'mrp', 'pack', 'cost'}
+                header_keywords = {'medicine', 'name', 'item', 'drug', 'particulars', 'product', 'batch', 'exp', 'qty', 'rate', 'mrp', 'pack', 'cost', 'distributor', 'supplier', 'vendor'}
                 for idx, row in enumerate(all_rows[:15]):
                     if not any(row):
                         continue
@@ -391,7 +398,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
                 
                 # Auto detect header row
                 header_idx = 0
-                header_keywords = {'medicine', 'name', 'item', 'drug', 'particulars', 'product', 'batch', 'exp', 'qty', 'rate', 'mrp', 'pack', 'cost'}
+                header_keywords = {'medicine', 'name', 'item', 'drug', 'particulars', 'product', 'batch', 'exp', 'qty', 'rate', 'mrp', 'pack', 'cost', 'distributor', 'supplier', 'vendor'}
                 for i, line in enumerate(lines[:15]):
                     line_lower = line.lower()
                     if sum(1 for kw in header_keywords if kw in line_lower) >= 2:
@@ -411,7 +418,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
         if not items_to_process:
             return Response({"error": "No valid medicine rows found in the uploaded file. Please verify column headers."}, status=status.HTTP_400_BAD_REQUEST)
 
-        return self._process_bulk_items(items_to_process, source_name=uploaded_file.name)
+        return self._process_bulk_items(items_to_process, default_distributor=default_distributor, source_name=uploaded_file.name)
 
     def _parse_flexible_date(self, val):
         default_date = (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
@@ -491,6 +498,12 @@ class MedicineViewSet(viewsets.ModelViewSet):
             'category_name', 'category', 'dept', 'department', 'group', 'class', default='General'
         )).strip()
 
+        distributor = str(get_val(
+            'distributor_name', 'distributor', 'distributor/supplier', 'supplier_name', 'supplier',
+            'vendor_name', 'vendor', 'dealer', 'agency', 'distributer', 'party', 'party_name',
+            'wholesaler', 'source', 'party_ac_name', default=''
+        )).strip()
+
         form = str(get_val(
             'dosage_form', 'dosage', 'form', 'type', default=''
         )).strip()
@@ -554,6 +567,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
             "medicine_name": name,
             "generic_name": generic,
             "category": category or 'General',
+            "distributor": distributor,
             "dosage_form": form or 'Tablet',
             "manufacturer": mfg or 'Standard Pharma',
             "hsn_code": hsn or '3004',
@@ -569,11 +583,8 @@ class MedicineViewSet(viewsets.ModelViewSet):
             "requires_prescription": rx_val
         }
 
-    def _process_bulk_items(self, items, source_name="Excel Upload"):
-        supplier, _ = Supplier.objects.get_or_create(
-            name="Excel Bulk Inward",
-            defaults={"contact_person": "Bulk Inventory Import", "phone": "+91 98000 00000"}
-        )
+    def _process_bulk_items(self, items, default_distributor='', source_name="Excel Upload"):
+        supplier_cache = {}
 
         inwarded_count = 0
         new_medicines_count = 0
@@ -585,6 +596,27 @@ class MedicineViewSet(viewsets.ModelViewSet):
             med_name = item.get('medicine_name', '').strip()
             if not med_name:
                 continue
+
+            # Distributor / Supplier resolution
+            dist_name = (
+                item.get('distributor') or 
+                item.get('distributor_name') or 
+                item.get('supplier_name') or 
+                item.get('supplier') or 
+                default_distributor or 
+                'Excel Bulk Inward'
+            ).strip()
+
+            if not dist_name:
+                dist_name = 'Excel Bulk Inward'
+
+            if dist_name not in supplier_cache:
+                supp_obj, _ = Supplier.objects.get_or_create(
+                    name=dist_name,
+                    defaults={"contact_person": "Bulk Inventory Import", "phone": "+91 98000 00000"}
+                )
+                supplier_cache[dist_name] = supp_obj
+            supplier = supplier_cache[dist_name]
 
             dosage_form = item.get('dosage_form', 'Tablet')
             barcode = item.get('barcode')
@@ -633,7 +665,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
                 batch = Batch.objects.filter(medicine=medicine, expiry_date__gte=date.today()).order_by('-id').first()
 
             if batch:
-                # Tablet already exists: ONLY increase the count (and sync latest inward pricing)
+                # Tablet already exists: ONLY increase the count (and sync latest inward pricing & supplier)
                 batch.pack_quantity += pack_qty
                 batch.purchase_price = purchase_pr
                 batch.mrp = mrp_pr
@@ -662,7 +694,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
                 quantity_packs=pack_qty,
                 quantity_loose=0,
                 reference_id=f"EXCEL-{date.today().strftime('%Y%m%d')}",
-                notes=f"Bulk Excel Inward from {source_name}"
+                notes=f"Bulk Excel Inward from {supplier.name} ({source_name})"
             )
 
             total_inward_value += (purchase_pr * Decimal(pack_qty))
@@ -949,6 +981,8 @@ class BatchViewSet(viewsets.ModelViewSet):
             qs = qs.filter(expiry_date__gt=today, expiry_date__lte=expiring_threshold, pack_quantity__gt=0)
         elif status_filter == 'expired':
             qs = qs.filter(expiry_date__lte=today, pack_quantity__gt=0)
+        elif status_filter == 'updated_today':
+            qs = qs.filter(Q(updated_at__date=today) | Q(created_at__date=today) | Q(movements__created_at__date=today)).distinct()
 
         total_matching_count = qs.count()
         batches = list(qs[:limit])
@@ -975,6 +1009,128 @@ class BatchViewSet(viewsets.ModelViewSet):
                 "margin_pct": margin_pct,
             },
             "results": serializer.data
+        })
+
+    @action(detail=False, methods=['get'])
+    def daily_updated(self, request):
+        """
+        Returns all inventory items/batches updated, inwarded, or adjusted on a given date (default: today).
+        Includes full summary metrics, inward values, active distributor breakdown, and stock movements.
+        """
+        date_str = request.query_params.get('date', '').strip()
+        if not date_str:
+            target_date = date.today()
+        else:
+            try:
+                target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                target_date = date.today()
+
+        supplier_id = request.query_params.get('supplier')
+        search = request.query_params.get('search', '').strip()
+        movement_filter = request.query_params.get('movement_type', '').strip()
+
+        # Find batches with movements or timestamps on target date
+        movements_qs = StockMovement.objects.filter(created_at__date=target_date)
+        if movement_filter:
+            movements_qs = movements_qs.filter(movement_type=movement_filter)
+        
+        batch_ids_with_movements = list(movements_qs.values_list('batch_id', flat=True))
+
+        batches_qs = Batch.objects.filter(
+            Q(updated_at__date=target_date) |
+            Q(created_at__date=target_date) |
+            Q(id__in=batch_ids_with_movements)
+        ).select_related('medicine__category', 'supplier').prefetch_related('movements').distinct()
+
+        if supplier_id:
+            batches_qs = batches_qs.filter(supplier_id=supplier_id)
+
+        if search:
+            batches_qs = batches_qs.filter(
+                Q(medicine__name__icontains=search) |
+                Q(medicine__generic_name__icontains=search) |
+                Q(batch_number__icontains=search) |
+                Q(supplier__name__icontains=search) |
+                Q(medicine__manufacturer__icontains=search) |
+                Q(medicine__rack_location__icontains=search)
+            )
+
+        batches_list = list(batches_qs.order_by('-updated_at'))
+
+        results = []
+        total_inward_packs = 0
+        total_adjusted_packs = 0
+        total_sold_packs = 0
+        total_inward_cost = Decimal('0.00')
+        total_inward_mrp = Decimal('0.00')
+        distributors_seen = set()
+
+        for batch in batches_list:
+            day_movements = [m for m in batch.movements.all() if m.created_at.date() == target_date]
+            if movement_filter:
+                day_movements = [m for m in day_movements if m.movement_type == movement_filter]
+            
+            inward_packs_for_batch = sum(m.quantity_packs for m in day_movements if m.movement_type == 'PURCHASE')
+            adj_packs_for_batch = sum(m.quantity_packs for m in day_movements if m.movement_type == 'ADJUSTMENT')
+            sold_packs_for_batch = sum(m.quantity_packs for m in day_movements if m.movement_type == 'SALE')
+
+            total_inward_packs += inward_packs_for_batch
+            total_adjusted_packs += adj_packs_for_batch
+            total_sold_packs += sold_packs_for_batch
+
+            if inward_packs_for_batch > 0:
+                total_inward_cost += (Decimal(str(batch.purchase_price)) * Decimal(inward_packs_for_batch))
+                total_inward_mrp += (Decimal(str(batch.mrp)) * Decimal(inward_packs_for_batch))
+
+            if batch.supplier:
+                distributors_seen.add(batch.supplier.name)
+
+            movement_notes = [m.notes for m in day_movements if m.notes]
+            primary_reason = movement_notes[0] if movement_notes else ('Inwarded Stock' if inward_packs_for_batch > 0 else ('Adjusted Stock' if adj_packs_for_batch != 0 else 'Stock / Price Update'))
+
+            results.append({
+                "id": batch.id,
+                "medicine_id": batch.medicine.id if batch.medicine else None,
+                "medicine_name": batch.medicine.name if batch.medicine else "Unknown",
+                "medicine_generic": batch.medicine.generic_name if batch.medicine else "",
+                "category_name": batch.medicine.category.name if (batch.medicine and batch.medicine.category) else "General",
+                "dosage_form": batch.medicine.dosage_form if batch.medicine else "Tablet",
+                "manufacturer": batch.medicine.manufacturer if batch.medicine else "",
+                "rack_location": batch.medicine.rack_location if batch.medicine else "",
+                "batch_number": batch.batch_number,
+                "expiry_date": str(batch.expiry_date),
+                "supplier_id": batch.supplier.id if batch.supplier else None,
+                "supplier_name": batch.supplier.name if batch.supplier else "Direct / Unassigned",
+                "purchase_price": float(batch.purchase_price),
+                "mrp": float(batch.mrp),
+                "selling_price": float(batch.selling_price),
+                "pack_size": batch.pack_size,
+                "pack_quantity": batch.pack_quantity,
+                "loose_quantity": batch.loose_quantity,
+                "total_units": batch.total_units,
+                "day_inward_packs": inward_packs_for_batch,
+                "day_adj_packs": adj_packs_for_batch,
+                "day_sold_packs": sold_packs_for_batch,
+                "day_movements_count": len(day_movements),
+                "primary_reason": primary_reason,
+                "updated_at": batch.updated_at.isoformat() if batch.updated_at else None,
+                "created_at": batch.created_at.isoformat() if batch.created_at else None,
+            })
+
+        return Response({
+            "date": target_date.strftime('%Y-%m-%d'),
+            "summary": {
+                "total_batches_updated": len(results),
+                "total_inward_packs": total_inward_packs,
+                "total_adjusted_packs": total_adjusted_packs,
+                "total_sold_packs": total_sold_packs,
+                "total_inward_cost": round(float(total_inward_cost), 2),
+                "total_inward_mrp": round(float(total_inward_mrp), 2),
+                "distributors_count": len(distributors_seen),
+                "distributors_list": sorted(list(distributors_seen))
+            },
+            "results": results
         })
 
     @action(detail=False, methods=['post'])

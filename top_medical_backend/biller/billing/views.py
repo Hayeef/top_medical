@@ -1,15 +1,17 @@
+import re
 from rest_framework import viewsets, status, filters
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.http import HttpResponse
 from django.db import transaction
-from django.db.models import Sum, Count, Q, F
+from django.db.models import Sum, Count, Q, F, CharField
+from django.db.models.functions import Cast
 from django.utils import timezone
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from datetime import datetime, date, timedelta
-from decimal import Decimal
+from datetime import datetime, date, time, timedelta
+from decimal import Decimal, InvalidOperation
 from .models import PharmacyProfile, StaffMember, Doctor, Customer, Invoice, InvoiceItem, DailyFinanceRecord, VendorBill
 from .serializers import (
     PharmacyProfileSerializer, StaffMemberSerializer, DoctorSerializer, CustomerSerializer,
@@ -97,11 +99,77 @@ class CustomerViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'phone', 'email', 'address']
 
 
+def apply_invoice_search(qs, search_text):
+    """
+    Apply robust multi-field search to an Invoice queryset.
+    Matches against:
+    - Text: invoice_number, customer_name, customer_phone, doctor_name, staff_name, staff_code
+    - Payment Amounts: grand_total, amount_paid, cash_amount, upi_amount, card_amount, subtotal, discount_amount, change_due
+    Supports numeric inputs, decimal strings, and currency-prefixed strings (e.g. '₹500', '500.00', '125').
+    """
+    if not search_text:
+        return qs
+
+    term = str(search_text).strip()
+    if not term:
+        return qs
+
+    # Base text fields match
+    q = (
+        Q(invoice_number__icontains=term) |
+        Q(customer_name__icontains=term) |
+        Q(customer_phone__icontains=term) |
+        Q(doctor_name__icontains=term) |
+        Q(staff_name__icontains=term) |
+        Q(staff_code__icontains=term)
+    )
+
+    # Check for payment amount / numeric matching
+    # Strip currency symbols ('₹', 'rs.', 'rs', 'inr', '$'), commas, and leading/trailing whitespace
+    clean_numeric_str = re.sub(r'^(?:₹|rs\.?|inr|\$)\s*', '', term, flags=re.IGNORECASE).strip()
+    clean_numeric_str = clean_numeric_str.replace(',', '').strip()
+
+    if clean_numeric_str:
+        # 1. Exact Decimal amount matching
+        try:
+            val = Decimal(clean_numeric_str)
+            q |= (
+                Q(grand_total=val) |
+                Q(amount_paid=val) |
+                Q(cash_amount=val) |
+                Q(upi_amount=val) |
+                Q(card_amount=val) |
+                Q(subtotal=val) |
+                Q(discount_amount=val) |
+                Q(change_due=val)
+            )
+        except (InvalidOperation, ValueError, TypeError):
+            pass
+
+        # 2. String representation matching (handles partial numbers or formatted decimals like '12.5')
+        qs = qs.annotate(
+            gt_str=Cast('grand_total', CharField()),
+            ap_str=Cast('amount_paid', CharField()),
+            cash_str=Cast('cash_amount', CharField()),
+            upi_str=Cast('upi_amount', CharField()),
+            card_str=Cast('card_amount', CharField()),
+            sub_str=Cast('subtotal', CharField()),
+        )
+        q |= (
+            Q(gt_str__icontains=clean_numeric_str) |
+            Q(ap_str__icontains=clean_numeric_str) |
+            Q(cash_str__icontains=clean_numeric_str) |
+            Q(upi_str__icontains=clean_numeric_str) |
+            Q(card_str__icontains=clean_numeric_str) |
+            Q(sub_str__icontains=clean_numeric_str)
+        )
+
+    return qs.filter(q)
+
+
 class InvoiceViewSet(viewsets.ModelViewSet):
     queryset = Invoice.objects.all().select_related('customer', 'doctor', 'staff').prefetch_related('items')
     serializer_class = InvoiceSerializer
-    filter_backends = [filters.SearchFilter]
-    search_fields = ['invoice_number', 'customer_name', 'customer_phone', 'doctor_name', 'staff_name', 'staff_code']
 
     def get_queryset(self):
         qs = Invoice.objects.all().select_related('customer', 'doctor', 'staff').prefetch_related('items')
@@ -110,6 +178,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         status_param = self.request.query_params.get('status')
         payment_method = self.request.query_params.get('payment_method')
         staff_code = self.request.query_params.get('staff_code')
+        search = self.request.query_params.get('search') or self.request.query_params.get('q')
 
         if start_date and end_date and start_date == end_date:
             try:
@@ -131,6 +200,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             qs = qs.filter(payment_method=payment_method)
         if staff_code:
             qs = qs.filter(staff_code=staff_code)
+        if search:
+            qs = apply_invoice_search(qs, search)
 
         return qs
 
@@ -209,13 +280,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             filter_parts.append(f"Status: {status_param}")
 
         if search:
-            qs = qs.filter(
-                Q(invoice_number__icontains=search) |
-                Q(customer_name__icontains=search) |
-                Q(customer_phone__icontains=search) |
-                Q(doctor_name__icontains=search) |
-                Q(staff_name__icontains=search)
-            )
+            qs = apply_invoice_search(qs, search)
             filter_parts.append(f"Search: '{search}'")
 
         # Chronological order for audit ledger

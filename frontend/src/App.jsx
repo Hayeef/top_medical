@@ -406,6 +406,7 @@ export default function App() {
           <ExcelBulkUploadModal
             onClose={() => setIsExcelUploadOpen(false)}
             onStockInwarded={loadInitialData}
+            suppliers={suppliers}
           />
         )}
 

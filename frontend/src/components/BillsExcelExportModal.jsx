@@ -704,7 +704,7 @@ export default function BillsExcelExportModal({
                     type="text"
                     className="input-field"
                     style={{ paddingLeft: '34px', height: '38px', fontSize: '12.5px' }}
-                    placeholder="Search specific customer, phone number, doctor..."
+                    placeholder="Search specific customer, phone, doctor, payment amount..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />

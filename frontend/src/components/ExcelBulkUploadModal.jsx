@@ -10,25 +10,28 @@ import {
   Trash2, 
   Sparkles, 
   PackageCheck, 
-  RefreshCw,
-  Table,
-  Layers,
-  ArrowRight,
-  Database,
-  Check,
-  Edit3
+  RefreshCw, 
+  Table, 
+  Layers, 
+  ArrowRight, 
+  Database, 
+  Check, 
+  Edit3,
+  Building2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import * as XLSX from 'xlsx';
 import { inventoryAPI } from '../api';
 
-export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
+export default function ExcelBulkUploadModal({ onClose, onStockInwarded, suppliers = [] }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState(null);
   const [successResult, setSuccessResult] = useState(null);
   const [previewItems, setPreviewItems] = useState([]);
+  const [defaultDistributor, setDefaultDistributor] = useState('');
+  const [customDistributor, setCustomDistributor] = useState('');
 
   const fileInputRef = useRef(null);
 
@@ -107,7 +110,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
       }
 
       // Intelligent header row detection: scan first 20 rows
-      const headerKeywords = ['medicine', 'name', 'item', 'drug', 'particulars', 'product', 'batch', 'exp', 'qty', 'rate', 'mrp', 'pack', 'cost'];
+      const headerKeywords = ['medicine', 'name', 'item', 'drug', 'particulars', 'product', 'batch', 'exp', 'qty', 'rate', 'mrp', 'pack', 'cost', 'distributor', 'supplier', 'vendor'];
       let headerRowIndex = 0;
       let maxScore = 0;
 
@@ -172,6 +175,13 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
         const generic = String(getVal('generic_name', 'generic', 'composition', 'salt', 'molecule', 'formula')).trim();
         const category = String(getVal('category_name', 'category', 'dept', 'department', 'group', 'class') || 'General').trim();
         
+        const fallbackDist = customDistributor.trim() || defaultDistributor || '';
+        const distributor = String(getVal(
+          'distributor_name', 'distributor', 'distributor/supplier', 'supplier_name', 'supplier',
+          'vendor_name', 'vendor', 'dealer', 'agency', 'distributer', 'party', 'party_name',
+          'wholesaler', 'source', 'party_ac_name'
+        ) || fallbackDist).trim();
+
         let form = String(getVal('dosage_form', 'dosage', 'form', 'type')).trim();
         if (!form) {
           const uName = name.toUpperCase();
@@ -215,6 +225,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
           medicine_name: name,
           generic_name: generic,
           category,
+          distributor: distributor || 'General Wholesale',
           dosage_form: form,
           manufacturer,
           hsn_code: hsn,
@@ -252,14 +263,30 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
   };
 
   const handleDownloadTemplate = () => {
-    const headers = ['Medicine Name', 'Generic Name', 'Category', 'Dosage Form', 'Manufacturer', 'Batch Number', 'Expiry Date', 'Pack Size', 'Quantity', 'Purchase Price', 'MRP', 'Selling Price', 'GST Rate', 'Rack Location'];
+    const headers = [
+      'Medicine Name', 
+      'Generic Name', 
+      'Category', 
+      'Distributor / Supplier', 
+      'Dosage Form', 
+      'Manufacturer', 
+      'Batch Number', 
+      'Expiry Date', 
+      'Pack Size', 
+      'Quantity', 
+      'Purchase Price', 
+      'MRP', 
+      'Selling Price', 
+      'GST Rate', 
+      'Rack Location'
+    ];
     const sampleRows = [
-      ['Paracetamol 650mg Dolo', 'Paracetamol', 'Analgesics', 'Tablet', 'Micro Labs', 'B-DOLO101', '2028-10-31', 15, 50, 18.50, 34.00, 34.00, 12, 'Rack A-1'],
-      ['Augmentin 625 Duo', 'Amoxicillin + Clavulanic Acid', 'Antibiotics', 'Tablet', 'GSK', 'B-AUGM202', '2028-08-31', 10, 30, 95.00, 185.00, 185.00, 12, 'Rack B-1'],
-      ['Pan-D Capsule', 'Pantoprazole + Domperidone', 'Gastro', 'Capsule', 'Alkem Labs', 'B-PAND303', '2028-12-31', 15, 40, 65.00, 145.00, 145.00, 12, 'Rack A-3'],
-      ['Glycomet GP 1', 'Glimepiride + Metformin', 'Diabetes', 'Tablet', 'USV Ltd', 'B-GLYC404', '2028-11-30', 15, 45, 45.00, 98.00, 98.00, 12, 'Rack C-1'],
-      ['Telma-H 40', 'Telmisartan + Hydrochlorothiazide', 'Cardiac', 'Tablet', 'Glenmark', 'B-TELM505', '2028-12-31', 15, 35, 72.00, 152.00, 152.00, 12, 'Rack C-2'],
-      ['Cetirizine 10mg', 'Cetirizine HCl', 'Antiallergic', 'Tablet', 'Dr Reddys', 'B-CETR606', '2028-10-31', 10, 45, 12.00, 26.00, 26.00, 12, 'Rack A-2'],
+      ['Paracetamol 650mg Dolo', 'Paracetamol', 'Analgesics', 'Micro Healthcare Dist', 'Tablet', 'Micro Labs', 'B-DOLO101', '2028-10-31', 15, 50, 18.50, 34.00, 34.00, 12, 'Rack A-1'],
+      ['Augmentin 625 Duo', 'Amoxicillin + Clavulanic Acid', 'Antibiotics', 'GSK Wholesale Hub', 'Tablet', 'GSK', 'B-AUGM202', '2028-08-31', 10, 30, 95.00, 185.00, 185.00, 12, 'Rack B-1'],
+      ['Pan-D Capsule', 'Pantoprazole + Domperidone', 'Gastro', 'Alkem Central Agencies', 'Capsule', 'Alkem Labs', 'B-PAND303', '2028-12-31', 15, 40, 65.00, 145.00, 145.00, 12, 'Rack A-3'],
+      ['Glycomet GP 1', 'Glimepiride + Metformin', 'Diabetes', 'USV Pharma Dist', 'Tablet', 'USV Ltd', 'B-GLYC404', '2028-11-30', 15, 45, 45.00, 98.00, 98.00, 12, 'Rack C-1'],
+      ['Telma-H 40', 'Telmisartan + Hydrochlorothiazide', 'Cardiac', 'Glenmark Wholesalers', 'Tablet', 'Glenmark', 'B-TELM505', '2028-12-31', 15, 35, 72.00, 152.00, 152.00, 12, 'Rack C-2'],
+      ['Cetirizine 10mg', 'Cetirizine HCl', 'Antiallergic', 'Reddy Meds Supply', 'Tablet', 'Dr Reddys', 'B-CETR606', '2028-10-31', 10, 45, 12.00, 26.00, 26.00, 12, 'Rack A-2'],
     ];
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
@@ -269,11 +296,13 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
   };
 
   const loadSampleDemoRows = () => {
+    const demoDist = customDistributor.trim() || defaultDistributor || 'Apollo Pharma Wholesale';
     const demoRows = [
       {
         medicine_name: 'Paracetamol 650mg Dolo',
         generic_name: 'Paracetamol',
         category: 'Analgesics',
+        distributor: 'Micro Healthcare Dist',
         dosage_form: 'Tablet',
         manufacturer: 'Micro Labs',
         batch_number: `B-DOLO${Date.now().toString().slice(-4)}`,
@@ -290,6 +319,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
         medicine_name: 'Augmentin 625 Duo',
         generic_name: 'Amoxicillin + Clavulanic Acid',
         category: 'Antibiotics',
+        distributor: 'GSK Wholesale Hub',
         dosage_form: 'Tablet',
         manufacturer: 'GSK',
         batch_number: `B-AUGM${Date.now().toString().slice(-4)}`,
@@ -306,6 +336,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
         medicine_name: 'Pan-D Capsule',
         generic_name: 'Pantoprazole + Domperidone',
         category: 'Gastro',
+        distributor: demoDist,
         dosage_form: 'Capsule',
         manufacturer: 'Alkem Labs',
         batch_number: `B-PAND${Date.now().toString().slice(-4)}`,
@@ -322,6 +353,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
         medicine_name: 'Glycomet GP 1',
         generic_name: 'Glimepiride + Metformin',
         category: 'Diabetes',
+        distributor: 'USV Pharma Dist',
         dosage_form: 'Tablet',
         manufacturer: 'USV Ltd',
         batch_number: `B-GLYC${Date.now().toString().slice(-4)}`,
@@ -338,6 +370,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
         medicine_name: 'Telma-H 40',
         generic_name: 'Telmisartan + Hydrochlorothiazide',
         category: 'Cardiac',
+        distributor: demoDist,
         dosage_form: 'Tablet',
         manufacturer: 'Glenmark',
         batch_number: `B-TELM${Date.now().toString().slice(-4)}`,
@@ -365,8 +398,22 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
     });
   };
 
+  const handleUpdateItemDistributor = (idx, distName) => {
+    setPreviewItems(prev => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], distributor: distName };
+      return copy;
+    });
+  };
+
   const handleRemoveItem = (idx) => {
     setPreviewItems(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleApplyDefaultDistributorToAll = () => {
+    const targetDist = customDistributor.trim() || defaultDistributor;
+    if (!targetDist) return;
+    setPreviewItems(prev => prev.map(it => ({ ...it, distributor: targetDist })));
   };
 
   const handleUploadSubmit = async () => {
@@ -378,14 +425,22 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
     setIsUploading(true);
     setError(null);
 
+    const activeDefaultDist = customDistributor.trim() || defaultDistributor || '';
+
     try {
       let result;
       if (previewItems.length > 0) {
-        // Send structured normalized items
-        result = await inventoryAPI.uploadExcel({ items: previewItems });
+        // Send structured normalized items with distributor info
+        result = await inventoryAPI.uploadExcel({ 
+          items: previewItems,
+          default_distributor: activeDefaultDist
+        });
       } else if (selectedFile && selectedFile instanceof File) {
         const formData = new FormData();
         formData.append('excel_file', selectedFile);
+        if (activeDefaultDist) {
+          formData.append('default_distributor', activeDefaultDist);
+        }
         result = await inventoryAPI.uploadExcel(formData);
       } else {
         throw new Error('No items ready for inwarding.');
@@ -416,10 +471,11 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
   const totalStockPacks = previewItems.reduce((acc, it) => acc + (it.pack_quantity || 0), 0);
   const totalPurchaseValue = previewItems.reduce((acc, it) => acc + ((it.purchase_price || 0) * (it.pack_quantity || 0)), 0);
   const totalMrpValue = previewItems.reduce((acc, it) => acc + ((it.mrp || 0) * (it.pack_quantity || 0)), 0);
+  const uniqueDistributors = Array.from(new Set(previewItems.map(it => it.distributor).filter(Boolean)));
 
   return (
     <div className="modal-backdrop">
-      <div className="modal-content" style={{ maxWidth: '980px', width: '96vw', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+      <div className="modal-content" style={{ maxWidth: '1060px', width: '96vw', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
         
         {/* Header */}
         <div style={{
@@ -448,7 +504,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
                 Bulk Excel / CSV Inventory Import
               </h3>
               <p style={{ fontSize: '12.5px', color: '#64748b', margin: '2px 0 0' }}>
-                Upload .xlsx, .xls, or .csv spreadsheet to mass-inward medicines, update stock counts, and register prices
+                Upload .xlsx, .xls, or .csv spreadsheet to mass-inward medicines, auto-link distributors, increment stock, and register prices
               </p>
             </div>
           </div>
@@ -461,7 +517,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
         {/* Body */}
         <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
-          {/* Smart Deduplication Notice */}
+          {/* Smart Deduplication & Distributor Notice */}
           <div style={{
             padding: '12px 16px',
             background: 'rgba(5, 150, 105, 0.06)',
@@ -475,8 +531,64 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
           }}>
             <Database size={20} color="#059669" style={{ flexShrink: 0 }} />
             <div>
-              <strong>Smart Deduplication & Stock Increment:</strong> If a tablet/medicine already exists in your system, its stock count is automatically <strong>increased</strong> by the imported quantity. If it does not exist, a new medicine record is created automatically with zero duplicates.
+              <strong>Smart Deduplication & Distributor Update:</strong> If a tablet/medicine already exists, its stock count is automatically <strong>increased</strong> by the imported quantity with zero duplicates. Distributor/supplier names in the Excel sheet are registered and linked directly to the inventory batches.
             </div>
+          </div>
+
+          {/* Optional Default Distributor Selector */}
+          <div style={{
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '12px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            flexWrap: 'wrap'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>
+              <Building2 size={16} color="#0284c7" />
+              <span>Default Distributor:</span>
+            </div>
+            
+            <select
+              value={defaultDistributor}
+              onChange={(e) => {
+                setDefaultDistributor(e.target.value);
+                if (e.target.value) setCustomDistributor('');
+              }}
+              className="input-field"
+              style={{ flex: '1 1 200px', height: '36px', fontSize: '12.5px' }}
+            >
+              <option value="">-- Choose Existing Distributor --</option>
+              {suppliers.map(s => (
+                <option key={s.id} value={s.name}>{s.name}</option>
+              ))}
+            </select>
+
+            <input
+              type="text"
+              placeholder="Or type new distributor name..."
+              value={customDistributor}
+              onChange={(e) => {
+                setCustomDistributor(e.target.value);
+                if (e.target.value) setDefaultDistributor('');
+              }}
+              className="input-field"
+              style={{ flex: '1 1 200px', height: '36px', fontSize: '12.5px' }}
+            />
+
+            {(customDistributor || defaultDistributor) && previewItems.length > 0 && (
+              <button
+                type="button"
+                onClick={handleApplyDefaultDistributorToAll}
+                className="btn btn-secondary btn-sm"
+                style={{ height: '36px', fontSize: '12px', background: '#ffffff', color: '#0284c7', borderColor: '#bae6fd' }}
+                title="Apply this distributor to all rows in preview"
+              >
+                Apply to All ({previewItems.length})
+              </button>
+            )}
           </div>
           
           {error && (
@@ -491,7 +603,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
               <CheckCircle2 size={26} color="#059669" style={{ flexShrink: 0 }} />
               <div>
                 <div style={{ fontSize: '15px' }}>{successResult.message}</div>
-                <div style={{ fontSize: '12.5px', fontWeight: 500, color: '#047857', marginTop: '4px', display: 'flex', gap: '16px' }}>
+                <div style={{ fontSize: '12.5px', fontWeight: 500, color: '#047857', marginTop: '4px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                   <span>Updated Existing: <strong>{successResult.existing_medicines_updated ?? 0}</strong></span>
                   <span>New Medicines: <strong>{successResult.new_medicines_created ?? 0}</strong></span>
                   <span>Total Inward Value: <strong>₹{parseFloat(successResult.total_inward_value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></span>
@@ -531,7 +643,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
               {selectedFile ? `Selected File: ${selectedFile.name}` : 'Click to Upload Excel (.xlsx, .xls) or CSV Spreadsheet'}
             </div>
             <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-              Instant live preview & smart header recognition for distributor invoices and master lists
+              Smart column recognition for Distributor, Medicine Name, Batch, Expiry, Quantities, and Rates
             </div>
 
             {/* Quick Actions: Download Template & Demo Test */}
@@ -545,7 +657,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
                 className="btn btn-secondary btn-sm"
                 style={{ fontSize: '12px', background: '#ffffff', padding: '6px 12px' }}
               >
-                <Download size={14} color="#059669" /> Download Excel Template (.xlsx)
+                <Download size={14} color="#059669" /> Download Excel Template with Distributor (.xlsx)
               </button>
 
               <button
@@ -557,7 +669,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
                 className="btn btn-secondary btn-sm"
                 style={{ fontSize: '12px', background: '#ffffff', padding: '6px 12px' }}
               >
-                <Sparkles size={14} color="#0284c7" /> Load Demo Pharmacy Dataset (5 Meds)
+                <Sparkles size={14} color="#0284c7" /> Load Demo Pharmacy Dataset (5 Meds + Distributors)
               </button>
             </div>
           </div>
@@ -567,10 +679,10 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
             <div style={{ padding: '24px', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <RefreshCw size={28} color="#059669" className="spin-animation" style={{ margin: '0 auto 10px' }} />
               <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
-                {isParsing ? 'Parsing Spreadsheet in Browser...' : 'Inwarding Inventory & Updating Stock...'}
+                {isParsing ? 'Parsing Spreadsheet in Browser...' : 'Inwarding Inventory & Linking Distributors...'}
               </div>
               <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                Matching existing tablet names, incrementing counts, registering batches, and updating stock
+                Matching existing tablet names, incrementing stock counts, assigning distributors, and registering batches
               </div>
             </div>
           )}
@@ -608,29 +720,35 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
                     ₹{totalMrpValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                 </div>
+
+                <div style={{ padding: '10px 14px', background: '#fffbeb', borderRadius: '10px', border: '1px solid #fde68a' }}>
+                  <div style={{ fontSize: '11px', color: '#92400e', fontWeight: 600, textTransform: 'uppercase' }}>Distributors</div>
+                  <div style={{ fontSize: '18px', fontWeight: 800, color: '#92400e' }}>{uniqueDistributors.length || 1}</div>
+                </div>
               </div>
 
               {/* Data Table */}
               <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#0f172a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>Ready-to-Inward Medicines List ({previewItems.length}):</span>
                 <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>
-                  You can edit quantities or remove unwanted rows before saving
+                  Verify distributor names and quantities before saving
                 </span>
               </div>
 
-              <div className="data-table-container" style={{ maxHeight: '280px', overflowY: 'auto' }}>
+              <div className="data-table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '4%' }}>#</th>
-                      <th style={{ width: '28%' }}>Drug / Tablet Name</th>
-                      <th style={{ width: '12%' }}>Form & Cat</th>
-                      <th style={{ width: '13%' }}>Batch #</th>
-                      <th style={{ width: '11%' }}>Expiry</th>
-                      <th style={{ width: '13%', textAlign: 'center' }}>Qty (Packs)</th>
-                      <th style={{ width: '9%', textAlign: 'right' }}>Cost</th>
-                      <th style={{ width: '9%', textAlign: 'right' }}>MRP</th>
-                      <th style={{ width: '6%', textAlign: 'center' }}></th>
+                      <th style={{ width: '3%' }}>#</th>
+                      <th style={{ width: '25%' }}>Drug / Tablet Name</th>
+                      <th style={{ width: '16%' }}>Distributor / Supplier</th>
+                      <th style={{ width: '11%' }}>Form & Cat</th>
+                      <th style={{ width: '11%' }}>Batch #</th>
+                      <th style={{ width: '10%' }}>Expiry</th>
+                      <th style={{ width: '11%', textAlign: 'center' }}>Qty (Packs)</th>
+                      <th style={{ width: '8%', textAlign: 'right' }}>Cost</th>
+                      <th style={{ width: '8%', textAlign: 'right' }}>MRP</th>
+                      <th style={{ width: '4%', textAlign: 'center' }}></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -642,19 +760,36 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
                           <div style={{ fontSize: '11px', color: '#64748b' }}>{it.generic_name || it.manufacturer}</div>
                         </td>
                         <td>
+                          <input
+                            type="text"
+                            value={it.distributor || ''}
+                            onChange={(e) => handleUpdateItemDistributor(idx, e.target.value)}
+                            placeholder="Distributor name"
+                            style={{
+                              width: '100%',
+                              padding: '3px 6px',
+                              fontSize: '11.5px',
+                              fontWeight: 600,
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e1',
+                              background: '#f8fafc'
+                            }}
+                          />
+                        </td>
+                        <td>
                           <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                            <span className="badge badge-cyan" style={{ fontSize: '10.5px' }}>{it.dosage_form}</span>
-                            <span className="badge badge-gray" style={{ fontSize: '10.5px' }}>{it.category}</span>
+                            <span className="badge badge-cyan" style={{ fontSize: '10px' }}>{it.dosage_form}</span>
+                            <span className="badge badge-gray" style={{ fontSize: '10px' }}>{it.category}</span>
                           </div>
                         </td>
-                        <td className="mono" style={{ fontWeight: 700, fontSize: '12px' }}>{it.batch_number}</td>
-                        <td style={{ fontSize: '11.5px' }}>{it.expiry_date}</td>
+                        <td className="mono" style={{ fontWeight: 700, fontSize: '11.5px' }}>{it.batch_number}</td>
+                        <td style={{ fontSize: '11px' }}>{it.expiry_date}</td>
                         <td style={{ textAlign: 'center' }}>
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                             <button
                               type="button"
                               onClick={() => handleUpdateItemQty(idx, it.pack_quantity - 5)}
-                              style={{ width: '22px', height: '22px', padding: 0, borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer', fontWeight: 800 }}
+                              style={{ width: '20px', height: '20px', padding: 0, borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer', fontWeight: 800, fontSize: '11px' }}
                             >
                               -
                             </button>
@@ -663,12 +798,12 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded }) {
                               min="1"
                               value={it.pack_quantity}
                               onChange={(e) => handleUpdateItemQty(idx, e.target.value)}
-                              style={{ width: '48px', textAlign: 'center', padding: '2px 4px', border: '1px solid #cbd5e1', borderRadius: '4px', fontWeight: 800, fontSize: '12px' }}
+                              style={{ width: '44px', textAlign: 'center', padding: '2px', border: '1px solid #cbd5e1', borderRadius: '4px', fontWeight: 800, fontSize: '11.5px' }}
                             />
                             <button
                               type="button"
                               onClick={() => handleUpdateItemQty(idx, it.pack_quantity + 5)}
-                              style={{ width: '22px', height: '22px', padding: 0, borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer', fontWeight: 800 }}
+                              style={{ width: '20px', height: '20px', padding: 0, borderRadius: '4px', border: '1px solid #cbd5e1', background: '#ffffff', cursor: 'pointer', fontWeight: 800, fontSize: '11px' }}
                             >
                               +
                             </button>

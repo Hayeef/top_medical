@@ -305,28 +305,43 @@ export default function DailyUpdatedInventoryModal({
         }}
       >
         {/* ========================================================================= */}
-        {/* 1. TOP HEADER - Matches Top Medical System Theme Tone (#0f172a Deep Slate) */}
+        {/* 1. TOP HEADER - Matches Top Medical Clean System Theme (#ffffff with light accents) */}
         {/* ========================================================================= */}
         <div style={{
-          padding: '16px 20px',
+          padding: '14px 20px',
           borderBottom: '1px solid var(--border-subtle)',
-          background: '#0f172a',
-          color: '#ffffff',
+          background: '#ffffff',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexShrink: 0
         }}>
-          <div>
-            <div style={{ fontSize: '16px', fontWeight: 900, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
-              {profile?.name || 'TOP MEDICAL PHARMACY'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '38px',
+              height: '38px',
+              borderRadius: '10px',
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 1px 3px rgba(16, 185, 129, 0.12)'
+            }}>
+              <Calendar size={20} color="#059669" />
             </div>
-            <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>Daily Updated Stock & Inward Audit Ledger</span>
-              <span style={{ color: '#64748b' }}>•</span>
-              <span style={{ color: '#38bdf8', fontWeight: 700 }}>
-                {formattedDateTitle || selectedDate}
-              </span>
+            <div>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.01em' }}>
+                {profile?.name || 'TOP MEDICAL PHARMACY'}
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+                <span>Daily Updated Stock & Inward Audit Ledger</span>
+                <span style={{ color: '#cbd5e1' }}>•</span>
+                <span style={{ color: 'var(--primary)', fontWeight: 700 }}>
+                  {formattedDateTitle || selectedDate}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -336,35 +351,37 @@ export default function DailyUpdatedInventoryModal({
               onClick={fetchDailyUpdated}
               className="btn btn-secondary btn-sm"
               style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                color: '#ffffff',
-                border: '1px solid rgba(255, 255, 255, 0.18)',
-                fontSize: '11.5px',
-                padding: '5px 12px'
+                fontSize: '12px',
+                padding: '6px 12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
               }}
               title="Refresh live daily inventory data"
             >
-              <RefreshCw size={13} className={loading ? 'spin-animation' : ''} />
+              <RefreshCw size={13} color="var(--primary)" className={loading ? 'spin-animation' : ''} />
               <span>Refresh</span>
             </button>
 
             <button
               type="button"
               onClick={() => setIsFullscreen(!isFullscreen)}
-              style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center' }}
+              className="btn btn-secondary btn-sm"
+              style={{ padding: '6px 9px', width: '32px', height: '32px', color: 'var(--text-muted)' }}
               title={isFullscreen ? "Restore normal size" : "Expand to fullscreen"}
             >
-              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
 
             <button 
               onClick={onClose} 
-              style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center' }}
-              onMouseEnter={(e) => e.currentTarget.style.color = '#ffffff'}
-              onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
+              className="btn btn-secondary btn-sm"
+              style={{ padding: '6px 9px', width: '32px', height: '32px', color: 'var(--text-muted)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#e11d48'; e.currentTarget.style.borderColor = '#fecdd3'; e.currentTarget.style.background = '#fef2f2'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-subtle)'; e.currentTarget.style.background = '#ffffff'; }}
               title="Close audit view"
             >
-              <X size={20} />
+              <X size={16} />
             </button>
           </div>
         </div>

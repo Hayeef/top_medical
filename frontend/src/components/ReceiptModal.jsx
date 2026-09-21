@@ -16,6 +16,71 @@ import {
 import PharmacyLogo from './PharmacyLogo';
 import UpdateDiscountModal from './UpdateDiscountModal';
 
+// Helper to determine if an item is a multi-unit tablet/capsule strip
+function isStripOrTabletItem(item) {
+  if (!item) return false;
+
+  // Explicit check for chocolate / confectionery / counter candy
+  if (item.is_chocolate) return false;
+  
+  const name = (item.medicine_name || item.name || '').toUpperCase();
+  if (
+    name.includes('CHOCOLATE') ||
+    name.includes('CANDY') ||
+    name.includes('TOFFEE') ||
+    name.includes('LOZENGE') ||
+    name.includes('GUMMY')
+  ) {
+    return false;
+  }
+
+  // Check dosage form if available
+  const dosageForm = (item.dosage_form || item.medicine?.dosage_form || '').trim().toLowerCase();
+  
+  const nonStripForms = ['syrup', 'suspension', 'injection', 'ointment', 'cream', 'gel', 'drops', 'inhaler', 'powder', 'device', 'other', 'lotion', 'spray', 'respules'];
+  if (nonStripForms.includes(dosageForm)) {
+    return false;
+  }
+  
+  if (dosageForm === 'tablet' || dosageForm === 'capsule') {
+    return true;
+  }
+
+  // Check non-strip keywords in medicine name
+  const nonStripKeywords = [
+    'SYRUP', 'SUSP', 'SUSPENSION', 'OINT', 'OINTMENT', 'GEL', 'CREAM',
+    'DROPS', 'EYE DROP', 'EAR DROP', 'NASAL DROP', 'INJ', 'INJECTION',
+    'LOTION', 'POWDER', 'SOAP', 'OIL', 'SPRAY', 'WASH', 'BALM',
+    'RESPULES', 'SOLUTION', 'DEVICE', 'SHAMPOO', 'MASK', 'BANDAGE',
+    'SANITIZER', 'SYRINGE', 'COTTON', 'DISPOSABLE', 'VAPORIZER', 'SACHET'
+  ];
+  for (const kw of nonStripKeywords) {
+    if (name.includes(kw)) {
+      return false;
+    }
+  }
+
+  // Check strip/tablet keywords
+  const stripKeywords = ['TAB', 'TABLET', 'TABLETS', 'CAP', 'CAPSULE', 'CAPSULES', 'STRIP', 'STRIPS'];
+  for (const kw of stripKeywords) {
+    const regex = new RegExp(`\\b${kw}\\b`, 'i');
+    if (regex.test(name)) {
+      return true;
+    }
+  }
+
+  // If sold loose, it is from a tablet/capsule strip
+  if (item.is_loose) return true;
+
+  // In Indian pharmacy retail, pack size of 1 is a bottle/tube/unit/device, NOT a strip of tablets
+  const packSize = parseInt(item.pack_size, 10) || 0;
+  if (packSize <= 1) {
+    return false;
+  }
+
+  return packSize > 1;
+}
+
 export default function ReceiptModal({ invoice: initialInvoice, profile, onClose }) {
   const [invoice, setInvoice] = useState(initialInvoice);
   const [printFormat, setPrintFormat] = useState('thermal-80'); // 'thermal-80', 'thermal-58', 'a4'
@@ -422,9 +487,13 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                 </thead>
                 <tbody>
                   {invoice.items?.map((item, idx) => {
+                    const isStrip = isStripOrTabletItem(item);
                     const expFormatted = item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('en-GB', { month: '2-digit', year: '2-digit' }) : '-';
                     const unitMrp = parseFloat(item.unit_mrp || 0);
                     const totalAmt = parseFloat(item.total_amount || 0);
+                    const packSize = item.pack_size || 10;
+                    const isCapsule = (item.dosage_form || '').toLowerCase() === 'capsule' || /\b(CAP|CAPSULE|CAPSULES)\b/i.test(item.medicine_name || '');
+
                     return (
                       <tr key={idx} style={{ borderBottom: '1px dotted #000000' }}>
                         <td style={{ padding: '4px 0' }}>
@@ -432,14 +501,19 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                             {item.medicine_name}
                           </div>
                           <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000' }}>
-                            B:{item.batch_number} {item.is_loose ? `(Loose ${item.quantity} tabs @ ${currency}${unitMrp.toFixed(2)}/tab)` : `(${item.pack_size || 10}s/strip)`}
+                            {item.batch_number ? `B:${item.batch_number}` : ''}
+                            {item.is_loose
+                              ? ` (Loose ${item.quantity} ${isCapsule ? 'caps' : 'tabs'} @ ${currency}${unitMrp.toFixed(2)}/${isCapsule ? 'cap' : 'tab'})`
+                              : isStrip
+                              ? ` (${packSize}s/strip)`
+                              : ''}
                           </div>
                         </td>
                         <td style={{ padding: '4px 0', textAlign: 'center', fontSize: '11.5px', fontWeight: 700 }}>
                           {expFormatted}
                         </td>
                         <td style={{ padding: '4px 0', textAlign: 'center', fontSize: '13px', fontWeight: 900 }}>
-                          {item.quantity}{item.is_loose ? ' tabs' : ' pk'}
+                          {item.quantity}{item.is_loose ? (isCapsule ? ' caps' : ' tabs') : ' pk'}
                         </td>
                         <td style={{ padding: '4px 0', textAlign: 'right', fontSize: '13px', fontWeight: 800 }}>
                           {totalAmt.toFixed(2)}
@@ -625,8 +699,12 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                 </thead>
                 <tbody>
                   {invoice.items?.map((item, idx) => {
+                    const isStrip = isStripOrTabletItem(item);
                     const unitMrp = parseFloat(item.unit_mrp || 0);
                     const totalAmt = parseFloat(item.total_amount || 0);
+                    const packSize = item.pack_size || 10;
+                    const isCapsule = (item.dosage_form || '').toLowerCase() === 'capsule' || /\b(CAP|CAPSULE|CAPSULES)\b/i.test(item.medicine_name || '');
+
                     return (
                       <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#fcfdfe' }}>
                         <td style={{ padding: '6px 8px' }}>{idx + 1}</td>
@@ -634,11 +712,15 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                           <div style={{ fontWeight: 800, color: '#0f172a' }}>{item.medicine_name}</div>
                           {item.is_loose ? (
                             <div style={{ fontSize: '10.5px', color: '#0284c7', fontWeight: 600 }}>
-                              Loose {item.quantity} tabs @ {currency}{unitMrp.toFixed(2)}/tab (Strip: {currency}{(unitMrp * (item.pack_size || 10)).toFixed(2)} / {item.pack_size || 10}s)
+                              Loose {item.quantity} {isCapsule ? 'caps' : 'tabs'} @ {currency}{unitMrp.toFixed(2)}/{isCapsule ? 'cap' : 'tab'} (Strip: {currency}${(unitMrp * packSize).toFixed(2)} / {packSize}s)
                             </div>
-                          ) : (
-                            <div style={{ fontSize: '10px', color: '#64748b' }}>Strip of {item.pack_size || 10} tablets</div>
-                          )}
+                          ) : isStrip ? (
+                            <div style={{ fontSize: '10px', color: '#64748b' }}>
+                              Strip of {packSize} {isCapsule ? 'capsules' : 'tablets'}
+                            </div>
+                          ) : item.dosage_form && !['Other', 'Tablet'].includes(item.dosage_form) ? (
+                            <div style={{ fontSize: '10px', color: '#64748b' }}>{item.dosage_form}</div>
+                          ) : null}
                         </td>
                         <td style={{ padding: '6px 8px', color: '#64748b' }}>{item.hsn_code || '3004'}</td>
                         <td style={{ padding: '6px 8px', fontWeight: 700 }} className="mono">{item.batch_number}</td>
@@ -646,7 +728,7 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                           {item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('en-GB', { month: '2-digit', year: 'numeric' }) : '-'}
                         </td>
                         <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 800 }}>
-                          {item.quantity}{item.is_loose ? ' tabs' : ' pk'}
+                          {item.quantity}{item.is_loose ? (isCapsule ? ' caps' : ' tabs') : ' pk'}
                         </td>
                         <td style={{ padding: '6px 8px', textAlign: 'right' }}>{currency}{unitMrp.toFixed(2)}</td>
                         <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 800 }}>{currency}{totalAmt.toFixed(2)}</td>

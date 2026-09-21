@@ -23,6 +23,22 @@ import confetti from 'canvas-confetti';
 import * as XLSX from 'xlsx';
 import { inventoryAPI } from '../api';
 
+const DOSAGE_FORM_OPTIONS = [
+  'Tablet',
+  'Capsule',
+  'Syrup',
+  'Suspension',
+  'Ointment',
+  'Gel',
+  'Cream',
+  'Injection',
+  'Drops',
+  'Inhaler',
+  'Powder',
+  'Device',
+  'Other'
+];
+
 export default function ExcelBulkUploadModal({ onClose, onStockInwarded, suppliers = [] }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -182,15 +198,35 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
           'wholesaler', 'source', 'party_ac_name'
         ) || fallbackDist).trim();
 
-        let form = String(getVal('dosage_form', 'dosage', 'form', 'type')).trim();
-        if (!form) {
+        let rawForm = String(getVal('dosage_form', 'dosage', 'form', 'type')).trim();
+        let form = '';
+        if (rawForm) {
+          const rfUpper = rawForm.toUpperCase();
+          if (rfUpper.includes('TAB')) form = 'Tablet';
+          else if (rfUpper.includes('CAP')) form = 'Capsule';
+          else if (rfUpper.includes('SUSP')) form = 'Suspension';
+          else if (rfUpper.includes('SYP') || rfUpper.includes('SYRUP')) form = 'Syrup';
+          else if (rfUpper.includes('GEL')) form = 'Gel';
+          else if (rfUpper.includes('CREAM')) form = 'Cream';
+          else if (rfUpper.includes('OINT')) form = 'Ointment';
+          else if (rfUpper.includes('INJ')) form = 'Injection';
+          else if (rfUpper.includes('DROP')) form = 'Drops';
+          else if (rfUpper.includes('INHAL')) form = 'Inhaler';
+          else if (rfUpper.includes('POWD')) form = 'Powder';
+          else form = rawForm.charAt(0).toUpperCase() + rawForm.slice(1);
+        } else {
           const uName = name.toUpperCase();
           if (uName.includes('TAB')) form = 'Tablet';
           else if (uName.includes('CAP')) form = 'Capsule';
-          else if (uName.includes('SYP') || uName.includes('SYRUP') || uName.includes('SUSP')) form = 'Syrup';
+          else if (uName.includes('SUSP')) form = 'Suspension';
+          else if (uName.includes('SYP') || uName.includes('SYRUP')) form = 'Syrup';
+          else if (uName.includes('GEL')) form = 'Gel';
+          else if (uName.includes('CREAM')) form = 'Cream';
+          else if (uName.includes('OINT')) form = 'Ointment';
           else if (uName.includes('INJ')) form = 'Injection';
           else if (uName.includes('DROP')) form = 'Drops';
-          else if (uName.includes('OINT') || uName.includes('CREAM') || uName.includes('GEL')) form = 'Ointment';
+          else if (uName.includes('INHAL')) form = 'Inhaler';
+          else if (uName.includes('POWD')) form = 'Powder';
           else form = 'Tablet';
         }
 
@@ -402,6 +438,14 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
     setPreviewItems(prev => {
       const copy = [...prev];
       copy[idx] = { ...copy[idx], distributor: distName };
+      return copy;
+    });
+  };
+
+  const handleUpdateItemDosageForm = (idx, formVal) => {
+    setPreviewItems(prev => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], dosage_form: formVal };
       return copy;
     });
   };
@@ -777,9 +821,31 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
                           />
                         </td>
                         <td>
-                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                            <span className="badge badge-cyan" style={{ fontSize: '10px' }}>{it.dosage_form}</span>
-                            <span className="badge badge-gray" style={{ fontSize: '10px' }}>{it.category}</span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <select
+                              value={it.dosage_form || 'Tablet'}
+                              onChange={(e) => handleUpdateItemDosageForm(idx, e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '3px 4px',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                borderRadius: '6px',
+                                border: '1px solid #cbd5e1',
+                                background: '#f8fafc',
+                                color: '#0369a1',
+                                cursor: 'pointer',
+                                outline: 'none'
+                              }}
+                            >
+                              {DOSAGE_FORM_OPTIONS.map(opt => (
+                                <option key={opt} value={opt}>{opt}</option>
+                              ))}
+                              {it.dosage_form && !DOSAGE_FORM_OPTIONS.includes(it.dosage_form) && (
+                                <option value={it.dosage_form}>{it.dosage_form}</option>
+                              )}
+                            </select>
+                            <span className="badge badge-gray" style={{ fontSize: '9.5px', alignSelf: 'flex-start' }}>{it.category}</span>
                           </div>
                         </td>
                         <td className="mono" style={{ fontWeight: 700, fontSize: '11.5px' }}>{it.batch_number}</td>

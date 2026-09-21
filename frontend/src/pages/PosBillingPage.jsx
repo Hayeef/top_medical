@@ -1184,7 +1184,7 @@ export default function PosBillingPage({
                                   </button>
                                 </div>
                                 <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
-                                  {currency}{item.strip_selling_price}/pk ({item.pack_size}s)
+                                  {currency}{item.strip_selling_price}{item.pack_size > 1 ? `/pk (${item.pack_size}s)` : '/unit'}
                                 </span>
                               </div>
                             </td>

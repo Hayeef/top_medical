@@ -43,14 +43,29 @@ class CustomerSerializer(serializers.ModelSerializer):
 
 
 class InvoiceItemSerializer(serializers.ModelSerializer):
+    dosage_form = serializers.SerializerMethodField()
+    category_name = serializers.SerializerMethodField()
+
     class Meta:
         model = InvoiceItem
         fields = [
             'id', 'medicine', 'batch', 'medicine_name', 'batch_number', 
             'expiry_date', 'hsn_code', 'staff_code', 'staff_name', 'is_loose', 'quantity', 'pack_size', 
             'unit_mrp', 'unit_selling_price', 'discount_percent', 
-            'gst_rate', 'tax_amount', 'total_amount'
+            'gst_rate', 'tax_amount', 'total_amount',
+            'dosage_form', 'category_name'
         ]
+
+    def get_dosage_form(self, obj):
+        if obj.medicine and obj.medicine.dosage_form:
+            return obj.medicine.dosage_form
+        return ''
+
+    def get_category_name(self, obj):
+        if obj.medicine and obj.medicine.category:
+            return obj.medicine.category.name
+        return ''
+
 
 
 class InvoiceItemCreateSerializer(serializers.Serializer):

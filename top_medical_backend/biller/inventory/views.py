@@ -511,10 +511,15 @@ class MedicineViewSet(viewsets.ModelViewSet):
             name_upper = name.upper()
             if 'TAB' in name_upper: form = 'Tablet'
             elif 'CAP' in name_upper: form = 'Capsule'
-            elif 'SYP' in name_upper or 'SYRUP' in name_upper or 'SUSP' in name_upper: form = 'Syrup'
+            elif 'SUSP' in name_upper: form = 'Suspension'
+            elif 'SYP' in name_upper or 'SYRUP' in name_upper: form = 'Syrup'
+            elif 'GEL' in name_upper: form = 'Gel'
+            elif 'CREAM' in name_upper: form = 'Cream'
+            elif 'OINT' in name_upper: form = 'Ointment'
             elif 'INJ' in name_upper: form = 'Injection'
             elif 'DROP' in name_upper: form = 'Drops'
-            elif 'OINT' in name_upper or 'CREAM' in name_upper or 'GEL' in name_upper: form = 'Ointment'
+            elif 'INHAL' in name_upper: form = 'Inhaler'
+            elif 'POWD' in name_upper: form = 'Powder'
             else: form = 'Tablet'
 
         mfg = str(get_val('manufacturer', 'mfg_by', 'mfg', 'company', 'brand', 'marketed_by', 'make', default='Standard Pharma')).strip()

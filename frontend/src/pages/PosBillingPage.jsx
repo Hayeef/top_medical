@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { 
-  Search, 
-  ShoppingCart, 
-  Trash2, 
-  Plus, 
-  Minus, 
-  User, 
-  Stethoscope, 
-  CreditCard, 
-  QrCode, 
-  Banknote, 
-  FileText, 
-  CheckCircle, 
-  AlertTriangle, 
-  Percent, 
-  MapPin, 
-  Clock, 
+import {
+  Search,
+  ShoppingCart,
+  Trash2,
+  Plus,
+  Minus,
+  User,
+  Stethoscope,
+  CreditCard,
+  QrCode,
+  Banknote,
+  FileText,
+  CheckCircle,
+  AlertTriangle,
+  Percent,
+  MapPin,
+  Clock,
   Sparkles,
   ArrowRight,
   UserPlus,
@@ -25,22 +25,22 @@ import {
 import confetti from 'canvas-confetti';
 import { inventoryAPI, billingAPI } from '../api';
 
-export default function PosBillingPage({ 
-  profile, 
-  customers, 
-  doctors, 
+export default function PosBillingPage({
+  profile,
+  customers,
+  doctors,
   staffList = [],
-  onOpenAddCustomer, 
-  onOpenAddDoctor, 
+  onOpenAddCustomer,
+  onOpenAddDoctor,
   onInvoiceCreated,
-  onOpenReceipt 
+  onOpenReceipt
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [cart, setCart] = useState([]);
-  
+
   // Staff Charge Code State (Default to first staff member or TP01)
   const defaultStaff = staffList[0] || { charge_code: 'TP01', name: 'RSH' };
   const [selectedStaffCode, setSelectedStaffCode] = useState(defaultStaff.charge_code);
@@ -63,7 +63,7 @@ export default function PosBillingPage({
   const [cashTendered, setCashTendered] = useState('');
   const [splitCash, setSplitCash] = useState('');
   const [splitUpi, setSplitUpi] = useState('');
-  
+
   // Checkout status
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState(null);
@@ -407,8 +407,8 @@ export default function PosBillingPage({
       }
 
       // 2. Check if chocolate already in cart with exact same price
-      const existingIdx = cart.findIndex(item => 
-        (item.is_chocolate || item.medicine?.name === 'CHOCOLATE / CANDY (OTC)') && 
+      const existingIdx = cart.findIndex(item =>
+        (item.is_chocolate || item.medicine?.name === 'CHOCOLATE / CANDY (OTC)') &&
         parseFloat(item.strip_selling_price) === amount
       );
 
@@ -495,7 +495,7 @@ export default function PosBillingPage({
   const totalBeforeRound = Math.max(0, grossSubtotal - billDiscountAmt);
   const grandTotal = Math.round(totalBeforeRound);
   const roundOff = (grandTotal - totalBeforeRound).toFixed(2);
-  
+
   // Tax breakdown components
   const effectiveTax = grossSubtotal > 0 ? (totalTax * (totalBeforeRound / grossSubtotal)) : 0;
   const cgst = (effectiveTax / 2).toFixed(2);
@@ -506,7 +506,7 @@ export default function PosBillingPage({
   const quickRoundSuggestions = useMemo(() => {
     if (cart.length === 0 || grandTotal <= 0) return [];
     const suggestions = [];
-    
+
     // Suggest +1, +2
     suggestions.push({ diff: 1, target: grandTotal + 1 });
     suggestions.push({ diff: 2, target: grandTotal + 2 });
@@ -659,7 +659,7 @@ export default function PosBillingPage({
     <div className="pos-billing-grid">
       {/* LEFT AREA: Medicine Search & Active Cart Table (WIDER) */}
       <div className="pos-billing-left" style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0, width: '100%' }}>
-        
+
         {/* Top Staff Charge Code Quick Selector Bar */}
         <div className="glass-panel" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', background: '#ffffff' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -761,7 +761,7 @@ export default function PosBillingPage({
                 const totalStock = med.batches?.reduce((acc, b) => acc + (b.is_expired ? 0 : b.pack_quantity), 0) || 0;
                 const nextBatch = med.batches?.find(b => !b.is_expired && b.pack_quantity > 0);
                 const isHighlighted = idx === selectedIndex;
-                
+
                 return (
                   <div
                     key={med.id}
@@ -1562,10 +1562,10 @@ export default function PosBillingPage({
 
       {/* RIGHT AREA: Optional Customer & Doctor Typing + Checkout Summary (COMPACT) */}
       <div className="pos-billing-right" style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%', maxWidth: '380px' }}>
-        
+
         {/* Optional Patient & Doctor Direct Inputs Card */}
         <div className="glass-panel" style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          
+
           {/* Patient Details (Optional) */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
@@ -1573,16 +1573,16 @@ export default function PosBillingPage({
                 Patient / Customer Name <span style={{ fontWeight: 400, color: '#64748b', textTransform: 'none' }}>(Optional)</span>
               </label>
               {customers?.length > 0 && (
-                <button 
-                  onClick={onOpenAddCustomer} 
-                  className="btn btn-secondary btn-sm" 
+                <button
+                  onClick={onOpenAddCustomer}
+                  className="btn btn-secondary btn-sm"
                   style={{ padding: '1px 6px', fontSize: '10.5px' }}
                 >
                   <UserPlus size={11} /> Save Record
                 </button>
               )}
             </div>
-            
+
             <input
               type="text"
               className="input-field"
@@ -1609,9 +1609,9 @@ export default function PosBillingPage({
                 Prescribing Doctor <span style={{ fontWeight: 400, color: '#64748b', textTransform: 'none' }}>(Optional)</span>
               </label>
               {doctors?.length > 0 && (
-                <button 
-                  onClick={onOpenAddDoctor} 
-                  className="btn btn-secondary btn-sm" 
+                <button
+                  onClick={onOpenAddDoctor}
+                  className="btn btn-secondary btn-sm"
                   style={{ padding: '1px 6px', fontSize: '10.5px' }}
                 >
                   + Add Doctor
@@ -1656,7 +1656,7 @@ export default function PosBillingPage({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: '#f8fafc', padding: '8px 10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>Bill Discount:</span>
-                
+
                 {/* Discount Preset Dropdown */}
                 <select
                   style={{

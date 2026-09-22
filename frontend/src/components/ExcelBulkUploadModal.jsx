@@ -1,21 +1,21 @@
 import React, { useState, useRef } from 'react';
-import { 
-  FileSpreadsheet, 
-  Upload, 
-  Download, 
-  CheckCircle2, 
-  AlertCircle, 
-  X, 
-  Plus, 
-  Trash2, 
-  Sparkles, 
-  PackageCheck, 
-  RefreshCw, 
-  Table, 
-  Layers, 
-  ArrowRight, 
-  Database, 
-  Check, 
+import {
+  FileSpreadsheet,
+  Upload,
+  Download,
+  CheckCircle2,
+  AlertCircle,
+  X,
+  Plus,
+  Trash2,
+  Sparkles,
+  PackageCheck,
+  RefreshCw,
+  Table,
+  Layers,
+  ArrowRight,
+  Database,
+  Check,
   Edit3,
   Building2
 } from 'lucide-react';
@@ -90,8 +90,10 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
     }
 
     // Month strings e.g. OCT-28, Oct 2028
-    const months = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
-                     jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
+    const months = {
+      jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+      jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+    };
     const lower = s.toLowerCase();
     for (const [mName, mNum] of Object.entries(months)) {
       if (lower.includes(mName)) {
@@ -181,8 +183,8 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
         };
 
         const name = String(getVal(
-          'medicine_name', 'medicine', 'med_name', 'drug_name', 'drug', 'item_name', 
-          'particulars', 'product_name', 'product', 'brand_name', 'brand', 
+          'medicine_name', 'medicine', 'med_name', 'drug_name', 'drug', 'item_name',
+          'particulars', 'product_name', 'product', 'brand_name', 'brand',
           'description', 'item', 'name', 'tablet_name', 'tablet'
         )).trim();
 
@@ -190,7 +192,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
 
         const generic = String(getVal('generic_name', 'generic', 'composition', 'salt', 'molecule', 'formula')).trim();
         const category = String(getVal('category_name', 'category', 'dept', 'department', 'group', 'class') || 'General').trim();
-        
+
         const fallbackDist = customDistributor.trim() || defaultDistributor || '';
         const distributor = String(getVal(
           'distributor_name', 'distributor', 'distributor/supplier', 'supplier_name', 'supplier',
@@ -232,7 +234,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
 
         const manufacturer = String(getVal('manufacturer', 'mfg_by', 'mfg', 'company', 'brand', 'marketed_by', 'make') || 'Standard Pharma').trim();
         const hsn = String(getVal('hsn_code', 'hsn/sac', 'hsn', 'sac') || '3004').trim();
-        const batchNo = String(getVal('batch_number', 'batch_no', 'batch_num', 'batch', 'b.no', 'b.no.', 'b_no', 'bno', 'lot_no', 'lot') || `EX-${Date.now().toString().slice(-4)}`).trim();
+        const batchNo = String(getVal('batch_number', 'batch_no', 'batch_num', 'batch', 'b.no', 'b.no.', 'b_no', 'bno', 'lot_no', 'lot') || '').trim();
 
         const rawExp = getVal('expiry_date', 'expiry', 'exp_date', 'exp_dt', 'exp_date_str', 'exp', 'validity', 'exp.');
         const expDate = formatFlexibleDate(rawExp);
@@ -241,7 +243,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
         const packSize = Math.max(1, parseInt(String(rawSize).replace(/[^0-9.]/g, '')) || 10);
 
         const rawQty = getVal('pack_quantity', 'quantity', 'qty', 'packs', 'stock', 'bill_qty', 'b_qty', 'tot_qty', 'total_qty', 'nos', 'count', 'inward_qty');
-        const packQty = Math.max(1, parseInt(String(rawQty).replace(/[^0-9.]/g, '')) || 10);
+        const packQty = Math.max(1, parseInt(String(rawQty).replace(/[^0-9.]/g, '')) || 1);
 
         const rawPurchase = getVal('purchase_price', 'purchase_rate', 'purchase', 'cost_price', 'cost', 'ptr', 'rate', 'p_rate', 'net_rate', 'p.rate');
         const purchasePrice = Math.max(0, parseFloat(String(rawPurchase).replace(/[^0-9.]/g, '')) || 50.0);
@@ -300,20 +302,20 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
 
   const handleDownloadTemplate = () => {
     const headers = [
-      'Medicine Name', 
-      'Generic Name', 
-      'Category', 
-      'Distributor / Supplier', 
-      'Dosage Form', 
-      'Manufacturer', 
-      'Batch Number', 
-      'Expiry Date', 
-      'Pack Size', 
-      'Quantity', 
-      'Purchase Price', 
-      'MRP', 
-      'Selling Price', 
-      'GST Rate', 
+      'Medicine Name',
+      'Generic Name',
+      'Category',
+      'Distributor / Supplier',
+      'Dosage Form',
+      'Manufacturer',
+      'Batch Number',
+      'Expiry Date',
+      'Pack Size',
+      'Quantity',
+      'Purchase Price',
+      'MRP',
+      'Selling Price',
+      'GST Rate',
       'Rack Location'
     ];
     const sampleRows = [
@@ -475,7 +477,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
       let result;
       if (previewItems.length > 0) {
         // Send structured normalized items with distributor info
-        result = await inventoryAPI.uploadExcel({ 
+        result = await inventoryAPI.uploadExcel({
           items: previewItems,
           default_distributor: activeDefaultDist
         });
@@ -520,7 +522,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
   return (
     <div className="modal-backdrop">
       <div className="modal-content" style={{ maxWidth: '1060px', width: '96vw', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-        
+
         {/* Header */}
         <div style={{
           padding: '18px 24px',
@@ -560,7 +562,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
 
         {/* Body */}
         <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          
+
           {/* Smart Deduplication & Distributor Notice */}
           <div style={{
             padding: '12px 16px',
@@ -594,7 +596,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
               <Building2 size={16} color="#0284c7" />
               <span>Default Distributor:</span>
             </div>
-            
+
             <select
               value={defaultDistributor}
               onChange={(e) => {
@@ -634,7 +636,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
               </button>
             )}
           </div>
-          
+
           {error && (
             <div style={{ padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecdd3', borderRadius: '10px', color: '#e11d48', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <AlertCircle size={18} style={{ flexShrink: 0 }} />
@@ -734,7 +736,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
           {/* Preview Table & Metrics */}
           {previewItems.length > 0 && !isUploading && !isParsing && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              
+
               {/* Summary Stats Row */}
               <div style={{
                 display: 'grid',
@@ -848,7 +850,9 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
                             <span className="badge badge-gray" style={{ fontSize: '9.5px', alignSelf: 'flex-start' }}>{it.category}</span>
                           </div>
                         </td>
-                        <td className="mono" style={{ fontWeight: 700, fontSize: '11.5px' }}>{it.batch_number}</td>
+                        <td className="mono" style={{ fontWeight: 700, fontSize: '11.5px' }}>
+                          {it.batch_number || <span style={{ color: '#0284c7', fontStyle: 'italic', fontWeight: 600, fontSize: '10.5px' }}>Auto / Existing</span>}
+                        </td>
                         <td style={{ fontSize: '11px' }}>{it.expiry_date}</td>
                         <td style={{ textAlign: 'center' }}>
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -919,8 +923,8 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
             >
               <PackageCheck size={18} />
               <span>
-                {isUploading 
-                  ? 'Importing & Updating Stock...' 
+                {isUploading
+                  ? 'Importing & Updating Stock...'
                   : `Confirm & Inward ${previewItems.length} Medicines (${totalStockPacks} Packs)`}
               </span>
             </button>

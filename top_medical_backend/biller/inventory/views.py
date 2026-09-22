@@ -277,13 +277,20 @@ class MedicineViewSet(viewsets.ModelViewSet):
             supplier, _ = Supplier.objects.get_or_create(name=str(supplier_name).strip())
 
         # Create or update Batch
-        batch = Batch.objects.filter(medicine=medicine, batch_number__iexact=batch_number).first()
+        batch = None
+        if batch_number:
+            batch = Batch.objects.filter(medicine=medicine, batch_number__iexact=batch_number).first()
+        if not batch and medicine and (not data.get('batch_number') or str(data.get('batch_number')).strip() == '' or str(batch_number).startswith('B-')):
+            batch = Batch.objects.filter(medicine=medicine).order_by('-expiry_date', '-id').first()
+
         if batch:
-            batch.pack_quantity += pack_quantity
+            batch.pack_quantity = max(0, batch.pack_quantity) + pack_quantity
             batch.purchase_price = purchase_price
             batch.mrp = mrp
             batch.selling_price = selling_price
             batch.expiry_date = expiry_date
+            if batch_number and (batch.batch_number.startswith('B-') or batch.batch_number.startswith('EX-')):
+                batch.batch_number = batch_number
             if supplier:
                 batch.supplier = supplier
             batch.save()
@@ -524,10 +531,10 @@ class MedicineViewSet(viewsets.ModelViewSet):
 
         mfg = str(get_val('manufacturer', 'mfg_by', 'mfg', 'company', 'brand', 'marketed_by', 'make', default='Standard Pharma')).strip()
         hsn = str(get_val('hsn_code', 'hsn/sac', 'hsn', 'sac', default='3004')).strip()
-        batch_no = str(get_val('batch_number', 'batch_no', 'batch_num', 'batch', 'b.no', 'b.no.', 'b_no', 'bno', 'lot_no', 'lot', default=f"EX-{date.today().strftime('%y%m')}1")).strip()
+        batch_no = str(get_val('batch_number', 'batch_no', 'batch_num', 'batch', 'b.no', 'b.no.', 'b_no', 'bno', 'lot_no', 'lot', default='')).strip()
 
         raw_exp = get_val('expiry_date', 'expiry', 'exp_date', 'exp_dt', 'exp_date_str', 'exp', 'validity', 'exp.')
-        exp_date_str = self._parse_flexible_date(raw_exp)
+        exp_date_str = self._parse_flexible_date(raw_exp) if raw_exp else None
 
         try:
             raw_sz = get_val('pack_size', 'pack_sz', 'size', 'pkg', 'packing', 'pack', 'units_per_pack', 'strip_size', default=10)
@@ -536,10 +543,10 @@ class MedicineViewSet(viewsets.ModelViewSet):
             pack_sz = 10
 
         try:
-            raw_qty = get_val('pack_quantity', 'quantity', 'qty', 'packs', 'stock', 'bill_qty', 'b_qty', 'tot_qty', 'total_qty', 'nos', 'count', 'inward_qty', default=10)
+            raw_qty = get_val('pack_quantity', 'quantity', 'qty', 'packs', 'stock', 'bill_qty', 'b_qty', 'tot_qty', 'total_qty', 'nos', 'count', 'inward_qty', default=1)
             pack_qty = max(1, int(float(str(raw_qty).replace(',', ''))))
         except Exception:
-            pack_qty = 10
+            pack_qty = 1
 
         try:
             raw_purchase = get_val('purchase_price', 'purchase_rate', 'purchase', 'cost_price', 'cost', 'ptr', 'rate', 'p_rate', 'net_rate', 'p.rate', default=50.0)
@@ -597,6 +604,8 @@ class MedicineViewSet(viewsets.ModelViewSet):
         total_inward_value = Decimal('0.00')
         total_mrp_value = Decimal('0.00')
 
+        default_exp_date = (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
+
         for item in items:
             med_name = item.get('medicine_name', '').strip()
             if not med_name:
@@ -631,13 +640,14 @@ class MedicineViewSet(viewsets.ModelViewSet):
 
             if medicine:
                 existing_updated_count += 1
-                # Update auxiliary fields if currently blank
+                # Update auxiliary fields if currently blank or generic placeholder
                 if item.get('generic_name') and not medicine.generic_name:
                     medicine.generic_name = item.get('generic_name')
                 if item.get('rack_location') and not medicine.rack_location:
                     medicine.rack_location = item.get('rack_location')
                 if item.get('manufacturer') and (not medicine.manufacturer or medicine.manufacturer in ['Pharma Co', 'Standard Pharma']):
                     medicine.manufacturer = item.get('manufacturer')
+                medicine.is_active = True
                 medicine.save()
             else:
                 category_name = item.get('category', 'General')
@@ -653,37 +663,52 @@ class MedicineViewSet(viewsets.ModelViewSet):
                     min_stock_alert=10,
                     requires_prescription=item.get('requires_prescription', False),
                     gst_rate=Decimal(str(item.get('gst_rate', 12.0))),
+                    is_active=True
                 )
                 new_medicines_count += 1
 
-            batch_num = str(item.get('batch_number') or f"B-{date.today().strftime('%y%m%d')}").strip()
+            raw_batch_num = str(item.get('batch_number') or '').strip()
             pack_qty = max(1, int(item.get('pack_quantity', 1)))
             pack_sz = max(1, int(item.get('pack_size', 10)))
             purchase_pr = Decimal(str(item.get('purchase_price', 50.0)))
             mrp_pr = Decimal(str(item.get('mrp', 90.0)))
             selling_pr = Decimal(str(item.get('selling_price', mrp_pr)))
-            exp_date = item.get('expiry_date') or (date.today() + timedelta(days=730)).strftime('%Y-%m-%d')
+            exp_date = item.get('expiry_date') or default_exp_date
 
-            # Check if matching batch exists, or if batch was generic, find active batch for medicine
-            batch = Batch.objects.filter(medicine=medicine, batch_number__iexact=batch_num).first()
-            if not batch and medicine and not item.get('batch_number'):
-                batch = Batch.objects.filter(medicine=medicine, expiry_date__gte=date.today()).order_by('-id').first()
+            # Find batch for this medicine:
+            # 1. If explicit batch number provided, look for exact batch match on this medicine
+            # 2. Otherwise (or if not found), look for existing batch on this medicine
+            batch = None
+            if raw_batch_num:
+                batch = Batch.objects.filter(medicine=medicine, batch_number__iexact=raw_batch_num).first()
+
+            if not batch and medicine:
+                # Find existing batch for this medicine (unexpired first, then most recently updated)
+                batch = Batch.objects.filter(medicine=medicine).order_by('-expiry_date', '-id').first()
 
             if batch:
-                # Tablet already exists: ONLY increase the count (and sync latest inward pricing & supplier)
-                batch.pack_quantity += pack_qty
-                batch.purchase_price = purchase_pr
-                batch.mrp = mrp_pr
-                batch.selling_price = selling_pr
-                batch.expiry_date = exp_date
-                batch.supplier = supplier
+                # Medicine already exists in system: ONLY increment stock count and update details (expiry, prices, supplier)
+                batch.pack_quantity = max(0, batch.pack_quantity) + pack_qty
+                if purchase_pr > 0:
+                    batch.purchase_price = purchase_pr
+                if mrp_pr > 0:
+                    batch.mrp = mrp_pr
+                if selling_pr > 0:
+                    batch.selling_price = selling_pr
+                if exp_date:
+                    batch.expiry_date = exp_date
+                if raw_batch_num and (batch.batch_number.startswith('EX-') or batch.batch_number.startswith('B-') or batch.batch_number == 'UNASSIGNED'):
+                    batch.batch_number = raw_batch_num
+                if supplier:
+                    batch.supplier = supplier
                 batch.save()
             else:
-                # Create batch record for new stock
+                # Create initial batch record for brand new medicine
+                batch_number_to_use = raw_batch_num or f"B-{date.today().strftime('%y%m%d')}"
                 batch = Batch.objects.create(
                     medicine=medicine,
                     supplier=supplier,
-                    batch_number=batch_num,
+                    batch_number=batch_number_to_use,
                     expiry_date=exp_date,
                     purchase_price=purchase_pr,
                     mrp=mrp_pr,
@@ -699,7 +724,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
                 quantity_packs=pack_qty,
                 quantity_loose=0,
                 reference_id=f"EXCEL-{date.today().strftime('%Y%m%d')}",
-                notes=f"Bulk Excel Inward from {supplier.name} ({source_name})"
+                notes=f"Bulk Excel Inward: Added {pack_qty} packs from {supplier.name} ({source_name})"
             )
 
             total_inward_value += (purchase_pr * Decimal(pack_qty))
@@ -708,7 +733,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
 
         return Response({
             "success": True,
-            "message": f"Successfully processed {inwarded_count} medicine batches ({existing_updated_count} existing medicines updated with added stock, {new_medicines_count} new medicines created).",
+            "message": f"Successfully processed {inwarded_count} medicines ({existing_updated_count} existing stock updated with added count, {new_medicines_count} new medicines created).",
             "total_items_processed": inwarded_count,
             "existing_medicines_updated": existing_updated_count,
             "new_medicines_created": new_medicines_count,

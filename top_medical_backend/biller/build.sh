@@ -5,4 +5,8 @@ set -o errexit
 pip install -r requirements.txt
 python manage.py collectstatic --no-input
 python manage.py migrate
-python seed_postgres.py
+
+if [ -f "seed_postgres.py" ]; then
+    python seed_postgres.py
+fi
+

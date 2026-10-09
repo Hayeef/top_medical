@@ -219,11 +219,12 @@ class InvoiceItem(models.Model):
 class DailyFinanceRecord(models.Model):
     date = models.DateField(unique=True, db_index=True)
     
-    # Sales & Inflow (Strictly Cash and UPI)
+    # Sales & Inflow (Cash, UPI, and Capital Infusions)
     daily_sales = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total gross sales invoiced/recorded on this day")
     cash_earned = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total Cash payments received")
     upi_earned = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total UPI / QR digital payments received")
-    total_earned = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total money earned: Cash + UPI")
+    capital_investment = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Owner capital investment / fund infusion added on this day")
+    total_earned = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total money earned / inflow: Cash + UPI + Capital Investment")
     
     # Outflow / Disbursements / Money Paid
     total_paid = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Total money paid out")
@@ -240,6 +241,7 @@ class DailyFinanceRecord(models.Model):
     
     # Itemized Breakdown
     payment_details = models.JSONField(default=list, blank=True, help_text="Itemized list of payments (vendors, staff with charge codes, vehicle, shop)")
+    capital_details = models.JSONField(default=list, blank=True, help_text="Itemized list of capital investments (source, mode, notes, timestamp)")
     
     notes = models.TextField(blank=True, null=True, help_text="Daily financial notes / explanations")
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='daily_finance_records')
@@ -250,15 +252,17 @@ class DailyFinanceRecord(models.Model):
         ordering = ['-date']
 
     def __str__(self):
-        return f"Daily Finance ({self.date}): Sales ₹{self.daily_sales} | Inflow ₹{self.total_earned} (Cash ₹{self.cash_earned} + UPI ₹{self.upi_earned}) | Outflow ₹{self.total_paid} | Firm Bal ₹{self.closing_balance}"
+        cap_str = f" | Capital ₹{self.capital_investment}" if self.capital_investment > 0 else ""
+        return f"Daily Finance ({self.date}): Sales ₹{self.daily_sales} | Inflow ₹{self.total_earned} (Cash ₹{self.cash_earned} + UPI ₹{self.upi_earned}{cap_str}) | Outflow ₹{self.total_paid} | Firm Bal ₹{self.closing_balance}"
 
     def save(self, *args, **kwargs):
         self.daily_sales = Decimal(str(self.daily_sales or '0.00'))
         self.cash_earned = Decimal(str(self.cash_earned or '0.00'))
         self.upi_earned = Decimal(str(self.upi_earned or '0.00'))
+        self.capital_investment = Decimal(str(self.capital_investment or '0.00'))
         
-        # Total money earned is strictly Cash + UPI
-        self.total_earned = self.cash_earned + self.upi_earned
+        # Total money inflow is Cash + UPI + Capital Investment
+        self.total_earned = self.cash_earned + self.upi_earned + self.capital_investment
         
         # If payment_details list is present and non-empty, auto-compute breakdown
         if isinstance(self.payment_details, list) and len(self.payment_details) > 0:
@@ -294,6 +298,8 @@ class DailyFinanceRecord(models.Model):
                             v_cash += amt
                 elif itype == 'STAFF':
                     if not is_credit:
+                        st_sum += amt
+                    elif not is_credit:
                         st_sum += amt
                 elif itype == 'VEHICLE':
                     if not is_credit:
@@ -335,6 +341,41 @@ class DailyFinanceRecord(models.Model):
         self.closing_balance = self.opening_balance + self.net_day_change
         
         super().save(*args, **kwargs)
+
+    @classmethod
+    def recalculate_chain(cls):
+        """
+        Chains opening and closing balances across all DailyFinanceRecords chronologically.
+        Ensures every day's opening_balance matches the previous day's closing_balance.
+        """
+        all_records = list(cls.objects.all().order_by('date'))
+        if not all_records:
+            return []
+            
+        running_bal = Decimal('0.00')
+        updated_records = []
+        
+        for idx, rec in enumerate(all_records):
+            if idx == 0:
+                rec.opening_balance = Decimal(str(rec.opening_balance or '0.00'))
+                running_bal = rec.opening_balance
+            else:
+                rec.opening_balance = running_bal
+                
+            rec.daily_sales = Decimal(str(rec.daily_sales or '0.00'))
+            rec.cash_earned = Decimal(str(rec.cash_earned or '0.00'))
+            rec.upi_earned = Decimal(str(rec.upi_earned or '0.00'))
+            rec.capital_investment = Decimal(str(rec.capital_investment or '0.00'))
+            rec.total_earned = rec.cash_earned + rec.upi_earned + rec.capital_investment
+            rec.total_paid = Decimal(str(rec.total_paid or '0.00'))
+            
+            rec.net_day_change = rec.total_earned - rec.total_paid
+            rec.closing_balance = rec.opening_balance + rec.net_day_change
+            running_bal = rec.closing_balance
+            updated_records.append(rec)
+            
+        cls.objects.bulk_update(updated_records, ['opening_balance', 'net_day_change', 'closing_balance', 'total_earned'])
+        return updated_records
 
 
 class VendorBill(models.Model):

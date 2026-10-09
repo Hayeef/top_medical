@@ -258,10 +258,10 @@ class DailyFinanceRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = DailyFinanceRecord
         fields = [
-            'id', 'date', 'daily_sales', 'cash_earned', 'upi_earned', 'total_earned',
+            'id', 'date', 'daily_sales', 'cash_earned', 'upi_earned', 'capital_investment', 'total_earned',
             'total_paid', 'supplier_payments', 'staff_expenses', 'vehicle_expenses', 'expenses', 'other_outflow',
             'opening_balance', 'net_day_change', 'closing_balance',
-            'payment_details', 'notes', 'created_by', 'created_by_name',
+            'payment_details', 'capital_details', 'notes', 'created_by', 'created_by_name',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['total_earned', 'net_day_change', 'closing_balance', 'created_at', 'updated_at']

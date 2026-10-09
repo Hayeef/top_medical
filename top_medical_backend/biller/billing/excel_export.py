@@ -647,7 +647,7 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
     return buffer
 
 
-def generate_daily_finance_excel(records_qs, profile, filter_info="", report_title="DAILY SALES & CASH/UPI FINANCIAL REGISTER"):
+def generate_daily_finance_excel(records_qs=None, profile=None, filter_info="", report_title="DAILY SALES & CASH/UPI FINANCIAL REGISTER", reconciled_data=None):
     """
     Export Daily Sales, Cash & UPI Earnings, Expenses, and Firm Balance records
     to a professionally styled Excel workbook.
@@ -680,7 +680,7 @@ def generate_daily_finance_excel(records_qs, profile, filter_info="", report_tit
     ws.merge_cells("A3:O3")
     meta_cell = ws["A3"]
     export_time_str = timezone.now().strftime('%d-%b-%Y %I:%M %p')
-    meta_cell.value = f"Generated On: {export_time_str}  |  Period: {filter_info or 'All Recorded Entries'}  |  Currency: INR ({currency})"
+    meta_cell.value = f"Generated On: {export_time_str}  |  Period: {filter_info or 'All Recorded Entries'}  |  Currency: INR ({currency})  |  Source: LIVE DATABASE"
     meta_cell.font = Font(name="Calibri", size=9, bold=True, color="0284C7")
     meta_cell.fill = PatternFill(start_color="F0F9FF", end_color="F0F9FF", fill_type="solid")
     meta_cell.alignment = Alignment(horizontal="center", vertical="center")
@@ -719,29 +719,33 @@ def generate_daily_finance_excel(records_qs, profile, filter_info="", report_tit
     start_row = 6
     cur_row = start_row
 
-    for record in records_qs:
+    items_to_render = reconciled_data if reconciled_data is not None else (list(records_qs) if records_qs is not None else [])
+
+    for record in items_to_render:
         ws.row_dimensions[cur_row].height = 20
         is_zebra = (cur_row % 2 == 0)
         row_fill = FILL_ZEBRA if is_zebra else None
 
-        # Values
-        date_str = record.date.strftime('%d-%m-%Y') if hasattr(record.date, 'strftime') else str(record.date)
-        sales_val = float(record.daily_sales or 0)
-        cash_val = float(record.cash_earned or 0)
-        upi_val = float(record.upi_earned or 0)
-        earned_val = float(record.total_earned or (record.cash_earned + record.upi_earned))
-        supp_val = float(record.supplier_payments or 0)
-        staff_val = float(getattr(record, 'staff_expenses', 0) or 0)
-        veh_val = float(getattr(record, 'vehicle_expenses', 0) or 0)
-        exp_val = float(record.expenses or 0)
-        oth_val = float(record.other_outflow or 0)
-        paid_val = float(record.total_paid or 0)
-        open_val = float(record.opening_balance or 0)
-        net_val = float(record.net_day_change or 0)
-        close_val = float(record.closing_balance or 0)
+        is_dict = isinstance(record, dict)
+        d_val = record.get('date') if is_dict else record.date
+        date_str = d_val.strftime('%d-%m-%Y') if hasattr(d_val, 'strftime') else str(d_val)
+        sales_val = float((record.get('daily_sales') if is_dict else record.daily_sales) or 0)
+        cash_val = float((record.get('cash_earned') if is_dict else record.cash_earned) or 0)
+        upi_val = float((record.get('upi_earned') if is_dict else record.upi_earned) or 0)
+        capital_val = float((record.get('capital_investment') if is_dict else getattr(record, 'capital_investment', 0)) or 0)
+        earned_val = float((record.get('total_earned') if is_dict else (record.total_earned or (record.cash_earned + record.upi_earned + getattr(record, 'capital_investment', 0)))) or (cash_val + upi_val + capital_val))
+        supp_val = float((record.get('supplier_payments') if is_dict else record.supplier_payments) or 0)
+        staff_val = float((record.get('staff_expenses') if is_dict else getattr(record, 'staff_expenses', 0)) or 0)
+        veh_val = float((record.get('vehicle_expenses') if is_dict else getattr(record, 'vehicle_expenses', 0)) or 0)
+        exp_val = float((record.get('expenses') if is_dict else record.expenses) or 0)
+        oth_val = float((record.get('other_outflow') if is_dict else record.other_outflow) or 0)
+        paid_val = float((record.get('total_paid') if is_dict else record.total_paid) or 0)
+        open_val = float((record.get('opening_balance') if is_dict else record.opening_balance) or 0)
+        net_val = float((record.get('net_day_change') if is_dict else record.net_day_change) or (earned_val - paid_val))
+        close_val = float((record.get('closing_balance') if is_dict else record.closing_balance) or 0)
 
         # Build detailed note string including itemized expense vouchers
-        details_list = record.payment_details if isinstance(record.payment_details, list) else []
+        details_list = (record.get('payment_details') if is_dict else record.payment_details) if isinstance((record.get('payment_details') if is_dict else record.payment_details), list) else []
         item_summaries = []
         for it in details_list:
             t = (it.get('type') or 'EXPENSE').upper()
@@ -765,8 +769,9 @@ def generate_daily_finance_excel(records_qs, profile, filter_info="", report_tit
         full_notes_parts = []
         if item_summaries:
             full_notes_parts.append("; ".join(item_summaries))
-        if record.notes:
-            full_notes_parts.append(record.notes)
+        rec_notes = (record.get('notes') if is_dict else record.notes) or ''
+        if rec_notes:
+            full_notes_parts.append(rec_notes)
         notes_val = " | ".join(full_notes_parts)
 
         row_data = [

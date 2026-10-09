@@ -198,7 +198,10 @@ export const dailyFinanceAPI = {
   patchRecord: (id, data) => request(`/billing/daily-finance/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteRecord: (id) => request(`/billing/daily-finance/${id}/`, { method: 'DELETE' }),
   autoFetchDay: (date = '') => request(`/billing/daily-finance/auto_fetch_pos_day/${date ? `?date=${encodeURIComponent(date)}` : ''}`),
+  recalculateBalances: () => request('/billing/daily-finance/recalculate_balances/', { method: 'POST' }),
+  addCapitalInvestment: (data) => request('/billing/daily-finance/add_capital_investment/', { method: 'POST', body: JSON.stringify(data) }),
   getSummaryStats: () => request('/billing/daily-finance/summary_stats/'),
+  getMonthlyReportSummary: (params = '') => request(`/billing/daily-finance/monthly_report_summary/${params ? `?${params}` : ''}`),
   exportExcel: async (params = '') => {
     const url = `${API_BASE_URL}/billing/daily-finance/export_excel/${params ? `?${params}` : ''}`;
     const res = await fetch(url);
@@ -223,6 +226,31 @@ export const dailyFinanceAPI = {
     window.URL.revokeObjectURL(blobUrl);
     return { success: true, filename };
   },
+  exportPdf: async (params = '') => {
+    const url = `${API_BASE_URL}/billing/daily-finance/export_pdf/${params ? `?${params}` : ''}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to generate PDF report' }));
+      throw new Error(err.error || err.detail || 'Failed to generate PDF report.');
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    let filename = `TopMedical_MonthlyFinance_${new Date().toISOString().slice(0, 10)}.pdf`;
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    if (match && match[1]) {
+      filename = match[1];
+    }
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(blobUrl);
+    return { success: true, filename };
+  },
+  getPdfUrl: (params = '') => `${API_BASE_URL}/billing/daily-finance/export_pdf/${params ? `?${params}` : ''}`,
 };
 
 export const vendorBillsAPI = {

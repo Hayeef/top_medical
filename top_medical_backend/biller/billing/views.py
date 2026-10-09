@@ -18,6 +18,7 @@ from .serializers import (
     InvoiceSerializer, InvoiceItemSerializer, DailyFinanceRecordSerializer, VendorBillSerializer
 )
 from .excel_export import generate_bills_excel, generate_daily_finance_excel
+from .pdf_export import generate_monthly_finance_pdf, get_reconciled_finance_ledger
 from inventory.models import Batch, StockMovement
 
 class LoginAPIView(APIView):
@@ -588,12 +589,118 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         user = self.request.user if self.request.user.is_authenticated else None
         daily_record = serializer.save(created_by=user)
+        DailyFinanceRecord.recalculate_chain()
         self._sync_vendor_bills(daily_record, user)
 
     def perform_update(self, serializer):
         user = self.request.user if self.request.user.is_authenticated else None
         daily_record = serializer.save()
+        DailyFinanceRecord.recalculate_chain()
         self._sync_vendor_bills(daily_record, user)
+
+    def perform_destroy(self, instance):
+        super().perform_destroy(instance)
+        DailyFinanceRecord.recalculate_chain()
+
+    @action(detail=False, methods=['post', 'get'], url_path='recalculate_balances')
+    def recalculate_balances(self, request):
+        """
+        Explicitly re-chains opening and closing balances across all DailyFinanceRecords
+        chronologically and returns the latest reconciled status.
+        """
+        updated_records = DailyFinanceRecord.recalculate_chain()
+        latest_rec = DailyFinanceRecord.objects.all().order_by('-date').first() if updated_records else None
+        current_balance = round(float(latest_rec.closing_balance), 2) if latest_rec else 0.00
+        
+        return Response({
+            "success": True,
+            "message": f"Successfully reconciled {len(updated_records)} daily account records.",
+            "records_count": len(updated_records),
+            "current_firm_balance": current_balance
+        })
+
+    @action(detail=False, methods=['post'], url_path='add_capital_investment')
+    def add_capital_investment(self, request):
+        """
+        Add capital investment / owner fund infusion into Daily Accounts & Inflow.
+        Updates the DailyFinanceRecord for the given date, records capital itemization,
+        adds to total inflow, and re-chains firm balances.
+        """
+        data = request.data or {}
+        date_str = data.get('date') or date.today().strftime('%Y-%m-%d')
+        try:
+            target_date = datetime.strptime(date_str, '%Y-%m-%d').date() if isinstance(date_str, str) else date_str
+        except ValueError:
+            return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            amt = Decimal(str(data.get('amount') or '0.00'))
+        except Exception:
+            return Response({"error": "Invalid amount provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if amt <= Decimal('0.00'):
+            return Response({"error": "Capital investment amount must be greater than 0."}, status=status.HTTP_400_BAD_REQUEST)
+
+        payment_mode = str(data.get('payment_mode') or 'CASH').upper()
+        source_name = str(data.get('source_name') or 'Proprietor / Owner Capital').strip()
+        notes = str(data.get('notes') or '').strip()
+        user = request.user if request.user.is_authenticated else None
+
+        # Fetch or initialize DailyFinanceRecord for this date
+        rec = DailyFinanceRecord.objects.filter(date=target_date).first()
+        if not rec:
+            # Look up previous closing balance as opening balance
+            prev_record = DailyFinanceRecord.objects.filter(date__lt=target_date).order_by('-date').first()
+            open_bal = prev_record.closing_balance if prev_record else Decimal('0.00')
+
+            rec = DailyFinanceRecord(
+                date=target_date,
+                opening_balance=open_bal,
+                created_by=user
+            )
+
+        # Update capital investment amount
+        existing_cap = Decimal(str(rec.capital_investment or '0.00'))
+        rec.capital_investment = existing_cap + amt
+
+        # Append to capital_details log
+        cap_details = list(rec.capital_details or [])
+        new_entry = {
+            "id": len(cap_details) + 1,
+            "date": target_date.strftime('%Y-%m-%d'),
+            "amount": float(amt),
+            "payment_mode": payment_mode,
+            "source_name": source_name,
+            "notes": notes,
+            "logged_by": user.username if user else 'Admin',
+            "created_at": timezone.now().isoformat()
+        }
+        cap_details.append(new_entry)
+        rec.capital_details = cap_details
+
+        capital_note_tag = f"[Capital Infusion: +₹{amt:,.2f} ({payment_mode}) from {source_name}]"
+        if notes:
+            capital_note_tag += f" - {notes}"
+        if rec.notes:
+            rec.notes = f"{rec.notes}\n{capital_note_tag}"
+        else:
+            rec.notes = capital_note_tag
+
+        rec.save()
+        DailyFinanceRecord.recalculate_chain()
+
+        # Fetch refreshed record
+        rec.refresh_from_db()
+        serializer = DailyFinanceRecordSerializer(rec)
+
+        return Response({
+            "success": True,
+            "message": f"Successfully added ₹{amt:,.2f} Capital Investment ({payment_mode}) for {target_date.strftime('%d-%b-%Y')}.",
+            "record": serializer.data,
+            "capital_investment": round(float(rec.capital_investment), 2),
+            "total_earned": round(float(rec.total_earned), 2),
+            "closing_balance": round(float(rec.closing_balance), 2),
+        }, status=status.HTTP_200_OK)
 
     def _sync_vendor_bills(self, daily_record, user):
         """
@@ -776,6 +883,7 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
             total_sales=Sum('daily_sales'),
             total_cash=Sum('cash_earned'),
             total_upi=Sum('upi_earned'),
+            total_capital=Sum('capital_investment'),
             total_earned=Sum('total_earned'),
             total_paid=Sum('total_paid'),
             total_supplier=Sum('supplier_payments'),
@@ -785,29 +893,29 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
             total_other_outflow=Sum('other_outflow'),
         )
 
-        # Current Firm Balance is the closing balance of the most recent record
-        latest_record = all_records.first()
-        current_firm_balance = latest_record.closing_balance if latest_record else Decimal('0.00')
-
-        # Current Month Totals
+        # Reconciled This Month data
         cur_year = today_d.year
         cur_month = today_d.month
-        month_records = DailyFinanceRecord.objects.filter(date__year=cur_year, date__month=cur_month)
-        month_totals = month_records.aggregate(
-            month_sales=Sum('daily_sales'),
-            month_cash=Sum('cash_earned'),
-            month_upi=Sum('upi_earned'),
-            month_earned=Sum('total_earned'),
-            month_paid=Sum('total_paid'),
-            month_supplier=Sum('supplier_payments'),
-            month_staff=Sum('staff_expenses'),
-            month_vehicle=Sum('vehicle_expenses'),
-            month_expenses=Sum('expenses'),
-        )
+        month_reconciled = get_reconciled_finance_ledger(month=cur_month, year=cur_year)
+        
+        m_sales = sum(Decimal(str(r.get('daily_sales') or 0)) for r in month_reconciled)
+        m_cash = sum(Decimal(str(r.get('cash_earned') or 0)) for r in month_reconciled)
+        m_upi = sum(Decimal(str(r.get('upi_earned') or 0)) for r in month_reconciled)
+        m_cap = sum(Decimal(str(r.get('capital_investment') or 0)) for r in month_reconciled)
+        m_earned = sum(Decimal(str(r.get('total_earned') or 0)) for r in month_reconciled)
+        m_paid = sum(Decimal(str(r.get('total_paid') or 0)) for r in month_reconciled)
+        m_supp = sum(Decimal(str(r.get('supplier_payments') or 0)) for r in month_reconciled)
+        m_staff = sum(Decimal(str(r.get('staff_expenses') or 0)) for r in month_reconciled)
+        m_veh = sum(Decimal(str(r.get('vehicle_expenses') or 0)) for r in month_reconciled)
+        m_exp = sum(Decimal(str(r.get('expenses') or 0)) for r in month_reconciled)
+        m_net = m_earned - m_paid
 
-        month_earned = month_totals['month_earned'] or Decimal('0.00')
-        month_paid = month_totals['month_paid'] or Decimal('0.00')
-        month_net = month_earned - month_paid
+        # Current Firm Balance from latest day in month or all-time
+        if len(month_reconciled) > 0:
+            current_firm_balance = month_reconciled[-1].get('closing_balance') or Decimal('0.00')
+        else:
+            latest_record = all_records.first()
+            current_firm_balance = latest_record.closing_balance if latest_record else Decimal('0.00')
 
         return Response({
             "current_firm_balance": round(float(current_firm_balance), 2),
@@ -817,6 +925,7 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
                 "daily_sales": round(float(today_record.daily_sales if today_record else pos_sales_today), 2),
                 "cash_earned": round(float(today_record.cash_earned if today_record else pos_cash_today), 2),
                 "upi_earned": round(float(today_record.upi_earned if today_record else pos_upi_today), 2),
+                "capital_investment": round(float(today_record.capital_investment if today_record else Decimal('0.00')), 2),
                 "total_earned": round(float(today_record.total_earned if today_record else (pos_cash_today + pos_upi_today)), 2),
                 "total_paid": round(float(today_record.total_paid if today_record else Decimal('0.00')), 2),
                 "supplier_payments": round(float(today_record.supplier_payments if today_record else Decimal('0.00')), 2),
@@ -830,20 +939,25 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
                 "year": cur_year,
                 "month": cur_month,
                 "month_name": today_d.strftime('%B %Y'),
-                "sales": round(float(month_totals['month_sales'] or 0.0), 2),
-                "cash_earned": round(float(month_totals['month_cash'] or 0.0), 2),
-                "supplier_paid": round(float(month_totals['month_supplier'] or 0.0), 2),
-                "staff_paid": round(float(month_totals['month_staff'] or 0.0), 2),
-                "vehicle_paid": round(float(month_totals['month_vehicle'] or 0.0), 2),
-                "expenses": round(float(month_totals['month_expenses'] or 0.0), 2),
-                "net_change": round(float(month_net), 2),
-                "days_count": month_records.count(),
+                "sales": round(float(m_sales), 2),
+                "cash_earned": round(float(m_cash), 2),
+                "upi_earned": round(float(m_upi), 2),
+                "capital_investment": round(float(m_cap), 2),
+                "total_earned": round(float(m_earned), 2),
+                "total_paid": round(float(m_paid), 2),
+                "supplier_paid": round(float(m_supp), 2),
+                "staff_paid": round(float(m_staff), 2),
+                "vehicle_paid": round(float(m_veh), 2),
+                "expenses": round(float(m_exp), 2),
+                "net_change": round(float(m_net), 2),
+                "days_count": len(month_reconciled),
             },
             "all_time": {
                 "sales": round(float(all_time_totals['total_sales'] or 0.0), 2),
                 "total_sales": round(float(all_time_totals['total_sales'] or 0.0), 2),
                 "cash_earned": round(float(all_time_totals['total_cash'] or 0.0), 2),
                 "upi_earned": round(float(all_time_totals['total_upi'] or 0.0), 2),
+                "capital_investment": round(float(all_time_totals['total_capital'] or 0.0), 2),
                 "total_earned": round(float(all_time_totals['total_earned'] or 0.0), 2),
                 "total_paid": round(float(all_time_totals['total_paid'] or 0.0), 2),
                 "supplier_paid": round(float(all_time_totals['total_supplier'] or 0.0), 2),
@@ -869,6 +983,8 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
         end_date = request.query_params.get('end_date')
 
         filter_info = ""
+        m_int = None
+        y_int = None
         if month:
             try:
                 m_int = int(month)
@@ -886,12 +1002,20 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
             filter_info = "All Recorded Entries"
             filename = f"TopMedical_DailyFinance_All_{timezone.now().strftime('%Y%m%d')}.xlsx"
 
+        reconciled_rows = get_reconciled_finance_ledger(
+            month=m_int,
+            year=y_int,
+            start_date=start_date,
+            end_date=end_date
+        )
+
         profile = PharmacyProfile.get_settings()
         excel_buffer = generate_daily_finance_excel(
-            records_qs=qs,
+            records_qs=None,
             profile=profile,
             filter_info=filter_info,
-            report_title="DAILY SALES & CASH/UPI FINANCIAL REGISTER"
+            report_title="DAILY SALES & CASH/UPI FINANCIAL REGISTER",
+            reconciled_data=reconciled_rows
         )
 
         response = HttpResponse(
@@ -901,6 +1025,206 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         response['Access-Control-Expose-Headers'] = 'Content-Disposition'
         return response
+
+    @action(detail=False, methods=['get'], url_path='export_pdf')
+    def export_pdf(self, request):
+        """
+        Download a professionally styled, high-resolution PDF report of the Monthly Financial Statement
+        including daily inflow (Total, Cash, UPI), daily outflow, firm balances, and payment history audit.
+        Supports filtering by month, year, start_date, end_date.
+        """
+        month = request.query_params.get('month')
+        year = request.query_params.get('year')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
+        filter_info = ""
+        m_int = None
+        y_int = None
+        if month:
+            try:
+                m_int = int(month)
+                y_int = int(year) if year else timezone.now().year
+                month_dt = datetime(y_int, m_int, 1)
+                filter_info = f"Month: {month_dt.strftime('%B %Y')}"
+                filename = f"TopMedical_MonthlyFinance_{month_dt.strftime('%b_%Y')}.pdf"
+            except (ValueError, TypeError):
+                filter_info = "Current Month"
+                filename = f"TopMedical_MonthlyFinance_{timezone.now().strftime('%Y%m')}.pdf"
+        elif start_date or end_date:
+            filter_info = f"Date Range: {start_date or 'Start'} to {end_date or 'Now'}"
+            filename = f"TopMedical_Finance_{start_date or 'Start'}_to_{end_date or 'Now'}.pdf"
+        else:
+            filter_info = "All Recorded Entries"
+            filename = f"TopMedical_Finance_All_{timezone.now().strftime('%Y%m%d')}.pdf"
+
+        # Reconcile live POS invoices with daily financial records
+        reconciled_rows = get_reconciled_finance_ledger(
+            month=m_int,
+            year=y_int,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        profile = PharmacyProfile.get_settings()
+        pdf_buffer = generate_monthly_finance_pdf(
+            profile=profile,
+            filter_info=filter_info,
+            month=m_int,
+            year=y_int,
+            report_title="MONTHLY FINANCIAL STATEMENT & CASH/UPI AUDIT",
+            reconciled_data=reconciled_rows
+        )
+
+        inline = request.query_params.get('inline') == '1'
+        disposition_type = 'inline' if inline else 'attachment'
+
+        response = HttpResponse(
+            pdf_buffer.getvalue(),
+            content_type='application/pdf'
+        )
+        response['Content-Disposition'] = f'{disposition_type}; filename="{filename}"'
+        response['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        return response
+
+    @action(detail=False, methods=['get'], url_path='monthly_report_summary')
+    def monthly_report_summary(self, request):
+        """
+        Provides detailed monthly financial aggregates and payment history audit data
+        dynamically reconciled from live POS Invoices and Daily Finance records.
+        """
+        month = request.query_params.get('month')
+        year = request.query_params.get('year')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
+        m_int = int(month) if month else None
+        y_int = int(year) if year else timezone.now().year
+
+        reconciled_rows = get_reconciled_finance_ledger(
+            month=m_int,
+            year=y_int,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        tot_sales = sum(Decimal(str(r.get('daily_sales') or 0)) for r in reconciled_rows)
+        tot_cash = sum(Decimal(str(r.get('cash_earned') or 0)) for r in reconciled_rows)
+        tot_upi = sum(Decimal(str(r.get('upi_earned') or 0)) for r in reconciled_rows)
+        tot_earned = sum(Decimal(str(r.get('total_earned') or (r.get('cash_earned') + r.get('upi_earned')))) for r in reconciled_rows)
+        tot_paid = sum(Decimal(str(r.get('total_paid') or 0)) for r in reconciled_rows)
+        tot_supp = sum(Decimal(str(r.get('supplier_payments') or 0)) for r in reconciled_rows)
+        tot_staff = sum(Decimal(str(r.get('staff_expenses') or 0)) for r in reconciled_rows)
+        tot_veh = sum(Decimal(str(r.get('vehicle_expenses') or 0)) for r in reconciled_rows)
+        tot_exp = sum(Decimal(str(r.get('expenses') or 0)) for r in reconciled_rows)
+        tot_oth = sum(Decimal(str(r.get('other_outflow') or 0)) for r in reconciled_rows)
+
+        opening_bal = reconciled_rows[0].get('opening_balance') if len(reconciled_rows) > 0 else Decimal('0.00')
+        closing_bal = reconciled_rows[-1].get('closing_balance') if len(reconciled_rows) > 0 else Decimal('0.00')
+        net_change = tot_earned - tot_paid
+
+        # Aggregate payment history
+        all_payments = []
+        for r in reconciled_rows:
+            details = r.get('payment_details') if isinstance(r.get('payment_details'), list) else []
+            for idx, it in enumerate(details):
+                amt = Decimal(str(it.get('amount') or '0.00'))
+                if amt > Decimal('0.00'):
+                    all_payments.append({
+                        'date': r.get('date').strftime('%Y-%m-%d') if hasattr(r.get('date'), 'strftime') else str(r.get('date')),
+                        'type': (it.get('type') or 'EXPENSE').upper(),
+                        'recipient': it.get('recipient') or it.get('staff_name') or it.get('vehicle_info') or it.get('category') or 'Disbursement',
+                        'charge_code': it.get('charge_code') or it.get('staff_code') or '',
+                        'payment_mode': (it.get('payment_mode') or 'CASH').upper(),
+                        'note': it.get('note') or it.get('purpose') or it.get('bill_number') or f"Payout #{idx+1}",
+                        'amount': float(amt)
+                    })
+
+        try:
+            month_dt = datetime(y_int, m_int or timezone.now().month, 1)
+            month_name = month_dt.strftime('%B %Y')
+        except Exception:
+            month_name = f"{m_int or timezone.now().month}/{y_int}"
+
+        # Convert date objects to string in reconciled_rows for JSON response
+        formatted_rows = []
+        for r in reconciled_rows:
+            row_dict = dict(r)
+            row_dict['date'] = r['date'].strftime('%Y-%m-%d') if hasattr(r['date'], 'strftime') else str(r['date'])
+            formatted_rows.append(row_dict)
+
+        # Compute available months across database for UI switcher pills
+        from django.db.models.functions import TruncMonth
+        from django.db.models import Count as DbCount, Sum as DbSum
+
+        inv_months = Invoice.objects.exclude(
+            payment_status__in=['CANCELLED', 'REFUNDED']
+        ).annotate(m=TruncMonth('created_at')).values('m').annotate(
+            bills=DbCount('id'), sales=DbSum('grand_total')
+        ).order_by('-m')
+
+        df_months = DailyFinanceRecord.objects.annotate(
+            m=TruncMonth('date')
+        ).values('m').annotate(rec_days=DbCount('id')).order_by('-m')
+
+        months_map = {}
+        for row in inv_months:
+            dt = row['m']
+            if dt:
+                key = (dt.year, dt.month)
+                months_map[key] = {
+                    'year': dt.year,
+                    'month': dt.month,
+                    'month_name': dt.strftime('%B %Y'),
+                    'invoices_count': row['bills'] or 0,
+                    'sales': round(float(row['sales'] or 0), 2),
+                    'records_count': 0,
+                    'is_current': bool(dt.year == timezone.now().year and dt.month == timezone.now().month)
+                }
+
+        for row in df_months:
+            dt = row['m']
+            if dt:
+                key = (dt.year, dt.month)
+                if key not in months_map:
+                    months_map[key] = {
+                        'year': dt.year,
+                        'month': dt.month,
+                        'month_name': dt.strftime('%B %Y'),
+                        'invoices_count': 0,
+                        'sales': 0.0,
+                        'records_count': row['rec_days'] or 0,
+                        'is_current': bool(dt.year == timezone.now().year and dt.month == timezone.now().month)
+                    }
+                else:
+                    months_map[key]['records_count'] = row['rec_days'] or 0
+
+        avail_months = sorted(months_map.values(), key=lambda x: (x['year'], x['month']), reverse=True)
+
+        return Response({
+            "month": m_int or timezone.now().month,
+            "year": y_int,
+            "month_name": month_name,
+            "days_count": len(reconciled_rows),
+            "summary": {
+                "total_sales": round(float(tot_sales), 2),
+                "cash_earned": round(float(tot_cash), 2),
+                "upi_earned": round(float(tot_upi), 2),
+                "total_earned": round(float(tot_earned), 2),
+                "total_paid": round(float(tot_paid), 2),
+                "supplier_payments": round(float(tot_supp), 2),
+                "staff_expenses": round(float(tot_staff), 2),
+                "vehicle_expenses": round(float(tot_veh), 2),
+                "shop_expenses": round(float(tot_exp), 2),
+                "other_outflow": round(float(tot_oth), 2),
+                "opening_balance": round(float(opening_bal), 2),
+                "net_change": round(float(net_change), 2),
+                "closing_balance": round(float(closing_bal), 2),
+            },
+            "records": formatted_rows,
+            "payment_history": all_payments,
+            "available_months": avail_months
+        })
 
 
 class VendorBillViewSet(viewsets.ModelViewSet):
@@ -1069,6 +1393,7 @@ class VendorBillViewSet(viewsets.ModelViewSet):
                 for p in p_details
             )
             daily_record.save()
+            DailyFinanceRecord.recalculate_chain()
             daily_record_synced = daily_record.id
             sync_status = "Synced"
 

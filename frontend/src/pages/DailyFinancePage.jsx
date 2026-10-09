@@ -1,27 +1,27 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  DollarSign, 
-  TrendingUp, 
+import {
+  DollarSign,
+  TrendingUp,
   TrendingDown,
-  PlusCircle, 
-  Banknote, 
-  QrCode, 
-  Landmark, 
-  Calendar, 
-  FileSpreadsheet, 
-  Printer, 
-  Edit3, 
-  Trash2, 
-  CheckCircle2, 
-  AlertCircle, 
-  Search, 
-  Sparkles, 
-  Layers, 
-  Receipt, 
-  X, 
-  Save, 
-  Plus, 
-  Trash, 
+  PlusCircle,
+  Banknote,
+  QrCode,
+  Landmark,
+  Calendar,
+  FileSpreadsheet,
+  Printer,
+  Edit3,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  Search,
+  Sparkles,
+  Layers,
+  Receipt,
+  X,
+  Save,
+  Plus,
+  Trash,
   Eye,
   RefreshCw,
   Wallet,
@@ -46,17 +46,19 @@ import {
   CheckCircle,
   ArrowUpRight
 } from 'lucide-react';
-import { 
-  ResponsiveContainer, 
-  ComposedChart, 
-  Bar, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  CartesianGrid 
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid
 } from 'recharts';
 import { dailyFinanceAPI, vendorBillsAPI, inventoryAPI } from '../api';
+import MonthlyFinanceReportModal from '../components/MonthlyFinanceReportModal';
+import CapitalInvestmentModal from '../components/CapitalInvestmentModal';
 
 export default function DailyFinancePage({ profile, user, suppliers = [], staffList = [] }) {
   const currency = profile?.currency_symbol || '₹';
@@ -70,7 +72,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   // Merge, deduplicate and sort suppliers alphabetically
   const effectiveSuppliers = useMemo(() => {
     const rawList = [...(localSuppliers.length > 0 ? localSuppliers : suppliers)];
-    
+
     // Default known vendors to guarantee Ullal Traders, Swarnadeep Agencies, and Johnsons Agencies are always accessible
     const defaultKnown = [
       { id: 'supp-ullal', name: 'Ullal Traders' },
@@ -140,6 +142,9 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   const [isSaving, setIsSaving] = useState(false);
   const [isAutoFetching, setIsAutoFetching] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [isMonthlyReportModalOpen, setIsMonthlyReportModalOpen] = useState(false);
+  const [isCapitalModalOpen, setIsCapitalModalOpen] = useState(false);
   const [notification, setNotification] = useState(null);
 
   // =========================================================================
@@ -223,6 +228,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
     daily_sales: '',
     cash_earned: '',
     upi_earned: '',
+    capital_investment: '',
     supplier_payments: '',
     staff_expenses: '',
     vehicle_expenses: '',
@@ -295,6 +301,22 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  // Recalculate & Reconcile Dynamic Balances across all historical records
+  const [isRecalculatingBalances, setIsRecalculatingBalances] = useState(false);
+  const handleRecalculateBalances = async () => {
+    setIsRecalculatingBalances(true);
+    try {
+      const res = await dailyFinanceAPI.recalculateBalances();
+      showToast(`✅ Dynamic Balance Chain Reconciled! Current Firm Balance: ${currency}${parseFloat(res.current_firm_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`);
+      await loadFinanceData();
+    } catch (err) {
+      console.error('Balance recalculation failed:', err);
+      showToast(`Recalculation error: ${err.message}`, 'error');
+    } finally {
+      setIsRecalculatingBalances(false);
     }
   };
 
@@ -565,45 +587,46 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   const handleOpenEdit = async (record, switchView = true) => {
     setEditingRecord(record);
     const defaultDue = computeDueDate(record.date, 21);
-    const details = Array.isArray(record.payment_details) && record.payment_details.length > 0 
+    const details = Array.isArray(record.payment_details) && record.payment_details.length > 0
       ? record.payment_details.map((p, idx) => ({
-          id: p.id || (Date.now() + idx),
-          type: (p.type || 'VENDOR').toUpperCase(),
-          recipient: p.recipient || '',
-          staff_id: p.staff_id || '',
-          staff_name: p.staff_name || '',
-          charge_code: p.charge_code || '',
-          purpose: p.purpose || '',
-          vehicle_info: p.vehicle_info || '',
-          category: p.category || '',
-          amount: (p.amount !== undefined && p.amount !== null && p.amount !== '') ? p.amount.toString() : '',
-          payment_mode: (p.payment_mode || 'CASH').toUpperCase(),
-          credit_days: p.credit_days !== undefined ? p.credit_days : 21,
-          due_date: p.due_date || computeDueDate(record.date, p.credit_days || 21),
-          note: p.note || ''
-        }))
+        id: p.id || (Date.now() + idx),
+        type: (p.type || 'VENDOR').toUpperCase(),
+        recipient: p.recipient || '',
+        staff_id: p.staff_id || '',
+        staff_name: p.staff_name || '',
+        charge_code: p.charge_code || '',
+        purpose: p.purpose || '',
+        vehicle_info: p.vehicle_info || '',
+        category: p.category || '',
+        amount: (p.amount !== undefined && p.amount !== null && p.amount !== '') ? p.amount.toString() : '',
+        payment_mode: (p.payment_mode || 'CASH').toUpperCase(),
+        credit_days: p.credit_days !== undefined ? p.credit_days : 21,
+        due_date: p.due_date || computeDueDate(record.date, p.credit_days || 21),
+        note: p.note || ''
+      }))
       : [{
-          id: Date.now(),
-          type: 'VENDOR',
-          recipient: effectiveSuppliers.length > 0 ? effectiveSuppliers[0].name : '',
-          staff_id: '',
-          staff_name: '',
-          charge_code: '',
-          purpose: '',
-          vehicle_info: '',
-          category: '',
-          amount: '',
-          payment_mode: 'CASH',
-          credit_days: 21,
-          due_date: defaultDue,
-          note: ''
-        }];
+        id: Date.now(),
+        type: 'VENDOR',
+        recipient: effectiveSuppliers.length > 0 ? effectiveSuppliers[0].name : '',
+        staff_id: '',
+        staff_name: '',
+        charge_code: '',
+        purpose: '',
+        vehicle_info: '',
+        category: '',
+        amount: '',
+        payment_mode: 'CASH',
+        credit_days: 21,
+        due_date: defaultDue,
+        note: ''
+      }];
 
     setFormData({
       date: record.date,
       daily_sales: (record.daily_sales !== undefined && record.daily_sales !== null) ? record.daily_sales.toString() : '',
       cash_earned: (record.cash_earned !== undefined && record.cash_earned !== null) ? record.cash_earned.toString() : '',
       upi_earned: (record.upi_earned !== undefined && record.upi_earned !== null) ? record.upi_earned.toString() : '',
+      capital_investment: (record.capital_investment !== undefined && record.capital_investment !== null) ? record.capital_investment.toString() : '',
       supplier_payments: (record.supplier_payments !== undefined && record.supplier_payments !== null) ? record.supplier_payments.toString() : '',
       staff_expenses: (record.staff_expenses !== undefined && record.staff_expenses !== null) ? record.staff_expenses.toString() : '',
       vehicle_expenses: (record.vehicle_expenses !== undefined && record.vehicle_expenses !== null) ? record.vehicle_expenses.toString() : '',
@@ -669,62 +692,62 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
           const rec = data.existing_record;
           setEditingRecord(rec);
           const defaultDue = computeDueDate(rec.date, 21);
-          const details = Array.isArray(rec.payment_details) && rec.payment_details.length > 0 
+          const details = Array.isArray(rec.payment_details) && rec.payment_details.length > 0
             ? rec.payment_details.map((p, idx) => ({
-                id: p.id || (Date.now() + idx),
-                type: (p.type || 'VENDOR').toUpperCase(),
-                recipient: p.recipient || '',
-                staff_id: p.staff_id || '',
-                staff_name: p.staff_name || '',
-                charge_code: p.charge_code || '',
-                purpose: p.purpose || '',
-                vehicle_info: p.vehicle_info || '',
-                category: p.category || '',
-                amount: (p.amount !== undefined && p.amount !== null && p.amount !== '') ? p.amount.toString() : '',
-                payment_mode: (p.payment_mode || 'CASH').toUpperCase(),
-                credit_days: p.credit_days !== undefined ? p.credit_days : 21,
-                due_date: p.due_date || computeDueDate(rec.date, p.credit_days || 21),
-                note: p.note || ''
-              }))
+              id: p.id || (Date.now() + idx),
+              type: (p.type || 'VENDOR').toUpperCase(),
+              recipient: p.recipient || '',
+              staff_id: p.staff_id || '',
+              staff_name: p.staff_name || '',
+              charge_code: p.charge_code || '',
+              purpose: p.purpose || '',
+              vehicle_info: p.vehicle_info || '',
+              category: p.category || '',
+              amount: (p.amount !== undefined && p.amount !== null && p.amount !== '') ? p.amount.toString() : '',
+              payment_mode: (p.payment_mode || 'CASH').toUpperCase(),
+              credit_days: p.credit_days !== undefined ? p.credit_days : 21,
+              due_date: p.due_date || computeDueDate(rec.date, p.credit_days || 21),
+              note: p.note || ''
+            }))
             : [{
-                id: Date.now(),
-                type: 'VENDOR',
-                recipient: suppliers.length > 0 ? suppliers[0].name : '',
-                staff_id: '',
-                staff_name: '',
-                charge_code: '',
-                purpose: '',
-                vehicle_info: '',
-                category: '',
-                amount: '',
-                payment_mode: 'CASH',
-                credit_days: 21,
-                due_date: defaultDue,
-                note: ''
-              }];
+              id: Date.now(),
+              type: 'VENDOR',
+              recipient: suppliers.length > 0 ? suppliers[0].name : '',
+              staff_id: '',
+              staff_name: '',
+              charge_code: '',
+              purpose: '',
+              vehicle_info: '',
+              category: '',
+              amount: '',
+              payment_mode: 'CASH',
+              credit_days: 21,
+              due_date: defaultDue,
+              note: ''
+            }];
 
           const existingSales = parseFloat(rec.daily_sales) || 0;
           const existingCash = parseFloat(rec.cash_earned) || 0;
           const existingUpi = parseFloat(rec.upi_earned) || 0;
           const posHasSales = (data.pos_daily_sales > 0 || data.pos_cash_earned > 0 || data.pos_upi_earned > 0);
-          
+
           // If forced, or existing record had 0s but POS has bills, auto-populate live POS numbers
           const shouldUpdateSalesFromPos = forceAutoFill || ((existingSales === 0 && existingCash === 0 && existingUpi === 0) && posHasSales);
 
-          const salesVal = shouldUpdateSalesFromPos 
-            ? (data.pos_daily_sales || 0).toString() 
+          const salesVal = shouldUpdateSalesFromPos
+            ? (data.pos_daily_sales || 0).toString()
             : (rec.daily_sales !== undefined && rec.daily_sales !== null && rec.daily_sales !== '' ? rec.daily_sales.toString() : (data.pos_daily_sales || 0).toString());
-          
-          const cashVal = shouldUpdateSalesFromPos 
-            ? (data.pos_cash_earned || 0).toString() 
+
+          const cashVal = shouldUpdateSalesFromPos
+            ? (data.pos_cash_earned || 0).toString()
             : (rec.cash_earned !== undefined && rec.cash_earned !== null && rec.cash_earned !== '' ? rec.cash_earned.toString() : (data.pos_cash_earned || 0).toString());
-          
-          const upiVal = shouldUpdateSalesFromPos 
-            ? (data.pos_upi_earned || 0).toString() 
+
+          const upiVal = shouldUpdateSalesFromPos
+            ? (data.pos_upi_earned || 0).toString()
             : (rec.upi_earned !== undefined && rec.upi_earned !== null && rec.upi_earned !== '' ? rec.upi_earned.toString() : (data.pos_upi_earned || 0).toString());
-          
-          const openingVal = (rec.opening_balance !== undefined && rec.opening_balance !== null && rec.opening_balance !== '') 
-            ? rec.opening_balance.toString() 
+
+          const openingVal = (rec.opening_balance !== undefined && rec.opening_balance !== null && rec.opening_balance !== '')
+            ? rec.opening_balance.toString()
             : (data.suggested_opening_balance !== undefined ? data.suggested_opening_balance.toString() : '0');
 
           setFormData({
@@ -732,6 +755,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             daily_sales: salesVal,
             cash_earned: cashVal,
             upi_earned: upiVal,
+            capital_investment: (rec.capital_investment !== undefined && rec.capital_investment !== null) ? rec.capital_investment.toString() : '',
             supplier_payments: (rec.supplier_payments !== undefined && rec.supplier_payments !== null) ? rec.supplier_payments.toString() : '',
             staff_expenses: (rec.staff_expenses !== undefined && rec.staff_expenses !== null) ? rec.staff_expenses.toString() : '',
             vehicle_expenses: (rec.vehicle_expenses !== undefined && rec.vehicle_expenses !== null) ? rec.vehicle_expenses.toString() : '',
@@ -759,6 +783,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             daily_sales: (data.pos_daily_sales || 0).toString(),
             cash_earned: (data.pos_cash_earned || 0).toString(),
             upi_earned: (data.pos_upi_earned || 0).toString(),
+            capital_investment: '',
             supplier_payments: '',
             staff_expenses: '',
             vehicle_expenses: '',
@@ -872,7 +897,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
     if (!viewingRecord) return null;
 
     const rawDetails = Array.isArray(viewingRecord.payment_details) ? viewingRecord.payment_details : [];
-    
+
     let vendorCash = 0;
     let vendorUpi = 0;
     let vendorCredit = 0;
@@ -988,7 +1013,8 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
     const grossSales = parseFloat(viewingRecord.daily_sales) || 0;
     const cashEarned = parseFloat(viewingRecord.cash_earned) || 0;
     const upiEarned = parseFloat(viewingRecord.upi_earned) || 0;
-    const totalEarned = parseFloat(viewingRecord.total_earned) || (cashEarned + upiEarned);
+    const capitalInvestment = parseFloat(viewingRecord.capital_investment) || 0;
+    const totalEarned = parseFloat(viewingRecord.total_earned) || (cashEarned + upiEarned + capitalInvestment);
 
     const openingBal = parseFloat(viewingRecord.opening_balance) || 0;
     const netChange = totalEarned - totalPaid;
@@ -998,6 +1024,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
       grossSales,
       cashEarned,
       upiEarned,
+      capitalInvestment,
       totalEarned,
       vendorCash,
       vendorUpi,
@@ -1021,7 +1048,8 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   // Live Math Calculations
   const formCashEarned = parseFloat(formData.cash_earned) || 0;
   const formUpiEarned = parseFloat(formData.upi_earned) || 0;
-  const formTotalEarned = formCashEarned + formUpiEarned;
+  const formCapitalInvestment = parseFloat(formData.capital_investment) || 0;
+  const formTotalEarned = formCashEarned + formUpiEarned + formCapitalInvestment;
 
   const formSupplierPaid = itemizedSums.vendorActualPaid;
   const formSupplierCredit = itemizedSums.vendorCreditSum;
@@ -1029,7 +1057,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   const formVehiclePaid = itemizedSums.vehicleSum;
   const formShopExpenses = itemizedSums.shopSum;
   const formOtherOutflow = itemizedSums.otherSum;
-  
+
   // Total Money Paid Out from Drawer / Bank (Cash + UPI)
   const formTotalPaid = itemizedSums.totalActualPaidSum;
   const formTotalCredit = itemizedSums.totalCreditPending;
@@ -1110,7 +1138,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
       payment_details: (prev.payment_details || []).map(item => {
         if (item.id === id) {
           const updated = { ...item, [field]: value };
-          
+
           // Auto-sync staff details & mapped charge code
           if (field === 'staff_id') {
             const foundStaff = staffList.find(s => s.id.toString() === value.toString());
@@ -1218,6 +1246,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
         daily_sales: parseFloat(formData.daily_sales) || formTotalEarned,
         cash_earned: formCashEarned,
         upi_earned: formUpiEarned,
+        capital_investment: formCapitalInvestment,
         supplier_payments: formSupplierPaid,
         staff_expenses: formStaffPaid,
         vehicle_expenses: formVehiclePaid,
@@ -1290,6 +1319,28 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
     }
   };
 
+  // PDF Export
+  const handleExportPdf = async () => {
+    setExportingPdf(true);
+    try {
+      let queryParams = [];
+      if (selectedMonth) {
+        queryParams.push(`month=${selectedMonth}`);
+        if (selectedYear) queryParams.push(`year=${selectedYear}`);
+      } else if (startDate || endDate) {
+        if (startDate) queryParams.push(`start_date=${startDate}`);
+        if (endDate) queryParams.push(`end_date=${endDate}`);
+      }
+      const queryString = queryParams.join('&');
+      const res = await dailyFinanceAPI.exportPdf(queryString);
+      showToast(`PDF report downloaded: ${res.filename}`);
+    } catch (err) {
+      alert(`PDF export failed: ${err.message}`);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   // Chart Data Preparation
   const chartData = useMemo(() => {
     return [...records]
@@ -1314,7 +1365,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
       list = list.filter(r => {
         const matchDate = r.date?.toLowerCase().includes(q);
         const matchNotes = r.notes?.toLowerCase().includes(q);
-        const matchDetails = Array.isArray(r.payment_details) && r.payment_details.some(d => 
+        const matchDetails = Array.isArray(r.payment_details) && r.payment_details.some(d =>
           d.recipient?.toLowerCase().includes(q) ||
           d.staff_name?.toLowerCase().includes(q) ||
           d.charge_code?.toLowerCase().includes(q) ||
@@ -1332,29 +1383,33 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   const activeRecordForDate = records.find(r => r.date === formData.date);
   const latestRecordedDay = records.length > 0 ? [...records].sort((a, b) => new Date(b.date) - new Date(a.date))[0] : null;
 
-  const dynamicSales = (formData.daily_sales !== '' && formData.daily_sales !== undefined && formData.daily_sales !== null) 
+  const dynamicSales = (formData.daily_sales !== '' && formData.daily_sales !== undefined && formData.daily_sales !== null)
     ? (parseFloat(formData.daily_sales) || 0)
     : (formTotalEarned > 0 ? formTotalEarned : (activeRecordForDate ? parseFloat(activeRecordForDate.daily_sales) : (summaryStats?.today?.daily_sales || (latestRecordedDay ? parseFloat(latestRecordedDay.daily_sales) : 0))));
 
-  const dynamicCash = (formData.cash_earned !== '' && formData.cash_earned !== undefined && formData.cash_earned !== null) 
-    ? formCashEarned 
+  const dynamicCash = (formData.cash_earned !== '' && formData.cash_earned !== undefined && formData.cash_earned !== null)
+    ? formCashEarned
     : (activeRecordForDate ? parseFloat(activeRecordForDate.cash_earned) : (summaryStats?.today?.cash_earned || (latestRecordedDay ? parseFloat(latestRecordedDay.cash_earned) : 0)));
 
-  const dynamicUpi = (formData.upi_earned !== '' && formData.upi_earned !== undefined && formData.upi_earned !== null) 
-    ? formUpiEarned 
+  const dynamicUpi = (formData.upi_earned !== '' && formData.upi_earned !== undefined && formData.upi_earned !== null)
+    ? formUpiEarned
     : (activeRecordForDate ? parseFloat(activeRecordForDate.upi_earned) : (summaryStats?.today?.upi_earned || (latestRecordedDay ? parseFloat(latestRecordedDay.upi_earned) : 0)));
 
-  const dynamicPaid = (formData.payment_details && formData.payment_details.length > 0 && formTotalPaid > 0) 
-    ? formTotalPaid 
+  const dynamicCapital = (formData.capital_investment !== '' && formData.capital_investment !== undefined && formData.capital_investment !== null)
+    ? formCapitalInvestment
+    : (activeRecordForDate ? parseFloat(activeRecordForDate.capital_investment || 0) : (summaryStats?.today?.capital_investment || 0));
+
+  const dynamicPaid = (formData.payment_details && formData.payment_details.length > 0 && formTotalPaid > 0)
+    ? formTotalPaid
     : (activeRecordForDate ? parseFloat(activeRecordForDate.total_paid) : (summaryStats?.today?.total_paid || (latestRecordedDay ? parseFloat(latestRecordedDay.total_paid) : 0)));
 
-  const dynamicClosingBalance = (formData.opening_balance !== '' || formNetChange !== 0) 
-    ? formClosingBalance 
+  const dynamicClosingBalance = (formData.opening_balance !== '' || formNetChange !== 0)
+    ? formClosingBalance
     : (activeRecordForDate ? parseFloat(activeRecordForDate.closing_balance) : (summaryStats?.current_firm_balance || (latestRecordedDay ? parseFloat(latestRecordedDay.closing_balance) : 0)));
 
   return (
     <div className="main-page-wrapper df-page-wrapper" style={{ maxWidth: '1280px', margin: '0 auto', paddingBottom: '60px' }}>
-      
+
       {/* Scoped Responsive & Professional Styles */}
       <style>{`
         .df-page-wrapper {
@@ -1881,6 +1936,57 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             <span>📊 History Ledger ({records.length})</span>
           </button>
         </div>
+
+        {/* Top Header Action Buttons: Add Capital Investment & Monthly PDF Report */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setIsCapitalModalOpen(true)}
+            className="btn"
+            style={{
+              padding: '10px 18px',
+              borderRadius: '10px',
+              fontWeight: 800,
+              fontSize: '13px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+              color: '#ffffff',
+              boxShadow: '0 4px 14px rgba(5, 150, 105, 0.35)',
+              border: 'none',
+              cursor: 'pointer'
+            }}
+            title="Add Capital Investment / Owner Fund Infusion (Cash / UPI / Bank Inflow)"
+          >
+            <PlusCircle size={16} />
+            <span>💼 + Add Capital Investment</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsMonthlyReportModalOpen(true)}
+            className="btn btn-primary"
+            style={{
+              padding: '10px 18px',
+              borderRadius: '10px',
+              fontWeight: 800,
+              fontSize: '13px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+              color: '#ffffff',
+              boxShadow: '0 4px 14px rgba(2, 132, 199, 0.35)',
+              border: 'none',
+              cursor: 'pointer'
+            }}
+            title="Download Official Monthly Financial Statement & PDF Report"
+          >
+            <FileText size={16} />
+            <span>📄 Monthly Finance PDF Report</span>
+          </button>
+        </div>
       </div>
 
       {/* QUICK STATUS BAR: Live Daily Financial Summary (Dynamic for Active Day / Form) */}
@@ -1920,6 +2026,18 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
           </div>
         </div>
 
+        {/* Capital Inflow if present */}
+        {dynamicCapital > 0 && (
+          <div className="glass-panel" style={{ padding: '12px 14px', background: '#ecfdf5', border: '1.5px solid #6ee7b7' }}>
+            <div style={{ fontSize: '11px', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>
+              💼 Capital Inflow
+            </div>
+            <div className="mono" style={{ fontSize: '18px', fontWeight: 900, color: '#047857', marginTop: '2px' }}>
+              +{currency}{dynamicCapital.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </div>
+          </div>
+        )}
+
         {/* Total Money Out */}
         <div className="glass-panel" style={{ padding: '12px 14px', background: '#fff1f2', border: '1px solid #fecdd3' }}>
           <div style={{ fontSize: '11px', fontWeight: 800, color: '#e11d48', textTransform: 'uppercase' }}>
@@ -1946,7 +2064,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
           ========================================================================= */}
       {activeViewMode === 'register' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '20px' }}>
-          
+
           <form onSubmit={handleSaveRecord} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
             {/* TOP BAR: DATE PICKER & 1-CLICK AUTO-FILL BUTTON */}
@@ -1962,7 +2080,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
               gap: '14px',
               boxShadow: '0 4px 16px rgba(2, 132, 199, 0.06)'
             }}>
-              
+
               {/* Date Selector with Quick Navigation */}
               <div className="df-date-group" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                 <div style={{
@@ -2151,7 +2269,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
               border: '1.5px solid #86efac',
               boxShadow: '0 4px 16px rgba(16, 185, 129, 0.06)'
             }}>
-              
+
               {/* Step 1 Title Banner */}
               <div className="df-section-header" style={{
                 display: 'flex',
@@ -2190,28 +2308,52 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   </div>
                 </div>
 
-                {/* Total Inflow Live Badge */}
-                <div className="df-total-badge" style={{
-                  padding: '8px 16px',
-                  background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
-                  borderRadius: '10px',
-                  border: '1.5px solid #6ee7b7',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  <span style={{ fontSize: '12px', fontWeight: 800, color: '#065f46', textTransform: 'uppercase' }}>
-                    Total Inflow:
-                  </span>
-                  <span className="mono" style={{ fontSize: '19px', fontWeight: 900, color: '#047857' }}>
-                    {currency}{formTotalEarned.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </span>
+                {/* Section Header Controls */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsCapitalModalOpen(true)}
+                    className="btn btn-secondary btn-sm"
+                    style={{
+                      background: '#ffffff',
+                      border: '1.5px solid #059669',
+                      color: '#059669',
+                      fontWeight: 800,
+                      borderRadius: '10px',
+                      padding: '8px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 2px 6px rgba(5, 150, 105, 0.15)'
+                    }}
+                  >
+                    <PlusCircle size={15} color="#059669" />
+                    <span>💼 + Add Capital Investment</span>
+                  </button>
+
+                  {/* Total Inflow Live Badge */}
+                  <div className="df-total-badge" style={{
+                    padding: '8px 16px',
+                    background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+                    borderRadius: '10px',
+                    border: '1.5px solid #6ee7b7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <span style={{ fontSize: '12px', fontWeight: 800, color: '#065f46', textTransform: 'uppercase' }}>
+                      Total Inflow:
+                    </span>
+                    <span className="mono" style={{ fontSize: '19px', fontWeight: 900, color: '#047857' }}>
+                      {currency}{formTotalEarned.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* 3 Large Inflow Entry Cards */}
-              <div className="df-inflows-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
-                
+              {/* 4 Large Inflow Entry Cards */}
+              <div className="df-inflows-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+
                 {/* 1. Cash in Drawer */}
                 <div style={{
                   padding: '16px',
@@ -2226,7 +2368,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                     </label>
                     <span className="badge badge-emerald" style={{ fontSize: '10px', fontWeight: 800 }}>Hard Cash</span>
                   </div>
-                  
+
                   <div style={{ position: 'relative' }}>
                     <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '18px', fontWeight: 900, color: '#059669' }}>
                       {currency}
@@ -2254,7 +2396,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                     />
                   </div>
                   <div style={{ fontSize: '11px', color: '#059669', marginTop: '6px', fontWeight: 700 }}>
-                    Physical cash in your counter drawer
+                    Physical cash in counter drawer
                   </div>
                 </div>
 
@@ -2272,7 +2414,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                     </label>
                     <span className="badge badge-cyan" style={{ fontSize: '10px', fontWeight: 800 }}>PhonePe / GPay</span>
                   </div>
-                  
+
                   <div style={{ position: 'relative' }}>
                     <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '18px', fontWeight: 900, color: '#0284c7' }}>
                       {currency}
@@ -2300,11 +2442,63 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                     />
                   </div>
                   <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '6px', fontWeight: 700 }}>
-                    Digital receipts received on shop QR / soundbox
+                    Digital receipts received on shop QR
                   </div>
                 </div>
 
-                {/* 3. Gross Daily Sales (POS Bills) */}
+                {/* 3. Capital Inflow (Owner Fund Infusion) */}
+                <div style={{
+                  padding: '16px',
+                  background: 'linear-gradient(135deg, #ecfdf5 0%, #ffffff 100%)',
+                  borderRadius: '14px',
+                  border: '2px solid #10b981'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 900, color: '#047857', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Landmark size={18} color="#059669" />
+                      <span>💼 Capital Inflow ({currency})</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsCapitalModalOpen(true)}
+                      className="badge badge-emerald"
+                      style={{ fontSize: '10.5px', fontWeight: 800, cursor: 'pointer', border: '1px solid #6ee7b7' }}
+                    >
+                      + Quick Add
+                    </button>
+                  </div>
+
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '18px', fontWeight: 900, color: '#059669' }}>
+                      {currency}
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={formData.capital_investment}
+                      onChange={(e) => setFormData({ ...formData, capital_investment: e.target.value })}
+                      className="mono"
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px 10px 32px',
+                        fontSize: '22px',
+                        fontWeight: 900,
+                        borderRadius: '10px',
+                        border: '1.5px solid #10b981',
+                        background: '#ffffff',
+                        color: '#047857',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#059669', marginTop: '6px', fontWeight: 700 }}>
+                    Owner / investor funds infused into business
+                  </div>
+                </div>
+
+                {/* 4. Gross Daily Sales (POS Bills) */}
                 <div style={{
                   padding: '16px',
                   background: '#f8fafc',
@@ -2318,7 +2512,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                     </label>
                     <span className="badge badge-gray" style={{ fontSize: '10px', fontWeight: 700 }}>Invoiced</span>
                   </div>
-                  
+
                   <div style={{ position: 'relative' }}>
                     <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '18px', fontWeight: 800, color: '#475569' }}>
                       {currency}
@@ -2363,7 +2557,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
               border: '1.5px solid #fda4af',
               boxShadow: '0 4px 16px rgba(225, 29, 72, 0.06)'
             }}>
-              
+
               {/* Header & Quick Category Shortcuts */}
               <div className="df-section-header" style={{
                 display: 'flex',
@@ -2436,7 +2630,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                 <span style={{ fontSize: '12px', fontWeight: 900, color: '#9f1239', marginRight: '2px' }}>
                   ⚡ Quick Add:
                 </span>
-                
+
                 {/* 1. Vendor Payout */}
                 <button
                   type="button"
@@ -2581,7 +2775,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                       const isStaff = row.type === 'STAFF';
                       const isVehicle = row.type === 'VEHICLE';
                       const isShop = row.type === 'SHOP' || row.type === 'Expense';
-                      const isOther = row.type === 'OTHER';
+                      const isOther = row.type === 'OTHER' || (!isVendor && !isStaff && !isVehicle && !isShop);
                       const isCredit = row.payment_mode === 'CREDIT';
 
                       const rowBg = index % 2 === 0 ? '#ffffff' : '#fcfcfd';
@@ -2592,7 +2786,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                           borderBottom: '1px solid #e2e8f0',
                           borderLeft: isCredit ? '3.5px solid #f59e0b' : 'none'
                         }}>
-                          
+
                           {/* 1. Row Index */}
                           <td style={{ textAlign: 'center', fontWeight: 800, color: '#64748b', padding: '10px 4px' }}>
                             {index + 1}
@@ -3104,7 +3298,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   const isStaff = row.type === 'STAFF';
                   const isVehicle = row.type === 'VEHICLE';
                   const isShop = row.type === 'SHOP' || row.type === 'Expense';
-                  const isOther = row.type === 'OTHER';
+                  const isOther = row.type === 'OTHER' || (!isVendor && !isStaff && !isVehicle && !isShop);
                   const isCredit = row.payment_mode === 'CREDIT';
 
                   const themeClass = isVendor ? 'vendor-theme' : (isStaff ? 'staff-theme' : (isVehicle ? 'vehicle-theme' : (isShop ? 'shop-theme' : 'other-theme')));
@@ -3116,7 +3310,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                     >
                       {/* Top Row: Index Badge, Category Dropdown, Delete Button */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                        
+
                         {/* Index Pill */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{
@@ -3679,7 +3873,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
               border: '2px solid #7dd3fc',
               boxShadow: '0 4px 16px rgba(2, 132, 199, 0.08)'
             }}>
-              
+
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
                 <div style={{
                   width: '34px',
@@ -3709,7 +3903,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
               {/* 4 Equalizer Visual Cards */}
               <div className="df-math-equalizer" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', alignItems: 'center' }}>
-                
+
                 {/* 1. Morning Opening Balance */}
                 <div style={{ padding: '14px', background: '#ffffff', borderRadius: '12px', border: '1.5px solid #bae6fd' }}>
                   <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -3898,57 +4092,83 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
           </form>
 
-            {/* =========================================================================
+          {/* =========================================================================
                 SECTION 6: RECORDED DAILY ACCOUNTS REGISTER (ENTRY DISPLAY AFTER SUBMISSION)
                 ========================================================================= */}
-            <div className="glass-panel" style={{
-              padding: '18px 20px',
-              background: '#ffffff',
-              borderRadius: '16px',
-              border: '1.5px solid #bae6fd',
-              boxShadow: '0 4px 18px rgba(2, 132, 199, 0.06)'
+          <div className="glass-panel" style={{
+            padding: '18px 20px',
+            background: '#ffffff',
+            borderRadius: '16px',
+            border: '1.5px solid #bae6fd',
+            boxShadow: '0 4px 18px rgba(2, 132, 199, 0.06)'
+          }}>
+            {/* Header */}
+            <div className="df-saved-header" style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '12px',
+              borderBottom: '1.5px solid #e0f2fe',
+              paddingBottom: '14px',
+              marginBottom: '16px'
             }}>
-              {/* Header */}
-              <div className="df-saved-header" style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '12px',
-                borderBottom: '1.5px solid #e0f2fe',
-                paddingBottom: '14px',
-                marginBottom: '16px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{
-                    width: '34px',
-                    height: '34px',
-                    borderRadius: '10px',
-                    background: '#0284c7',
-                    color: '#ffffff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 3px 10px rgba(2, 132, 199, 0.25)',
-                    flexShrink: 0
-                  }}>
-                    <FileSpreadsheet size={18} />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '16px', fontWeight: 900, color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span>Daily Accounts Register & Recorded Entries</span>
-                      <span className="badge badge-cyan" style={{ fontSize: '11px', fontWeight: 800 }}>
-                        {filteredRegisterRecords.length} Days Recorded
-                      </span>
-                    </h3>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                      Complete register of saved daily accounts, inflows, vouchers, and firm balance
-                    </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '34px',
+                  height: '34px',
+                  borderRadius: '10px',
+                  background: '#0284c7',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 3px 10px rgba(2, 132, 199, 0.25)',
+                  flexShrink: 0
+                }}>
+                  <FileSpreadsheet size={18} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 900, color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>Daily Accounts Register & Recorded Entries</span>
+                    <span className="badge badge-cyan" style={{ fontSize: '11px', fontWeight: 800 }}>
+                      {filteredRegisterRecords.length} Days Recorded
+                    </span>
+                  </h3>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Complete register of saved daily accounts, inflows, vouchers, and firm balance
                   </div>
                 </div>
+              </div>
+
+              {/* Search & Action Controls */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={handleRecalculateBalances}
+                  disabled={isRecalculatingBalances}
+                  className="btn btn-secondary btn-sm"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    fontWeight: 800,
+                    fontSize: '12px',
+                    background: '#f0f9ff',
+                    color: '#0284c7',
+                    border: '1px solid #bae6fd',
+                    cursor: isRecalculatingBalances ? 'not-allowed' : 'pointer'
+                  }}
+                  title="Dynamically reconcile and chain all historical closing and opening firm balances across the register"
+                >
+                  <RefreshCw size={13} className={isRecalculatingBalances ? 'spin' : ''} />
+                  <span>{isRecalculatingBalances ? 'Syncing...' : 'Sync Balances'}</span>
+                </button>
 
                 {/* Quick Search & Filter */}
-                <div className="df-saved-search" style={{ position: 'relative', width: '280px' }}>
+                <div className="df-saved-search" style={{ position: 'relative', width: '250px' }}>
                   <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                   <input
                     type="text"
@@ -3976,351 +4196,358 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   )}
                 </div>
               </div>
+            </div>
 
-              {/* DESKTOP REGISTER SPREADSHEET TABLE */}
-              <div className="df-table-desktop" style={{
-                overflowX: 'auto',
-                border: '1.5px solid #cbd5e1',
-                borderRadius: '12px',
-                background: '#ffffff'
-              }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
-                  <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
-                      <th style={{ padding: '12px 10px', width: '120px', fontWeight: 800, color: '#334155' }}>Date</th>
-                      <th style={{ padding: '12px 10px', width: '120px', fontWeight: 800, color: '#059669', textAlign: 'right' }}>Cash In ({currency})</th>
-                      <th style={{ padding: '12px 10px', width: '120px', fontWeight: 800, color: '#0284c7', textAlign: 'right' }}>UPI In ({currency})</th>
-                      <th style={{ padding: '12px 10px', width: '130px', fontWeight: 800, color: '#047857', textAlign: 'right' }}>Total Inflow ({currency})</th>
-                      <th style={{ padding: '12px 10px', width: '130px', fontWeight: 800, color: '#be123c', textAlign: 'right' }}>Paid Out ({currency})</th>
-                      <th style={{ padding: '12px 10px', minWidth: '220px', fontWeight: 800, color: '#334155' }}>Vouchers & Breakdown</th>
-                      <th style={{ padding: '12px 10px', width: '120px', fontWeight: 800, color: '#334155', textAlign: 'right' }}>Net Day (+/-)</th>
-                      <th style={{ padding: '12px 10px', width: '140px', fontWeight: 800, color: '#0369a1', textAlign: 'right' }}>Firm Balance ({currency})</th>
-                      <th style={{ padding: '12px 10px', width: '110px', textAlign: 'center', fontWeight: 800, color: '#334155' }}>Actions</th>
+            {/* DESKTOP REGISTER SPREADSHEET TABLE */}
+            <div className="df-table-desktop" style={{
+              overflowX: 'auto',
+              border: '1.5px solid #cbd5e1',
+              borderRadius: '12px',
+              background: '#ffffff'
+            }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
+                    <th style={{ padding: '12px 10px', width: '120px', fontWeight: 800, color: '#334155' }}>Date</th>
+                    <th style={{ padding: '12px 10px', width: '120px', fontWeight: 800, color: '#059669', textAlign: 'right' }}>Cash In ({currency})</th>
+                    <th style={{ padding: '12px 10px', width: '120px', fontWeight: 800, color: '#0284c7', textAlign: 'right' }}>UPI In ({currency})</th>
+                    <th style={{ padding: '12px 10px', width: '130px', fontWeight: 800, color: '#047857', textAlign: 'right' }}>Total Inflow ({currency})</th>
+                    <th style={{ padding: '12px 10px', width: '130px', fontWeight: 800, color: '#be123c', textAlign: 'right' }}>Paid Out ({currency})</th>
+                    <th style={{ padding: '12px 10px', minWidth: '220px', fontWeight: 800, color: '#334155' }}>Vouchers & Breakdown</th>
+                    <th style={{ padding: '12px 10px', width: '120px', fontWeight: 800, color: '#334155', textAlign: 'right' }}>Net Day (+/-)</th>
+                    <th style={{ padding: '12px 10px', width: '140px', fontWeight: 800, color: '#0369a1', textAlign: 'right' }}>Firm Balance ({currency})</th>
+                    <th style={{ padding: '12px 10px', width: '110px', textAlign: 'center', fontWeight: 800, color: '#334155' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRegisterRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '36px 16px', color: '#94a3b8' }}>
+                        <FileSpreadsheet size={32} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
+                        <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-main)' }}>No saved records found</div>
+                        <div style={{ fontSize: '12px', marginTop: '2px' }}>Fill in the entries above and click "Save Today’s Accounts"</div>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRegisterRecords.length === 0 ? (
-                      <tr>
-                        <td colSpan="9" style={{ textAlign: 'center', padding: '36px 16px', color: '#94a3b8' }}>
-                          <FileSpreadsheet size={32} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
-                          <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-main)' }}>No saved records found</div>
-                          <div style={{ fontSize: '12px', marginTop: '2px' }}>Fill in the entries above and click "Save Today’s Accounts"</div>
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredRegisterRecords.map((r, idx) => {
-                        const isSelectedDate = r.date === formData.date;
-                        const netVal = parseFloat(r.net_day_change) || 0;
-                        const isPositive = netVal >= 0;
-                        const dateFormatted = new Date(r.date).toLocaleDateString('en-GB', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric'
-                        });
+                  ) : (
+                    filteredRegisterRecords.map((r, idx) => {
+                      const isSelectedDate = r.date === formData.date;
+                      const netVal = parseFloat(r.net_day_change) || 0;
+                      const isPositive = netVal >= 0;
+                      const dateFormatted = new Date(r.date).toLocaleDateString('en-GB', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric'
+                      });
 
-                        const details = Array.isArray(r.payment_details) ? r.payment_details : [];
-                        const vendorCount = details.filter(d => d.type === 'VENDOR' || d.type === 'Supplier').length;
-                        const staffCount = details.filter(d => d.type === 'STAFF').length;
-                        const vehicleCount = details.filter(d => d.type === 'VEHICLE').length;
-                        const shopCount = details.filter(d => d.type === 'SHOP' || d.type === 'Expense').length;
+                      const capitalVal = parseFloat(r.capital_investment) || 0;
+                      const details = Array.isArray(r.payment_details) ? r.payment_details : [];
+                      const vendorCount = details.filter(d => d.type === 'VENDOR' || d.type === 'Supplier').length;
+                      const staffCount = details.filter(d => d.type === 'STAFF').length;
+                      const vehicleCount = details.filter(d => d.type === 'VEHICLE').length;
+                      const shopCount = details.filter(d => d.type === 'SHOP' || d.type === 'Expense').length;
 
-                        return (
-                          <tr
-                            key={r.id || idx}
-                            onClick={() => handleOpenEdit(r, true)}
-                            className={isSelectedDate ? 'df-active-row' : ''}
-                            style={{
-                              background: isSelectedDate ? '#f0f9ff' : (idx % 2 === 0 ? '#ffffff' : '#fcfcfd'),
-                              borderBottom: '1px solid #e2e8f0',
-                              transition: 'background 0.15s',
-                              cursor: 'pointer'
-                            }}
-                            title="Click row to load all income & expense vouchers for this date"
-                          >
-                            {/* Date */}
-                            <td style={{ padding: '10px 10px', fontWeight: 800, whiteSpace: 'nowrap' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <Calendar size={13} color="#0284c7" />
-                                <span>{dateFormatted}</span>
-                              </div>
-                              {isSelectedDate && (
-                                <span className="badge badge-cyan" style={{ fontSize: '9.5px', marginTop: '3px', padding: '1px 5px', fontWeight: 800 }}>
-                                  {editingRecord ? '✏️ Loaded in Form' : 'Active Date'}
-                                </span>
-                              )}
-                            </td>
-
-                            {/* Cash In */}
-                            <td style={{ padding: '10px 10px', textAlign: 'right' }} className="mono">
-                              <span style={{ color: '#059669', fontWeight: 800, background: '#f0fdf4', padding: '3px 7px', borderRadius: '6px' }}>
-                                {currency}{parseFloat(r.cash_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                              </span>
-                            </td>
-
-                            {/* UPI In */}
-                            <td style={{ padding: '10px 10px', textAlign: 'right' }} className="mono">
-                              <span style={{ color: '#0284c7', fontWeight: 800, background: '#f0f9ff', padding: '3px 7px', borderRadius: '6px' }}>
-                                {currency}{parseFloat(r.upi_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                              </span>
-                            </td>
-
-                            {/* Total Inflow */}
-                            <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 900, color: '#047857' }} className="mono">
-                              {currency}{parseFloat(r.total_earned || ((parseFloat(r.cash_earned) || 0) + (parseFloat(r.upi_earned) || 0))).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                            </td>
-
-                            {/* Total Outflow */}
-                            <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 900, color: '#be123c' }} className="mono">
-                              {currency}{parseFloat(r.total_paid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                            </td>
-
-                            {/* Vouchers & Expense Breakdown */}
-                            <td style={{ padding: '8px 10px' }}>
-                              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                {vendorCount > 0 && (
-                                  <span className="badge badge-purple" style={{ fontSize: '10.5px', padding: '2px 6px', fontWeight: 800 }}>
-                                    🏢 {vendorCount} {vendorCount === 1 ? 'Vendor' : 'Vendors'}
-                                  </span>
-                                )}
-                                {staffCount > 0 && (
-                                  <span className="badge badge-cyan" style={{ fontSize: '10.5px', padding: '2px 6px', fontWeight: 800 }}>
-                                    👤 {staffCount} Staff
-                                  </span>
-                                )}
-                                {vehicleCount > 0 && (
-                                  <span className="badge badge-amber" style={{ fontSize: '10.5px', padding: '2px 6px', fontWeight: 800 }}>
-                                    🚗 Vehicle
-                                  </span>
-                                )}
-                                {shopCount > 0 && (
-                                  <span className="badge badge-rose" style={{ fontSize: '10.5px', padding: '2px 6px', fontWeight: 800 }}>
-                                    ☕ Shop
-                                  </span>
-                                )}
-                                {details.length === 0 && (
-                                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>No line items</span>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* Net Day Change */}
-                            <td style={{ padding: '10px 10px', textAlign: 'right' }} className="mono">
-                              <span style={{
-                                color: isPositive ? '#059669' : '#dc2626',
-                                fontWeight: 800,
-                                fontSize: '12.5px'
-                              }}>
-                                {isPositive ? '+' : ''}{currency}{netVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                              </span>
-                            </td>
-
-                            {/* Closing Balance */}
-                            <td style={{ padding: '10px 10px', textAlign: 'right' }} className="mono">
-                              <span style={{
-                                fontSize: '13px',
-                                fontWeight: 900,
-                                color: '#0369a1',
-                                background: '#e0f2fe',
-                                padding: '3px 8px',
-                                borderRadius: '6px',
-                                border: '1px solid #bae6fd'
-                              }}>
-                                {currency}{parseFloat(r.closing_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                              </span>
-                            </td>
-
-                            {/* Row Action Buttons */}
-                            <td style={{ padding: '8px 6px', textAlign: 'center' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenEdit(r, true);
-                                  }}
-                                  className="btn btn-secondary btn-sm"
-                                  style={{ padding: '5px 8px', color: '#0284c7', background: '#f0f9ff', border: '1px solid #bae6fd', fontWeight: 800 }}
-                                  title="Edit in Register"
-                                >
-                                  <Edit3 size={13} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setViewingRecord(r);
-                                  }}
-                                  className="btn btn-secondary btn-sm"
-                                  style={{ padding: '5px 8px', color: '#475569', fontWeight: 700 }}
-                                  title="View Statement Voucher"
-                                >
-                                  <Eye size={13} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteRecord(r);
-                                  }}
-                                  className="btn btn-secondary btn-sm"
-                                  style={{ padding: '5px 8px', color: '#ef4444', background: '#fef2f2', border: '1px solid #fecdd3' }}
-                                  title="Delete Record"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </div>
-                            </td>
-
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* MOBILE RESPONSIVE REGISTER CARDS (< 769px) */}
-              <div className="df-cards-mobile" style={{ marginTop: '12px' }}>
-                {filteredRegisterRecords.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '30px 16px', background: '#f8fafc', borderRadius: '12px', color: '#94a3b8' }}>
-                    <FileSpreadsheet size={28} style={{ margin: '0 auto 6px', opacity: 0.5 }} />
-                    <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-main)' }}>No saved records found</div>
-                  </div>
-                ) : (
-                  filteredRegisterRecords.map((r, idx) => {
-                    const isSelectedDate = r.date === formData.date;
-                    const netVal = parseFloat(r.net_day_change) || 0;
-                    const isPositive = netVal >= 0;
-                    const dateFormatted = new Date(r.date).toLocaleDateString('en-GB', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric'
-                    });
-
-                    const details = Array.isArray(r.payment_details) ? r.payment_details : [];
-                    const vendorCount = details.filter(d => d.type === 'VENDOR' || d.type === 'Supplier').length;
-                    const staffCount = details.filter(d => d.type === 'STAFF').length;
-                    const vehicleCount = details.filter(d => d.type === 'VEHICLE').length;
-                    const shopCount = details.filter(d => d.type === 'SHOP' || d.type === 'Expense').length;
-
-                    return (
-                      <div
-                        key={r.id || idx}
-                        style={{
-                          background: isSelectedDate ? '#f0f9ff' : '#ffffff',
-                          borderRadius: '12px',
-                          border: isSelectedDate ? '2px solid #0284c7' : '1.5px solid #cbd5e1',
-                          padding: '12px 14px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '10px',
-                          boxShadow: isSelectedDate ? '0 4px 14px rgba(2, 132, 199, 0.15)' : '0 2px 6px rgba(0,0,0,0.03)'
-                        }}
-                      >
-                        {/* Top: Date & Net Day */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Calendar size={15} color="#0284c7" />
-                            <strong style={{ fontSize: '13.5px', color: 'var(--text-main)' }}>{dateFormatted}</strong>
+                      return (
+                        <tr
+                          key={r.id || idx}
+                          onClick={() => handleOpenEdit(r, true)}
+                          className={isSelectedDate ? 'df-active-row' : ''}
+                          style={{
+                            background: isSelectedDate ? '#f0f9ff' : (idx % 2 === 0 ? '#ffffff' : '#fcfcfd'),
+                            borderBottom: '1px solid #e2e8f0',
+                            transition: 'background 0.15s',
+                            cursor: 'pointer'
+                          }}
+                          title="Click row to load all income & expense vouchers for this date"
+                        >
+                          {/* Date */}
+                          <td style={{ padding: '10px 10px', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Calendar size={13} color="#0284c7" />
+                              <span>{dateFormatted}</span>
+                            </div>
                             {isSelectedDate && (
-                              <span className="badge badge-cyan" style={{ fontSize: '10px', padding: '2px 6px', fontWeight: 800 }}>
-                                Active
+                              <span className="badge badge-cyan" style={{ fontSize: '9.5px', marginTop: '3px', padding: '1px 5px', fontWeight: 800 }}>
+                                {editingRecord ? '✏️ Loaded in Form' : 'Active Date'}
                               </span>
                             )}
-                          </div>
+                          </td>
 
-                          <span style={{
-                            fontSize: '12px',
-                            fontWeight: 900,
-                            color: isPositive ? '#059669' : '#dc2626',
-                            background: isPositive ? '#ecfdf5' : '#fef2f2',
-                            padding: '3px 8px',
-                            borderRadius: '6px',
-                            border: '1px solid ' + (isPositive ? '#bbf7d0' : '#fecdd3')
-                          }}>
-                            {isPositive ? '+' : ''}{currency}{netVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                          </span>
-                        </div>
-
-                        {/* 4 Metrics in 2x2 Grid */}
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(2, 1fr)',
-                          gap: '6px',
-                          background: isSelectedDate ? '#ffffff' : '#f8fafc',
-                          padding: '8px 10px',
-                          borderRadius: '8px'
-                        }}>
-                          <div>
-                            <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#059669', textTransform: 'uppercase' }}>💵 Cash In</div>
-                            <div className="mono" style={{ fontSize: '13.5px', fontWeight: 900, color: '#059669' }}>
+                          {/* Cash In */}
+                          <td style={{ padding: '10px 10px', textAlign: 'right' }} className="mono">
+                            <span style={{ color: '#059669', fontWeight: 800, background: '#f0fdf4', padding: '3px 7px', borderRadius: '6px' }}>
                               {currency}{parseFloat(r.cash_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                            </div>
-                          </div>
+                            </span>
+                          </td>
 
-                          <div>
-                            <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase' }}>📱 UPI In</div>
-                            <div className="mono" style={{ fontSize: '13.5px', fontWeight: 900, color: '#0284c7' }}>
+                          {/* UPI In */}
+                          <td style={{ padding: '10px 10px', textAlign: 'right' }} className="mono">
+                            <span style={{ color: '#0284c7', fontWeight: 800, background: '#f0f9ff', padding: '3px 7px', borderRadius: '6px' }}>
                               {currency}{parseFloat(r.upi_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                            </div>
-                          </div>
+                            </span>
+                          </td>
 
-                          <div>
-                            <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#e11d48', textTransform: 'uppercase' }}>🔴 Paid Out</div>
-                            <div className="mono" style={{ fontSize: '13.5px', fontWeight: 900, color: '#e11d48' }}>
-                              {currency}{parseFloat(r.total_paid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                            </div>
-                          </div>
+                          {/* Total Inflow */}
+                          <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 900, color: '#047857' }} className="mono">
+                            {currency}{parseFloat(r.total_earned || ((parseFloat(r.cash_earned) || 0) + (parseFloat(r.upi_earned) || 0) + capitalVal)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
 
-                          <div>
-                            <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>💼 Closing Firm</div>
-                            <div className="mono" style={{ fontSize: '13.5px', fontWeight: 900, color: '#0284c7' }}>
+                          {/* Total Outflow */}
+                          <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 900, color: '#be123c' }} className="mono">
+                            {currency}{parseFloat(r.total_paid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Vouchers & Expense Breakdown */}
+                          <td style={{ padding: '8px 10px' }}>
+                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                              {capitalVal > 0 && (
+                                <span className="badge badge-emerald" style={{ fontSize: '10.5px', padding: '2px 6px', fontWeight: 800 }}>
+                                  💼 +{currency}{capitalVal.toLocaleString('en-IN')} Capital
+                                </span>
+                              )}
+                              {vendorCount > 0 && (
+                                <span className="badge badge-purple" style={{ fontSize: '10.5px', padding: '2px 6px', fontWeight: 800 }}>
+                                  🏢 {vendorCount} {vendorCount === 1 ? 'Vendor' : 'Vendors'}
+                                </span>
+                              )}
+                              {staffCount > 0 && (
+                                <span className="badge badge-cyan" style={{ fontSize: '10.5px', padding: '2px 6px', fontWeight: 800 }}>
+                                  👤 {staffCount} Staff
+                                </span>
+                              )}
+                              {vehicleCount > 0 && (
+                                <span className="badge badge-amber" style={{ fontSize: '10.5px', padding: '2px 6px', fontWeight: 800 }}>
+                                  🚗 Vehicle
+                                </span>
+                              )}
+                              {shopCount > 0 && (
+                                <span className="badge badge-rose" style={{ fontSize: '10.5px', padding: '2px 6px', fontWeight: 800 }}>
+                                  ☕ Shop
+                                </span>
+                              )}
+                              {details.length === 0 && (
+                                <span style={{ fontSize: '11px', color: '#94a3b8' }}>No line items</span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Net Day Change */}
+                          <td style={{ padding: '10px 10px', textAlign: 'right' }} className="mono">
+                            <span style={{
+                              color: isPositive ? '#059669' : '#dc2626',
+                              fontWeight: 800,
+                              fontSize: '12.5px'
+                            }}>
+                              {isPositive ? '+' : ''}{currency}{netVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </span>
+                          </td>
+
+                          {/* Closing Balance */}
+                          <td style={{ padding: '10px 10px', textAlign: 'right' }} className="mono">
+                            <span style={{
+                              fontSize: '13px',
+                              fontWeight: 900,
+                              color: '#0369a1',
+                              background: '#e0f2fe',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              border: '1px solid #bae6fd'
+                            }}>
                               {currency}{parseFloat(r.closing_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </span>
+                          </td>
+
+                          {/* Row Action Buttons */}
+                          <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenEdit(r, true);
+                                }}
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '5px 8px', color: '#0284c7', background: '#f0f9ff', border: '1px solid #bae6fd', fontWeight: 800 }}
+                                title="Edit in Register"
+                              >
+                                <Edit3 size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewingRecord(r);
+                                }}
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '5px 8px', color: '#475569', fontWeight: 700 }}
+                                title="View Statement Voucher"
+                              >
+                                <Eye size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteRecord(r);
+                                }}
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '5px 8px', color: '#ef4444', background: '#fef2f2', border: '1px solid #fecdd3' }}
+                                title="Delete Record"
+                              >
+                                <Trash2 size={13} />
+                              </button>
                             </div>
+                          </td>
+
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* MOBILE RESPONSIVE REGISTER CARDS (< 769px) */}
+            <div className="df-cards-mobile" style={{ marginTop: '12px' }}>
+              {filteredRegisterRecords.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '30px 16px', background: '#f8fafc', borderRadius: '12px', color: '#94a3b8' }}>
+                  <FileSpreadsheet size={28} style={{ margin: '0 auto 6px', opacity: 0.5 }} />
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-main)' }}>No saved records found</div>
+                </div>
+              ) : (
+                filteredRegisterRecords.map((r, idx) => {
+                  const isSelectedDate = r.date === formData.date;
+                  const netVal = parseFloat(r.net_day_change) || 0;
+                  const isPositive = netVal >= 0;
+                  const dateFormatted = new Date(r.date).toLocaleDateString('en-GB', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric'
+                  });
+
+                  const details = Array.isArray(r.payment_details) ? r.payment_details : [];
+                  const vendorCount = details.filter(d => d.type === 'VENDOR' || d.type === 'Supplier').length;
+                  const staffCount = details.filter(d => d.type === 'STAFF').length;
+                  const vehicleCount = details.filter(d => d.type === 'VEHICLE').length;
+                  const shopCount = details.filter(d => d.type === 'SHOP' || d.type === 'Expense').length;
+
+                  return (
+                    <div
+                      key={r.id || idx}
+                      style={{
+                        background: isSelectedDate ? '#f0f9ff' : '#ffffff',
+                        borderRadius: '12px',
+                        border: isSelectedDate ? '2px solid #0284c7' : '1.5px solid #cbd5e1',
+                        padding: '12px 14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px',
+                        boxShadow: isSelectedDate ? '0 4px 14px rgba(2, 132, 199, 0.15)' : '0 2px 6px rgba(0,0,0,0.03)'
+                      }}
+                    >
+                      {/* Top: Date & Net Day */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Calendar size={15} color="#0284c7" />
+                          <strong style={{ fontSize: '13.5px', color: 'var(--text-main)' }}>{dateFormatted}</strong>
+                          {isSelectedDate && (
+                            <span className="badge badge-cyan" style={{ fontSize: '10px', padding: '2px 6px', fontWeight: 800 }}>
+                              Active
+                            </span>
+                          )}
+                        </div>
+
+                        <span style={{
+                          fontSize: '12px',
+                          fontWeight: 900,
+                          color: isPositive ? '#059669' : '#dc2626',
+                          background: isPositive ? '#ecfdf5' : '#fef2f2',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid ' + (isPositive ? '#bbf7d0' : '#fecdd3')
+                        }}>
+                          {isPositive ? '+' : ''}{currency}{netVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+
+                      {/* 4 Metrics in 2x2 Grid */}
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(2, 1fr)',
+                        gap: '6px',
+                        background: isSelectedDate ? '#ffffff' : '#f8fafc',
+                        padding: '8px 10px',
+                        borderRadius: '8px'
+                      }}>
+                        <div>
+                          <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#059669', textTransform: 'uppercase' }}>💵 Cash In</div>
+                          <div className="mono" style={{ fontSize: '13.5px', fontWeight: 900, color: '#059669' }}>
+                            {currency}{parseFloat(r.cash_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </div>
                         </div>
 
-                        {/* Expense Tags */}
-                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
-                          {vendorCount > 0 && <span className="badge badge-purple" style={{ fontSize: '10px' }}>🏢 {vendorCount} Vendors</span>}
-                          {staffCount > 0 && <span className="badge badge-cyan" style={{ fontSize: '10px' }}>👤 {staffCount} Staff</span>}
-                          {vehicleCount > 0 && <span className="badge badge-amber" style={{ fontSize: '10px' }}>🚗 Vehicle</span>}
-                          {shopCount > 0 && <span className="badge badge-rose" style={{ fontSize: '10px' }}>☕ Shop</span>}
+                        <div>
+                          <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase' }}>📱 UPI In</div>
+                          <div className="mono" style={{ fontSize: '13.5px', fontWeight: 900, color: '#0284c7' }}>
+                            {currency}{parseFloat(r.upi_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </div>
                         </div>
 
-                        {/* Actions Row */}
-                        <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #e2e8f0', paddingTop: '8px' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEdit(r, true)}
-                            className="btn btn-secondary btn-sm"
-                            style={{ flex: 1, padding: '7px 10px', fontSize: '12px', fontWeight: 800, color: '#0284c7', background: '#f0f9ff', border: '1px solid #bae6fd', justifyContent: 'center' }}
-                          >
-                            <Edit3 size={13} /> Edit Entry
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setViewingRecord(r)}
-                            className="btn btn-secondary btn-sm"
-                            style={{ flex: 1, padding: '7px 10px', fontSize: '12px', fontWeight: 700, justifyContent: 'center' }}
-                          >
-                            <Eye size={13} /> Voucher
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteRecord(r)}
-                            className="btn btn-secondary btn-sm"
-                            style={{ padding: '7px 10px', color: '#ef4444', background: '#fef2f2', border: '1px solid #fecdd3' }}
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                        <div>
+                          <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#e11d48', textTransform: 'uppercase' }}>🔴 Paid Out</div>
+                          <div className="mono" style={{ fontSize: '13.5px', fontWeight: 900, color: '#e11d48' }}>
+                            {currency}{parseFloat(r.total_paid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>💼 Closing Firm</div>
+                          <div className="mono" style={{ fontSize: '13.5px', fontWeight: 900, color: '#0284c7' }}>
+                            {currency}{parseFloat(r.closing_balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </div>
                         </div>
                       </div>
-                    );
-                  })
-                )}
-              </div>
+
+                      {/* Expense Tags */}
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {vendorCount > 0 && <span className="badge badge-purple" style={{ fontSize: '10px' }}>🏢 {vendorCount} Vendors</span>}
+                        {staffCount > 0 && <span className="badge badge-cyan" style={{ fontSize: '10px' }}>👤 {staffCount} Staff</span>}
+                        {vehicleCount > 0 && <span className="badge badge-amber" style={{ fontSize: '10px' }}>🚗 Vehicle</span>}
+                        {shopCount > 0 && <span className="badge badge-rose" style={{ fontSize: '10px' }}>☕ Shop</span>}
+                      </div>
+
+                      {/* Actions Row */}
+                      <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #e2e8f0', paddingTop: '8px' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(r, true)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ flex: 1, padding: '7px 10px', fontSize: '12px', fontWeight: 800, color: '#0284c7', background: '#f0f9ff', border: '1px solid #bae6fd', justifyContent: 'center' }}
+                        >
+                          <Edit3 size={13} /> Edit Entry
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setViewingRecord(r)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ flex: 1, padding: '7px 10px', fontSize: '12px', fontWeight: 700, justifyContent: 'center' }}
+                        >
+                          <Eye size={13} /> Voucher
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRecord(r)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '7px 10px', color: '#ef4444', background: '#fef2f2', border: '1px solid #fecdd3' }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
+          </div>
 
         </div>
       )}
@@ -4330,14 +4557,14 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
           ========================================================================= */}
       {activeViewMode === 'vendor_bills' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '20px' }}>
-          
+
           {/* 4 TOP KPI CARDS: SUMMARY OF WHOLESALE BILLS & DUES */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
             gap: '14px'
           }}>
-            
+
             {/* 1. Total Invoiced Bills */}
             <div className="glass-panel" style={{
               padding: '16px 18px',
@@ -4446,7 +4673,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             flexDirection: 'column',
             gap: '14px'
           }}>
-            
+
             {/* Top Toolbar Row */}
             <div style={{
               display: 'flex',
@@ -4455,7 +4682,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
               flexWrap: 'wrap',
               gap: '12px'
             }}>
-              
+
               {/* Filter Pills */}
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
@@ -4683,8 +4910,8 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                       <Building2 size={36} style={{ margin: '0 auto 10px', opacity: 0.5, color: '#6d28d9' }} />
                       <div style={{ fontSize: '15px', fontWeight: 800, color: '#334155' }}>No wholesale supplier bills found</div>
                       <div style={{ fontSize: '12.5px', color: '#64748b', marginTop: '4px' }}>
-                        {vendorBillsFilter !== 'ALL' || selectedSupplierFilter || vendorBillSearch 
-                          ? 'Try changing or clearing your filters' 
+                        {vendorBillsFilter !== 'ALL' || selectedSupplierFilter || vendorBillSearch
+                          ? 'Try changing or clearing your filters'
                           : 'Click below to add your first wholesale supplier bill & track credit days'}
                       </div>
                       <button
@@ -4881,7 +5108,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                         {/* 8. Actions */}
                         <td style={{ padding: '10px 8px', textAlign: 'center' }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                            
+
                             {/* 1-Click Pay / Settle Button */}
                             {!isFullyPaid ? (
                               <button
@@ -5136,10 +5363,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
           ========================================================================= */}
       {activeViewMode === 'ledger' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '20px' }}>
-          
+
           {/* Top Controls: Search, Month, Excel Export */}
           <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            
+
             {/* Search Input */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '240px', flex: 1 }}>
               <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
@@ -5158,7 +5385,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
             {/* Filter & Export Buttons */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              
+
               {/* Month Selector */}
               <select
                 value={selectedMonth}
@@ -5198,6 +5425,41 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   <option value="2027">2027</option>
                 </select>
               )}
+
+              {/* Monthly PDF Report Modal Button */}
+              <button
+                type="button"
+                onClick={() => setIsMonthlyReportModalOpen(true)}
+                className="btn btn-secondary"
+                style={{
+                  height: '40px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 700,
+                  background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                  color: '#ffffff',
+                  borderColor: '#0284c7',
+                  boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)'
+                }}
+                title="View & Download Official Monthly Financial PDF Report"
+              >
+                <FileText size={16} />
+                <span>Monthly PDF Report</span>
+              </button>
+
+              {/* Direct Quick PDF Download Button */}
+              <button
+                type="button"
+                onClick={handleExportPdf}
+                disabled={exportingPdf}
+                className="btn btn-secondary"
+                style={{ height: '40px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+                title="Directly download PDF file for selected period"
+              >
+                <Printer size={16} color="#0284c7" />
+                <span>{exportingPdf ? 'Exporting PDF...' : 'Quick PDF'}</span>
+              </button>
 
               {/* Export Excel Button */}
               <button
@@ -5250,9 +5512,9 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" opacity={0.6} />
                     <XAxis dataKey="date" stroke="#94a3b8" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} tickFormatter={(v) => `${currency}${Math.abs(v) >= 1000 ? `${(v/1000).toFixed(0)}k` : v}`} />
-                    <Tooltip 
-                      contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }} 
+                    <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} tickFormatter={(v) => `${currency}${Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                    <Tooltip
+                      contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
                       formatter={(value, name) => [`${currency}${parseFloat(value).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, name]}
                       labelFormatter={(label, payload) => payload?.[0]?.payload?.fullDate || label}
                     />
@@ -5449,7 +5711,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             border: '1px solid var(--border-subtle)',
             overflow: 'hidden'
           }}>
-            
+
             {/* Voucher Header */}
             <div style={{
               padding: '16px 20px',
@@ -5503,6 +5765,12 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   <span style={{ color: '#0284c7', fontWeight: 700 }}>• UPI Received:</span>
                   <span className="mono" style={{ fontWeight: 800, color: '#0284c7' }}>{currency}{viewingVoucherData.upiEarned.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
+                {viewingVoucherData.capitalInvestment > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '4px' }}>
+                    <span style={{ color: '#047857', fontWeight: 700 }}>• 💼 Capital Inflow:</span>
+                    <span className="mono" style={{ fontWeight: 800, color: '#047857' }}>+{currency}{viewingVoucherData.capitalInvestment.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', fontWeight: 900, borderTop: '1px solid #bbf7d0', paddingTop: '6px', marginTop: '6px' }}>
                   <span>Total Money Earned:</span>
                   <span className="mono" style={{ color: '#059669' }}>{currency}{viewingVoucherData.totalEarned.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
@@ -5731,7 +5999,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
             {/* Modal Form */}
             <form onSubmit={handleSaveBill} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
-              
+
               {/* Supplier Selection */}
               <div>
                 <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
@@ -6076,7 +6344,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
             {/* Payment Form */}
             <form onSubmit={handleRecordPaymentSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
-              
+
               {/* Payment Amount & Quick Full Pay Chip */}
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
@@ -6443,6 +6711,30 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
           </div>
         </div>
       )}
+
+      {/* Monthly Finance Statement & Audit PDF Modal */}
+      <MonthlyFinanceReportModal
+        isOpen={isMonthlyReportModalOpen}
+        onClose={() => setIsMonthlyReportModalOpen(false)}
+        profile={profile}
+        initialMonth={selectedMonth ? parseInt(selectedMonth) : undefined}
+        initialYear={selectedYear ? parseInt(selectedYear) : undefined}
+      />
+
+      {/* Capital Investment Modal */}
+      <CapitalInvestmentModal
+        isOpen={isCapitalModalOpen}
+        onClose={() => setIsCapitalModalOpen(false)}
+        currentDate={formData.date}
+        currency={currency}
+        onSuccess={async (res) => {
+          showToast(res.message || '✅ Capital Investment Saved!');
+          await Promise.allSettled([
+            loadFinanceData(),
+            triggerAutoFetch(formData.date, false, false)
+          ]);
+        }}
+      />
 
     </div>
   );

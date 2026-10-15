@@ -794,26 +794,53 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
                                     <th style={{ padding: '4px 6px' }}>Medicine</th>
                                     <th style={{ padding: '4px 6px' }}>Batch</th>
                                     <th style={{ padding: '4px 6px', textAlign: 'center' }}>Qty</th>
-                                    <th style={{ padding: '4px 6px', textAlign: 'right' }}>Unit Price</th>
+                                    <th style={{ padding: '4px 6px', textAlign: 'right' }}>Unit MRP (Incl. GST)</th>
+                                    <th style={{ padding: '4px 6px', textAlign: 'center' }}>GST %</th>
+                                    <th style={{ padding: '4px 6px', textAlign: 'right' }}>Tax (GST)</th>
                                     <th style={{ padding: '4px 6px', textAlign: 'right' }}>Total</th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {inv.items?.map((item, idx) => (
-                                    <tr key={idx} style={{ borderBottom: '1px dotted #e2e8f0' }}>
-                                      <td style={{ padding: '6px', fontWeight: 700 }}>{item.medicine_name}</td>
-                                      <td style={{ padding: '6px' }} className="mono">{item.batch_number}</td>
-                                      <td style={{ padding: '6px', textAlign: 'center', fontWeight: 700 }}>
-                                        {item.quantity}{item.is_loose ? ' units' : ' packs'}
-                                      </td>
-                                      <td style={{ padding: '6px', textAlign: 'right' }} className="mono">
-                                        {currency}{parseFloat(item.unit_price).toFixed(2)}
-                                      </td>
-                                      <td style={{ padding: '6px', textAlign: 'right', fontWeight: 800, color: '#059669' }} className="mono">
-                                        {currency}{parseFloat(item.total_price).toFixed(2)}
-                                      </td>
-                                    </tr>
-                                  ))}
+                                  {inv.items?.map((item, idx) => {
+                                    const unitMrp = parseFloat(item.unit_mrp ?? item.unit_price ?? 0);
+                                    const totalAmt = parseFloat(item.total_amount ?? item.total_price ?? 0);
+                                    const gstRate = parseFloat(item.gst_rate ?? 5);
+                                    const taxAmt = parseFloat(item.tax_amount ?? (totalAmt - (totalAmt / (1 + gstRate / 100))));
+                                    return (
+                                      <tr key={idx} style={{ borderBottom: '1px dotted #e2e8f0' }}>
+                                        <td style={{ padding: '6px', fontWeight: 700 }}>
+                                          {item.medicine_name}
+                                          {item.hsn_code ? <span style={{ fontSize: '10px', color: '#94a3b8', marginLeft: '6px' }}>HSN: {item.hsn_code}</span> : null}
+                                        </td>
+                                        <td style={{ padding: '6px' }} className="mono">{item.batch_number}</td>
+                                        <td style={{ padding: '6px', textAlign: 'center', fontWeight: 700 }}>
+                                          {item.quantity}{item.is_loose ? ' units' : ' packs'}
+                                        </td>
+                                        <td style={{ padding: '6px', textAlign: 'right' }} className="mono">
+                                          {currency}{unitMrp.toFixed(2)}
+                                        </td>
+                                        <td style={{ padding: '6px', textAlign: 'center' }}>
+                                          <span style={{
+                                            display: 'inline-block',
+                                            padding: '1px 6px',
+                                            borderRadius: '4px',
+                                            fontSize: '10.5px',
+                                            fontWeight: 800,
+                                            backgroundColor: gstRate === 18 ? '#fef3c7' : gstRate === 5 ? '#e0f2fe' : '#f1f5f9',
+                                            color: gstRate === 18 ? '#92400e' : gstRate === 5 ? '#0369a1' : '#475569'
+                                          }}>
+                                            {gstRate}% GST
+                                          </span>
+                                        </td>
+                                        <td style={{ padding: '6px', textAlign: 'right', color: '#64748b' }} className="mono">
+                                          {currency}{taxAmt.toFixed(2)}
+                                        </td>
+                                        <td style={{ padding: '6px', textAlign: 'right', fontWeight: 800, color: '#059669' }} className="mono">
+                                          {currency}{totalAmt.toFixed(2)}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
                                 </tbody>
                               </table>
                             </div>
@@ -940,14 +967,30 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
                   {/* Expandable items preview */}
                   {isExpanded && (
                     <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '8px', border: '1px solid #e2e8f0' }}>
-                      {inv.items?.map((item, idx) => (
-                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', padding: '3px 0', borderBottom: '1px dotted #e2e8f0' }}>
-                          <span>{item.medicine_name} (x{item.quantity})</span>
-                          <span className="mono" style={{ fontWeight: 700, color: '#059669' }}>
-                            {currency}{parseFloat(item.total_price).toFixed(2)}
-                          </span>
-                        </div>
-                      ))}
+                      {inv.items?.map((item, idx) => {
+                        const totalAmt = parseFloat(item.total_amount ?? item.total_price ?? 0);
+                        const gstRate = parseFloat(item.gst_rate ?? 5);
+                        const taxAmt = parseFloat(item.tax_amount ?? (totalAmt - (totalAmt / (1 + gstRate / 100))));
+                        return (
+                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', padding: '4px 0', borderBottom: '1px dotted #e2e8f0' }}>
+                            <div>
+                              <div style={{ fontWeight: 600 }}>{item.medicine_name} (x{item.quantity})</div>
+                              <div style={{ fontSize: '10px', color: '#64748b' }}>
+                                <span style={{
+                                  color: gstRate === 18 ? '#d97706' : '#0284c7',
+                                  fontWeight: 700
+                                }}>
+                                  {gstRate}% GST
+                                </span>
+                                {' · '}Tax: {currency}{taxAmt.toFixed(2)}
+                              </div>
+                            </div>
+                            <span className="mono" style={{ fontWeight: 700, color: '#059669' }}>
+                              {currency}{totalAmt.toFixed(2)}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

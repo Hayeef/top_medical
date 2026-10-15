@@ -15,7 +15,7 @@ export default function AddMedicineModal({ categories, onClose, onCreated }) {
     rack_location: '',
     min_stock_alert: 10,
     requires_prescription: false,
-    gst_rate: '12.00',
+    gst_rate: '5.00',
   });
 
   const [loading, setLoading] = useState(false);
@@ -34,7 +34,7 @@ export default function AddMedicineModal({ categories, onClose, onCreated }) {
         ...formData,
         category: formData.category ? parseInt(formData.category) : null,
         min_stock_alert: parseInt(formData.min_stock_alert) || 10,
-        gst_rate: parseFloat(formData.gst_rate) || 12.0,
+        gst_rate: parseFloat(formData.gst_rate) || 5.0,
       };
       const newMed = await inventoryAPI.createMedicine(payload);
       onCreated(newMed);
@@ -219,11 +219,11 @@ export default function AddMedicineModal({ categories, onClose, onCreated }) {
                 value={formData.gst_rate}
                 onChange={(e) => setFormData({ ...formData, gst_rate: e.target.value })}
               >
-                <option value="0.00">0% (Nil / Exempt)</option>
-                <option value="5.00">5% GST</option>
-                <option value="12.00">12% GST (Standard Medicine)</option>
-                <option value="18.00">18% GST</option>
-                <option value="28.00">28% GST</option>
+                <option value="5.00">5% GST - Tablets & Medicines</option>
+                <option value="18.00">18% GST - Cosmetics & Personal Care</option>
+                <option value="0.00">0% GST - OTC Candies / Nil</option>
+                <option value="12.00">12% GST - Other Formulations</option>
+                <option value="28.00">28% GST - Luxury / High Slab</option>
               </select>
             </div>
 

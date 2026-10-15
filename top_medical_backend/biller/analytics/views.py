@@ -10,51 +10,119 @@ from inventory.models import Medicine, Batch
 class DashboardSummaryView(APIView):
     def get(self, request):
         today = date.today()
-        start_of_today = timezone.make_aware(datetime.combine(today, datetime.min.time()))
-        end_of_today = timezone.make_aware(datetime.combine(today, datetime.max.time()))
+        yesterday = today - timedelta(days=1)
+        seven_days_ago = today - timedelta(days=6)
+        month_start = today.replace(day=1)
 
-        # Today's sales
-        today_invoices = Invoice.objects.filter(
-            created_at__range=(start_of_today, end_of_today)
-        ).exclude(payment_status__in=['CANCELLED', 'REFUNDED'])
+        # 1. Fetch this month's invoices in a single query (covers today, yesterday, 7-days, and MTD)
+        month_invoices = list(Invoice.objects.filter(
+            created_at__date__gte=month_start
+        ).exclude(payment_status__in=['CANCELLED', 'REFUNDED']).values(
+            'id', 'created_at', 'grand_total', 'cash_amount', 'upi_amount', 'card_amount',
+            'amount_paid', 'discount_amount', 'tax_amount', 'payment_method', 'payment_status'
+        ))
 
-        today_revenue = today_invoices.aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
-        today_cash_revenue = today_invoices.aggregate(total=Sum('cash_amount'))['total'] or Decimal('0.00')
-        today_upi_revenue = today_invoices.aggregate(total=Sum('upi_amount'))['total'] or Decimal('0.00')
-        today_card_revenue = today_invoices.aggregate(total=Sum('card_amount'))['total'] or Decimal('0.00')
-        today_credit_sales = today_invoices.filter(
-            Q(payment_method='CREDIT') | Q(payment_status='DUE')
-        ).aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
-        today_orders_count = today_invoices.count()
+        def summarize_invs(inv_list):
+            rev = sum((inv['grand_total'] for inv in inv_list), Decimal('0.00'))
+            cash = sum((inv['cash_amount'] for inv in inv_list), Decimal('0.00'))
+            upi = sum((inv['upi_amount'] for inv in inv_list), Decimal('0.00'))
+            card = sum((inv['card_amount'] for inv in inv_list), Decimal('0.00'))
+            paid = sum((inv['amount_paid'] for inv in inv_list), Decimal('0.00'))
+            disc = sum((inv['discount_amount'] for inv in inv_list), Decimal('0.00'))
+            tax = sum((inv['tax_amount'] for inv in inv_list), Decimal('0.00'))
+            credit = sum((inv['grand_total'] for inv in inv_list if inv['payment_method'] == 'CREDIT' or inv['payment_status'] == 'DUE'), Decimal('0.00'))
+            cnt = len(inv_list)
+            avg = (rev / cnt) if cnt > 0 else Decimal('0.00')
+            return {
+                'revenue': rev, 'cash': cash, 'upi': upi, 'card': card,
+                'total_collected': cash + upi + card,
+                'paid': paid, 'discount': disc, 'tax': tax, 'credit': credit,
+                'count': cnt, 'avg_order_value': avg
+            }
 
-        # All-time totals
-        all_time_invoices = Invoice.objects.exclude(payment_status__in=['CANCELLED', 'REFUNDED'])
-        all_time_cash = all_time_invoices.aggregate(total=Sum('cash_amount'))['total'] or Decimal('0.00')
-        all_time_upi = all_time_invoices.aggregate(total=Sum('upi_amount'))['total'] or Decimal('0.00')
-        all_time_revenue = all_time_invoices.aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
+        today_inv_list = [inv for inv in month_invoices if inv['created_at'].date() == today]
+        yest_inv_list = [inv for inv in month_invoices if inv['created_at'].date() == yesterday]
+        week_inv_list = [inv for inv in month_invoices if inv['created_at'].date() >= seven_days_ago]
+        month_inv_list = month_invoices
 
-        # Gross profit estimate for today
-        today_items = InvoiceItem.objects.filter(
-            invoice__in=today_invoices
-        ).select_related('batch')
+        today_sum = summarize_invs(today_inv_list)
+        yest_sum = summarize_invs(yest_inv_list)
+        week_sum = summarize_invs(week_inv_list)
+        month_sum = summarize_invs(month_inv_list)
 
-        today_profit = Decimal('0.00')
-        for item in today_items:
-            batch = item.batch
-            if item.is_loose:
-                cost = (batch.purchase_price / Decimal(batch.pack_size)) * Decimal(item.quantity)
+        # 2. Compute cost and gross profit for month in a single pass
+        month_items = InvoiceItem.objects.filter(
+            invoice__created_at__date__gte=month_start
+        ).exclude(
+            invoice__payment_status__in=['CANCELLED', 'REFUNDED']
+        ).select_related('batch', 'invoice')
+
+        today_cost = Decimal('0.00'); today_profit = Decimal('0.00')
+        yest_cost = Decimal('0.00'); yest_profit = Decimal('0.00')
+        week_cost = Decimal('0.00'); week_profit = Decimal('0.00')
+        month_cost = Decimal('0.00'); month_profit = Decimal('0.00')
+
+        for it in month_items:
+            inv_date = it.invoice.created_at.date()
+            b = it.batch
+            if b:
+                if it.is_loose and b.pack_size > 0:
+                    cost = (b.purchase_price / Decimal(b.pack_size)) * Decimal(it.quantity)
+                else:
+                    cost = b.purchase_price * Decimal(it.quantity)
             else:
-                cost = batch.purchase_price * Decimal(item.quantity)
-            profit = item.total_amount - cost
-            today_profit += profit
+                cost = Decimal('0.00')
+            profit = it.total_amount - cost
 
-        # Inventory Stats
+            month_cost += cost
+            month_profit += profit
+
+            if inv_date >= seven_days_ago:
+                week_cost += cost
+                week_profit += profit
+            if inv_date == yesterday:
+                yest_cost += cost
+                yest_profit += profit
+            if inv_date == today:
+                today_cost += cost
+                today_profit += profit
+
+        def calc_margin_pct(p, r):
+            return round((float(p) / float(r) * 100), 1) if r > Decimal('0.00') else 0.0
+
+        today_margin_pct = calc_margin_pct(today_profit, today_sum['revenue'])
+        yest_margin_pct = calc_margin_pct(yest_profit, yest_sum['revenue'])
+        week_margin_pct = calc_margin_pct(week_profit, week_sum['revenue'])
+        month_margin_pct = calc_margin_pct(month_profit, month_sum['revenue'])
+
+        # 3. All-time aggregate totals
+        all_time_invoices = Invoice.objects.exclude(payment_status__in=['CANCELLED', 'REFUNDED'])
+        all_agg = all_time_invoices.aggregate(
+            rev=Sum('grand_total'),
+            cash=Sum('cash_amount'),
+            upi=Sum('upi_amount'),
+            card=Sum('card_amount'),
+            cnt=Count('id')
+        )
+        all_rev = all_agg['rev'] or Decimal('0.00')
+        all_cash = all_agg['cash'] or Decimal('0.00')
+        all_upi = all_agg['upi'] or Decimal('0.00')
+        all_card = all_agg['card'] or Decimal('0.00')
+        all_count = all_agg['cnt'] or 0
+        all_collected = all_cash + all_upi + all_card
+        all_avg = (all_rev / all_count) if all_count > 0 else Decimal('0.00')
+
+        # 4. Inventory stats & live asset valuation
         total_medicines = Medicine.objects.filter(is_active=True).count()
-        
-        # Expired batches (>0 stock)
+        inv_agg = Batch.objects.filter(expiry_date__gt=today).aggregate(
+            cost=Sum(F('pack_quantity') * F('purchase_price')),
+            retail=Sum(F('pack_quantity') * F('selling_price'))
+        )
+        inventory_cost_value = inv_agg['cost'] or Decimal('0.00')
+        inventory_retail_value = inv_agg['retail'] or Decimal('0.00')
+        unrealized_profit = max(Decimal('0.00'), inventory_retail_value - inventory_cost_value)
+
         expired_count = Batch.objects.filter(expiry_date__lte=today, pack_quantity__gt=0).count()
-        
-        # Near expiry batches (< 90 days, >0 stock)
         near_expiry_date = today + timedelta(days=90)
         near_expiry_count = Batch.objects.filter(
             expiry_date__gt=today,
@@ -70,26 +138,145 @@ class DashboardSummaryView(APIView):
             if stock <= m.min_stock_alert:
                 low_stock_count += 1
 
-        # Total outstanding customer credit
+        # Customer credit dues
         total_credit_due = Customer.objects.aggregate(total=Sum('credit_balance'))['total'] or Decimal('0.00')
 
+        # 5. Daily finance records (Inflow/Outflow/Firm balances)
+        from billing.models import DailyFinanceRecord
+        today_fin = DailyFinanceRecord.objects.filter(date=today).first()
+        month_fin = DailyFinanceRecord.objects.filter(date__gte=month_start).aggregate(
+            inflow=Sum('total_earned'),
+            outflow=Sum('total_paid'),
+            supplier=Sum('supplier_payments'),
+            staff=Sum('staff_expenses'),
+            shop=Sum('expenses'),
+            capital=Sum('capital_investment')
+        )
+
         return Response({
-            "today_revenue": round(float(today_revenue), 2),
-            "today_cash_revenue": round(float(today_cash_revenue), 2),
-            "today_upi_revenue": round(float(today_upi_revenue), 2),
-            "today_card_revenue": round(float(today_card_revenue), 2),
-            "today_orders_count": today_orders_count,
-            "today_profit": round(float(today_profit), 2),
-            "all_time_revenue": round(float(all_time_revenue), 2),
-            "all_time_cash_revenue": round(float(all_time_cash), 2),
-            "all_time_upi_revenue": round(float(all_time_upi), 2),
-            "payment_breakdown": {
-                "cash": round(float(today_cash_revenue), 2),
-                "upi": round(float(today_upi_revenue), 2),
-                "card": round(float(today_card_revenue), 2),
-                "credit": round(float(today_credit_sales), 2),
+            # Multi-horizon structured metrics
+            "periods": {
+                "today": {
+                    "revenue": round(float(today_sum['revenue']), 2),
+                    "cash_revenue": round(float(today_sum['cash']), 2),
+                    "upi_revenue": round(float(today_sum['upi']), 2),
+                    "card_revenue": round(float(today_sum['card']), 2),
+                    "total_collected": round(float(today_sum['total_collected']), 2),
+                    "credit_sales": round(float(today_sum['credit']), 2),
+                    "orders_count": today_sum['count'],
+                    "avg_order_value": round(float(today_sum['avg_order_value']), 2),
+                    "profit": round(float(today_profit), 2),
+                    "cost": round(float(today_cost), 2),
+                    "profit_margin_pct": today_margin_pct,
+                    "discount_amount": round(float(today_sum['discount']), 2),
+                    "tax_amount": round(float(today_sum['tax']), 2),
+                },
+                "yesterday": {
+                    "revenue": round(float(yest_sum['revenue']), 2),
+                    "cash_revenue": round(float(yest_sum['cash']), 2),
+                    "upi_revenue": round(float(yest_sum['upi']), 2),
+                    "card_revenue": round(float(yest_sum['card']), 2),
+                    "total_collected": round(float(yest_sum['total_collected']), 2),
+                    "orders_count": yest_sum['count'],
+                    "avg_order_value": round(float(yest_sum['avg_order_value']), 2),
+                    "profit": round(float(yest_profit), 2),
+                    "cost": round(float(yest_cost), 2),
+                    "profit_margin_pct": yest_margin_pct,
+                },
+                "week": {
+                    "revenue": round(float(week_sum['revenue']), 2),
+                    "cash_revenue": round(float(week_sum['cash']), 2),
+                    "upi_revenue": round(float(week_sum['upi']), 2),
+                    "card_revenue": round(float(week_sum['card']), 2),
+                    "total_collected": round(float(week_sum['total_collected']), 2),
+                    "orders_count": week_sum['count'],
+                    "avg_order_value": round(float(week_sum['avg_order_value']), 2),
+                    "profit": round(float(week_profit), 2),
+                    "cost": round(float(week_cost), 2),
+                    "profit_margin_pct": week_margin_pct,
+                },
+                "month": {
+                    "revenue": round(float(month_sum['revenue']), 2),
+                    "cash_revenue": round(float(month_sum['cash']), 2),
+                    "upi_revenue": round(float(month_sum['upi']), 2),
+                    "card_revenue": round(float(month_sum['card']), 2),
+                    "total_collected": round(float(month_sum['total_collected']), 2),
+                    "orders_count": month_sum['count'],
+                    "avg_order_value": round(float(month_sum['avg_order_value']), 2),
+                    "profit": round(float(month_profit), 2),
+                    "cost": round(float(month_cost), 2),
+                    "profit_margin_pct": month_margin_pct,
+                    "discount_amount": round(float(month_sum['discount']), 2),
+                    "tax_amount": round(float(month_sum['tax']), 2),
+                },
+                "all_time": {
+                    "revenue": round(float(all_rev), 2),
+                    "cash_revenue": round(float(all_cash), 2),
+                    "upi_revenue": round(float(all_upi), 2),
+                    "card_revenue": round(float(all_card), 2),
+                    "total_collected": round(float(all_collected), 2),
+                    "orders_count": all_count,
+                    "avg_order_value": round(float(all_avg), 2),
+                }
             },
+
+            # Inventory Asset Valuation
+            "inventory": {
+                "cost_value": round(float(inventory_cost_value), 2),
+                "retail_value": round(float(inventory_retail_value), 2),
+                "unrealized_profit": round(float(unrealized_profit), 2),
+                "total_medicines": total_medicines,
+                "low_stock_count": low_stock_count,
+                "near_expiry_count": near_expiry_count,
+                "expired_count": expired_count,
+            },
+
+            # Daily Finance context
+            "daily_finance": {
+                "today_inflow": round(float(today_fin.total_earned), 2) if today_fin else round(float(today_sum['total_collected']), 2),
+                "today_outflow": round(float(today_fin.total_paid), 2) if today_fin else 0.0,
+                "today_net_change": round(float(today_fin.net_day_change), 2) if today_fin else round(float(today_sum['total_collected']), 2),
+                "today_closing": round(float(today_fin.closing_balance), 2) if today_fin else 0.0,
+                "today_capital": round(float(today_fin.capital_investment), 2) if today_fin else 0.0,
+                "month_inflow": round(float(month_fin['inflow'] or Decimal('0.00')), 2),
+                "month_outflow": round(float(month_fin['outflow'] or Decimal('0.00')), 2),
+                "month_capital": round(float(month_fin['capital'] or Decimal('0.00')), 2),
+                "month_supplier": round(float(month_fin['supplier'] or Decimal('0.00')), 2),
+                "month_staff": round(float(month_fin['staff'] or Decimal('0.00')), 2),
+                "month_shop": round(float(month_fin['shop'] or Decimal('0.00')), 2),
+            },
+
+            # Legacy top-level keys for backwards-compatibility
+            "today_revenue": round(float(today_sum['revenue']), 2),
+            "today_cash_revenue": round(float(today_sum['cash']), 2),
+            "today_upi_revenue": round(float(today_sum['upi']), 2),
+            "today_card_revenue": round(float(today_sum['card']), 2),
+            "today_orders_count": today_sum['count'],
+            "today_profit": round(float(today_profit), 2),
+            "today_profit_margin_pct": today_margin_pct,
+            "today_cogs": round(float(today_cost), 2),
+            "today_avg_order_value": round(float(today_sum['avg_order_value']), 2),
+
+            "all_time_revenue": round(float(all_rev), 2),
+            "all_time_cash_revenue": round(float(all_cash), 2),
+            "all_time_upi_revenue": round(float(all_upi), 2),
+            "all_time_collected": round(float(all_collected), 2),
+            "all_time_orders_count": all_count,
+
+            "payment_breakdown": {
+                "cash": round(float(today_sum['cash']), 2),
+                "upi": round(float(today_sum['upi']), 2),
+                "card": round(float(today_sum['card']), 2),
+                "credit": round(float(today_sum['credit']), 2),
+            },
+
+            # Inventory backward compat
             "total_medicines": total_medicines,
+            "total_medicines_count": total_medicines,
+            "total_inventory_value": round(float(inventory_cost_value), 2),
+            "total_inventory_cost_value": round(float(inventory_cost_value), 2),
+            "total_inventory_retail_value": round(float(inventory_retail_value), 2),
+            "unrealized_profit": round(float(unrealized_profit), 2),
             "low_stock_count": low_stock_count,
             "near_expiry_count": near_expiry_count,
             "expired_count": expired_count,
@@ -103,9 +290,10 @@ class PaymentBreakdownView(APIView):
     today, 7 days, 30 days, or custom date range.
     """
     def get(self, request):
-        days = request.query_params.get('days')
-        start_date_str = request.query_params.get('start_date')
-        end_date_str = request.query_params.get('end_date')
+        params = getattr(request, 'query_params', getattr(request, 'GET', {}))
+        days = params.get('days')
+        start_date_str = params.get('start_date')
+        end_date_str = params.get('end_date')
 
         invoices = Invoice.objects.exclude(payment_status__in=['CANCELLED', 'REFUNDED'])
 
@@ -167,32 +355,77 @@ class PaymentBreakdownView(APIView):
 
 class SalesTrendView(APIView):
     def get(self, request):
-        days = int(request.query_params.get('days', 7))
+        params = getattr(request, 'query_params', getattr(request, 'GET', {}))
+        days = int(params.get('days', 7))
         today = date.today()
+        start_d = today - timedelta(days=days - 1)
+
+        day_map = {}
+        for i in range(days):
+            d = start_d + timedelta(days=i)
+            d_str = d.strftime('%Y-%m-%d')
+            day_map[d_str] = {
+                "date": d_str,
+                "day": d.strftime('%a'),
+                "formatted_date": d.strftime('%d %b'),
+                "revenue": Decimal('0.00'),
+                "cash_revenue": Decimal('0.00'),
+                "upi_revenue": Decimal('0.00'),
+                "cost": Decimal('0.00'),
+                "profit": Decimal('0.00'),
+                "margin_pct": 0.0,
+                "invoices": 0,
+            }
+
+        invoices = Invoice.objects.filter(
+            created_at__date__gte=start_d
+        ).exclude(payment_status__in=['CANCELLED', 'REFUNDED'])
+
+        for inv in invoices:
+            d_str = inv.created_at.date().strftime('%Y-%m-%d')
+            if d_str in day_map:
+                day_map[d_str]['revenue'] += inv.grand_total
+                day_map[d_str]['cash_revenue'] += inv.cash_amount
+                day_map[d_str]['upi_revenue'] += inv.upi_amount
+                day_map[d_str]['invoices'] += 1
+
+        items = InvoiceItem.objects.filter(
+            invoice__created_at__date__gte=start_d
+        ).exclude(
+            invoice__payment_status__in=['CANCELLED', 'REFUNDED']
+        ).select_related('batch', 'invoice')
+
+        for it in items:
+            d_str = it.invoice.created_at.date().strftime('%Y-%m-%d')
+            if d_str in day_map:
+                b = it.batch
+                if b:
+                    if it.is_loose and b.pack_size > 0:
+                        cost = (b.purchase_price / Decimal(b.pack_size)) * Decimal(it.quantity)
+                    else:
+                        cost = b.purchase_price * Decimal(it.quantity)
+                else:
+                    cost = Decimal('0.00')
+                day_map[d_str]['cost'] += cost
+                day_map[d_str]['profit'] += (it.total_amount - cost)
+
         data = []
-
-        for i in range(days - 1, -1, -1):
-            day_date = today - timedelta(days=i)
-            start_dt = timezone.make_aware(datetime.combine(day_date, datetime.min.time()))
-            end_dt = timezone.make_aware(datetime.combine(day_date, datetime.max.time()))
-
-            invoices = Invoice.objects.filter(
-                created_at__range=(start_dt, end_dt)
-            ).exclude(payment_status__in=['CANCELLED', 'REFUNDED'])
-
-            rev = invoices.aggregate(total=Sum('grand_total'))['total'] or Decimal('0.00')
-            cash_rev = invoices.aggregate(total=Sum('cash_amount'))['total'] or Decimal('0.00')
-            upi_rev = invoices.aggregate(total=Sum('upi_amount'))['total'] or Decimal('0.00')
-            cnt = invoices.count()
-
+        for d_str, val in day_map.items():
+            rev = val['revenue']
+            profit = val['profit']
+            cost = val['cost']
+            margin = round((float(profit) / float(rev) * 100), 1) if rev > Decimal('0.00') else 0.0
             data.append({
-                "date": day_date.strftime('%Y-%m-%d'),
-                "day": day_date.strftime('%a'),
-                "formatted_date": day_date.strftime('%d %b'),
+                "date": val['date'],
+                "day": val['day'],
+                "formatted_date": val['formatted_date'],
                 "revenue": round(float(rev), 2),
-                "cash_revenue": round(float(cash_rev), 2),
-                "upi_revenue": round(float(upi_rev), 2),
-                "invoices": cnt,
+                "cash_revenue": round(float(val['cash_revenue']), 2),
+                "upi_revenue": round(float(val['upi_revenue']), 2),
+                "cost": round(float(cost), 2),
+                "profit": round(float(profit), 2),
+                "margin_pct": margin,
+                "invoices": val['invoices'],
             })
 
         return Response(data)
@@ -202,38 +435,92 @@ class CategoryDistributionView(APIView):
     def get(self, request):
         items = InvoiceItem.objects.filter(
             invoice__payment_status__in=['PAID', 'PARTIAL', 'DUE']
-        ).select_related('medicine__category')
+        ).select_related('medicine__category', 'batch')
 
-        category_sales = {}
+        category_map = {}
         for item in items:
-            cat_name = item.medicine.category.name if item.medicine.category else "Uncategorized"
-            category_sales[cat_name] = category_sales.get(cat_name, Decimal('0.00')) + item.total_amount
+            cat_name = item.medicine.category.name if (item.medicine and item.medicine.category) else "General"
+            if cat_name not in category_map:
+                category_map[cat_name] = {
+                    'category': cat_name,
+                    'amount': Decimal('0.00'),
+                    'cost': Decimal('0.00'),
+                    'units': 0
+                }
+            category_map[cat_name]['amount'] += item.total_amount
+            category_map[cat_name]['units'] += item.quantity
+            b = item.batch
+            if b:
+                if item.is_loose and b.pack_size > 0:
+                    c = (b.purchase_price / Decimal(b.pack_size)) * Decimal(item.quantity)
+                else:
+                    c = b.purchase_price * Decimal(item.quantity)
+            else:
+                c = Decimal('0.00')
+            category_map[cat_name]['cost'] += c
 
-        result = [
-            {"category": k, "amount": round(float(v), 2)}
-            for k, v in sorted(category_sales.items(), key=lambda x: x[1], reverse=True)
-        ]
+        result = []
+        for cat_name, data in sorted(category_map.items(), key=lambda x: x[1]['amount'], reverse=True):
+            profit = data['amount'] - data['cost']
+            margin_pct = round((float(profit) / float(data['amount']) * 100), 1) if data['amount'] > Decimal('0.00') else 0.0
+            result.append({
+                "category": cat_name,
+                "amount": round(float(data['amount']), 2),
+                "cost": round(float(data['cost']), 2),
+                "profit": round(float(profit), 2),
+                "margin_pct": margin_pct,
+                "units": data['units']
+            })
+
         return Response(result)
 
 
 class TopSellingView(APIView):
     def get(self, request):
-        top_items = InvoiceItem.objects.filter(
+        items = InvoiceItem.objects.filter(
             invoice__payment_status__in=['PAID', 'PARTIAL', 'DUE']
-        ).values('medicine__name', 'medicine__dosage_form').annotate(
-            total_qty=Sum('quantity'),
-            total_revenue=Sum('total_amount')
-        ).order_by('-total_qty')[:8]
+        ).select_related('medicine', 'batch')
 
-        result = [
-            {
-                "name": item['medicine__name'],
-                "dosage": item['medicine__dosage_form'],
-                "units_sold": item['total_qty'],
-                "revenue": round(float(item['total_revenue']), 2)
-            }
-            for item in top_items
-        ]
+        med_map = {}
+        for item in items:
+            if not item.medicine:
+                continue
+            m_id = item.medicine.id
+            if m_id not in med_map:
+                med_map[m_id] = {
+                    "name": item.medicine.name,
+                    "dosage": item.medicine.dosage_form or "Tablet",
+                    "units_sold": 0,
+                    "revenue": Decimal('0.00'),
+                    "cost": Decimal('0.00')
+                }
+            med_map[m_id]['units_sold'] += item.quantity
+            med_map[m_id]['revenue'] += item.total_amount
+            b = item.batch
+            if b:
+                if item.is_loose and b.pack_size > 0:
+                    c = (b.purchase_price / Decimal(b.pack_size)) * Decimal(item.quantity)
+                else:
+                    c = b.purchase_price * Decimal(item.quantity)
+            else:
+                c = Decimal('0.00')
+            med_map[m_id]['cost'] += c
+
+        top_list = sorted(med_map.values(), key=lambda x: x['units_sold'], reverse=True)[:8]
+        result = []
+        for item in top_list:
+            profit = item['revenue'] - item['cost']
+            margin_pct = round((float(profit) / float(item['revenue']) * 100), 1) if item['revenue'] > Decimal('0.00') else 0.0
+            result.append({
+                "name": item['name'],
+                "dosage": item['dosage'],
+                "units_sold": item['units_sold'],
+                "revenue": round(float(item['revenue']), 2),
+                "cost": round(float(item['cost']), 2),
+                "profit": round(float(profit), 2),
+                "margin_pct": margin_pct
+            })
+
         return Response(result)
 
 

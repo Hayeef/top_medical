@@ -25,6 +25,116 @@ import {
 import confetti from 'canvas-confetti';
 import { inventoryAPI, billingAPI } from '../api';
 
+/**
+ * Strict Statutory GST Tax Slab Resolver for Pharmacy POS:
+ * - 0.00% for chocolates, candies, and counter confectionery (OTC)
+ * - 5.00% for TABLETS, OINTMENTS, GELS, and SUSPENSIONS (plus capsules, syrups, drops, injections, creams)
+ * - 18.00% for pure cosmetics, soaps, shampoos, personal care, perfumes, toothpastes, diapers, sanitary pads
+ */
+export function getCanonicalGstRate(med) {
+  if (!med) return 5.0;
+  const medObj = med.medicine || med;
+  const name = String(medObj.name || medObj.medicine_name || med.name || med.medicine_name || '').toUpperCase();
+  const cat = (
+    typeof medObj.category === 'object' && medObj.category !== null
+      ? (medObj.category.name || '')
+      : (typeof medObj.category_name === 'string'
+        ? medObj.category_name
+        : (typeof medObj.category === 'string' ? medObj.category : ''))
+  ).toLowerCase();
+  const hsn = String(medObj.hsn_code || med.hsn_code || '').trim();
+  const df = String(medObj.dosage_form || med.dosage_form || '').trim();
+
+  // 1. Candies / Chocolates / Confectionery -> 0%
+  if (
+    med.is_chocolate ||
+    medObj.is_chocolate ||
+    name === 'CHOCOLATE / CANDY (OTC)' ||
+    name.includes('CHOCOLATE') ||
+    name.includes('CANDY') ||
+    name.includes('TOFFEE') ||
+    name.includes('GUMMY') ||
+    cat.includes('confectionery')
+  ) {
+    return 0.0;
+  }
+
+  // Pure cosmetic toiletry keywords
+  const pureCosmeticKws = [
+    'SOAP', 'SHAMPOO', 'HAIR OIL', 'HAIR COLOR', 'TOOTHPASTE', 'TOOTH PASTE', 
+    'TOOTHBRUSH', 'TOOTH BRUSH', 'BRUSH', 'RAZOR', 'BLADE', 'CARTRIDGE',
+    'DEODORANT', 'BODY WASH', 'PERFUME', 'AIR FRESHENER', 'AFTER SHAVE',
+    'SHAVING', 'TALC', 'KAJAL', 'SCRUB', 'CONDITIONER', 'BEARD',
+    'COLGATE', 'PEPSODENT', 'CLOSEUP', 'SENSODYNE', 'ORAL-B', 'LISTERINE',
+    'MOUTHWASH', 'DIAPER', 'PAMPERS', 'MAMYPOKO', 'BABY WIPES', 'WIPES',
+    'NAPKIN', 'SANITARY', 'LIP BALM', 'LIP CARE', 'MILD BAR', 'BODY LOTION',
+    'HEAD & SHOULDERS', 'PANTENE', 'SUNSILK', 'CLINIC PLUS', 'CLINICAL PLUS',
+    'MEERA', 'KARTHIKA', 'LOREAL', 'LORIAL', 'SEBAMED', 'INDULEKHA',
+    'LUX', 'LIFEBUOY', 'LIFEBOUY', 'SANTOOR', 'CHANDRIKA', 'PEARS', 'LIRIL',
+    'REXONE', 'VASELINE', 'WHISPER', 'SOFY', 'BELLA',
+    'FACE WASH', 'FACIAL WASH', 'FOAMING FACE WASH', 'CLEANSER', 'INTIMATE WASH',
+    'OLAY', 'PONDS', 'GILLETTE', 'OLD SPICE', 'SUNSCREEN', 'FACIAL', 'MOISTURIZ', 'MOISTURIS'
+  ];
+
+  // Medical exceptions (bandages, sterile pads)
+  const pharmaExceptions = ['STERIPAD', 'WOUND PAD', 'UPADACOL'];
+
+  let isPureCosmetic = pureCosmeticKws.some(k => name.includes(k));
+  if (pharmaExceptions.some(k => name.includes(k))) {
+    isPureCosmetic = false;
+  }
+  if (['cosmetic', 'personal care', 'beauty', 'skincare', 'haircare'].some(c => cat.includes(c))) {
+    isPureCosmetic = true;
+  }
+
+  // 2. Strict User Rule: 5% for Tablets & Medicines, 18% for Cosmetics
+  if (df === 'Tablet' || name.includes('TABLET') || name.endsWith(' TAB') || name.includes(' TAB ') || name.includes(' TABS')) {
+    if (isPureCosmetic) {
+      return 18.0;
+    }
+    return 5.0;
+  }
+
+  if (df === 'Ointment' || df === 'Gel' || df === 'Suspension') {
+    if (!isPureCosmetic || !['SOAP', 'SHAMPOO', 'SHAVING', 'RAZOR', 'BLADE', 'OLAY', 'PONDS', 'GILLETTE', 'OLD SPICE'].some(k => name.includes(k))) {
+      return 5.0;
+    }
+    return 18.0;
+  }
+
+  // Other pharmaceutical dosage forms: Capsule, Syrup, Cream, Drops, Injection, Inhaler, Powder
+  if (['Capsule', 'Syrup', 'Cream', 'Drops', 'Injection', 'Inhaler', 'Powder'].includes(df)) {
+    if (['OINTMENT', 'GEL', 'SUSPENSION', 'TABLET', 'CAPSULE', 'CREAM'].some(k => name.includes(k))) {
+      if (!isPureCosmetic || !['SHAVING', 'SOAP', 'SHAMPOO', 'OLAY', 'PONDS', 'GILLETTE', 'OLD SPICE'].some(k => name.includes(k))) {
+        return 5.0;
+      }
+    }
+    if (isPureCosmetic) {
+      return 18.0;
+    }
+    return 5.0;
+  }
+
+  // Fallback: if cosmetic category or HSN
+  if (
+    isPureCosmetic ||
+    hsn.startsWith('33') || hsn.startsWith('34') || hsn.startsWith('9619') || hsn.startsWith('8212') ||
+    cat.includes('personal care') ||
+    cat.includes('cosmetic')
+  ) {
+    return 18.0;
+  }
+
+  // Check explicit gst_rate on medicine
+  const rawGst = parseFloat(medObj.gst_rate != null ? medObj.gst_rate : med.gst_rate);
+  if (rawGst === 18) return 18.0;
+  if (rawGst === 0) return 0.0;
+  if (rawGst === 5) return 5.0;
+
+  return 5.0; // Standard 5% for tablets & medicines
+}
+
+
 export default function PosBillingPage({
   profile,
   customers,
@@ -263,7 +373,7 @@ export default function PosBillingPage({
         tab_mrp: tabMrp,
         tab_selling_price: tabSp,
         discount_percent: 0,
-        gst_rate: isChoc ? 0.0 : (parseFloat(medicine.gst_rate) || 12.0),
+        gst_rate: getCanonicalGstRate(medicine),
       };
       setCart([...cart, newItem]);
     }
@@ -471,6 +581,11 @@ export default function PosBillingPage({
   // MRP is Tax-Inclusive (GST is extracted, NOT added additionally on top)
   let grossSubtotal = 0;
   let totalTax = 0;
+  let tax5Base = 0;
+  let tax5Amt = 0;
+  let tax18Base = 0;
+  let tax18Amt = 0;
+  let tax0Base = 0;
 
   cart.forEach(item => {
     const strips = item.strip_quantity || 0;
@@ -479,12 +594,26 @@ export default function PosBillingPage({
     const tabPrice = parseFloat(item.tab_selling_price) || 0;
     const itemGross = (strips * stripPrice) + (loose * tabPrice);
     const disc = (itemGross * (item.discount_percent || 0)) / 100;
-    const net = itemGross - disc; // Net selling amount inclusive of GST
-    const gstRate = parseFloat(item.gst_rate) || 0.0;
+    const net = itemGross - disc; // Net selling amount inclusive of GST (MRP)
+    const gstRate = getCanonicalGstRate(item.medicine || item);
+    item.gst_rate = gstRate;
     const taxableBase = gstRate > 0 ? (net / (1 + (gstRate / 100))) : net;
     const tax = net - taxableBase;
+    item.line_taxable_base = taxableBase;
+    item.line_tax_amount = tax;
+
     grossSubtotal += net;
     totalTax += tax;
+
+    if (gstRate === 18) {
+      tax18Base += taxableBase;
+      tax18Amt += tax;
+    } else if (gstRate === 0) {
+      tax0Base += taxableBase;
+    } else {
+      tax5Base += taxableBase;
+      tax5Amt += tax;
+    }
   });
 
   const billDiscountAmt = discountType === 'PERCENT'
@@ -496,10 +625,17 @@ export default function PosBillingPage({
   const grandTotal = Math.round(totalBeforeRound);
   const roundOff = (grandTotal - totalBeforeRound).toFixed(2);
 
-  // Tax breakdown components
-  const effectiveTax = grossSubtotal > 0 ? (totalTax * (totalBeforeRound / grossSubtotal)) : 0;
-  const cgst = (effectiveTax / 2).toFixed(2);
-  const sgst = (effectiveTax / 2).toFixed(2);
+  // Proportional tax scaling if bill-level discount applies
+  const discountRatio = grossSubtotal > 0 ? (totalBeforeRound / grossSubtotal) : 1.0;
+  const effectiveTax = totalTax * discountRatio;
+  const effectiveTaxRounded = Math.round(effectiveTax * 100) / 100;
+  const cgst = (Math.round((effectiveTaxRounded / 2) * 100) / 100).toFixed(2);
+  const sgst = (Math.round((effectiveTaxRounded - parseFloat(cgst)) * 100) / 100).toFixed(2);
+  const effectiveTax5Amt = Math.round((tax5Amt * discountRatio) * 100) / 100;
+  const effectiveTax5Base = Math.round((tax5Base * discountRatio) * 100) / 100;
+  const effectiveTax18Amt = Math.round((tax18Amt * discountRatio) * 100) / 100;
+  const effectiveTax18Base = Math.round((tax18Base * discountRatio) * 100) / 100;
+  const effectiveTaxableTotal = Math.max(0, Math.round((totalBeforeRound - effectiveTaxRounded) * 100) / 100);
   const subtotal = grossSubtotal;
 
   // Smart Change & Round-Off Suggestions (e.g. if Total is ₹21, suggest +₹1 to make ₹22, +₹4 to make ₹25, +₹9 to make ₹30)
@@ -577,6 +713,7 @@ export default function PosBillingPage({
       cart.forEach(item => {
         const strips = item.strip_quantity || 0;
         const loose = item.loose_quantity || 0;
+        const effectiveRate = getCanonicalGstRate(item.medicine || item);
 
         if (strips > 0) {
           itemsData.push({
@@ -588,7 +725,7 @@ export default function PosBillingPage({
             unit_mrp: parseFloat(item.strip_mrp) || 0,
             unit_selling_price: parseFloat(item.strip_selling_price) || 0,
             discount_percent: parseFloat(item.discount_percent) || 0,
-            gst_rate: parseFloat(item.gst_rate) || 0.0,
+            gst_rate: effectiveRate,
           });
         }
 
@@ -602,7 +739,7 @@ export default function PosBillingPage({
             unit_mrp: parseFloat(item.tab_mrp) || 0,
             unit_selling_price: parseFloat(item.tab_selling_price) || 0,
             discount_percent: parseFloat(item.discount_percent) || 0,
-            gst_rate: parseFloat(item.gst_rate) || 0.0,
+            gst_rate: effectiveRate,
           });
         }
       });
@@ -626,7 +763,7 @@ export default function PosBillingPage({
         discount_type: discountType,
         discount_value: parseFloat(discountValue) || 0,
         discount_amount: billDiscountAmt.toFixed(2),
-        tax_amount: effectiveTax.toFixed(2),
+        tax_amount: effectiveTaxRounded.toFixed(2),
         cgst_amount: cgst,
         sgst_amount: sgst,
         round_off: roundOff,
@@ -765,6 +902,12 @@ export default function PosBillingPage({
                 return (
                   <div
                     key={med.id}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      addToCart(med);
+                      setSearchQuery('');
+                      setSearchResults([]);
+                    }}
                     onClick={() => {
                       addToCart(med);
                       setSearchQuery('');
@@ -970,13 +1113,14 @@ export default function PosBillingPage({
                   <table className="data-table" style={{ width: '100%', minWidth: '680px', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr>
-                        <th style={{ width: '25%', minWidth: '150px' }}>Medicine & Composition</th>
-                        <th style={{ width: '18%', minWidth: '130px' }}>Batch & Expiry (FEFO)</th>
-                        <th style={{ width: '14%', minWidth: '100px', textAlign: 'center' }}>Strips (Pk)</th>
-                        <th style={{ width: '19%', minWidth: '135px', textAlign: 'center' }}>Loose (Tabs)</th>
-                        <th style={{ width: '10%', minWidth: '75px', textAlign: 'right' }}>Price ({currency})</th>
-                        <th style={{ width: '10%', minWidth: '75px', textAlign: 'right' }}>Line Total ({currency})</th>
-                        <th style={{ width: '4%', minWidth: '35px', textAlign: 'center' }}></th>
+                        <th style={{ width: '23%', minWidth: '140px' }}>Medicine & Composition</th>
+                        <th style={{ width: '15%', minWidth: '115px' }}>Batch & Expiry (FEFO)</th>
+                        <th style={{ width: '13%', minWidth: '95px', textAlign: 'center' }}>Strips (Pk)</th>
+                        <th style={{ width: '16%', minWidth: '115px', textAlign: 'center' }}>Loose (Tabs)</th>
+                        <th style={{ width: '11%', minWidth: '85px', textAlign: 'right' }}>MRP (Incl. GST)</th>
+                        <th style={{ width: '10%', minWidth: '85px', textAlign: 'center' }}>Tax (GST)</th>
+                        <th style={{ width: '9%', minWidth: '80px', textAlign: 'right' }}>Line Total</th>
+                        <th style={{ width: '3%', minWidth: '30px', textAlign: 'center' }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1099,7 +1243,15 @@ export default function PosBillingPage({
                                 </div>
                               </td>
 
-                              {/* 6. Line Total */}
+                              {/* 6. Tax (GST) */}
+                              <td style={{ textAlign: 'center' }}>
+                                <span className="badge badge-slate" style={{ fontSize: '9px', padding: '1px 5px', fontWeight: 700 }}>0% OTC</span>
+                                <div className="mono" style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', fontWeight: 700 }}>
+                                  Tax: {currency}0.00
+                                </div>
+                              </td>
+
+                              {/* 7. Line Total */}
                               <td style={{ textAlign: 'right' }} className="mono">
                                 <span style={{ fontSize: '14px', fontWeight: 900, color: '#92400e' }}>
                                   {currency}{lineTotal.toFixed(2)}
@@ -1259,7 +1411,7 @@ export default function PosBillingPage({
                               )}
                             </td>
 
-                            {/* PRICE BREAKDOWN */}
+                            {/* PRICE (MRP INCL. GST) */}
                             <td style={{ textAlign: 'right' }}>
                               <div className="mono" style={{ fontWeight: 800, fontSize: '12px', color: '#0f172a' }}>
                                 {currency}{item.strip_selling_price.toFixed(2)}<span style={{ fontSize: '9.5px', color: '#64748b' }}>/pk</span>
@@ -1269,16 +1421,36 @@ export default function PosBillingPage({
                                   {currency}{item.tab_selling_price.toFixed(2)}<span style={{ fontSize: '9px', color: '#92400e' }}>/tab</span>
                                 </div>
                               )}
+                              <span style={{ fontSize: '9px', color: '#059669', fontWeight: 700, display: 'block', marginTop: '1px' }}>
+                                Tax Incl.
+                              </span>
                             </td>
 
-                            {/* LINE TOTAL */}
+                            {/* TAX (GST) CALCULATION */}
+                            <td style={{ textAlign: 'center' }}>
+                              <div>
+                                {item.gst_rate === 18 ? (
+                                  <span className="badge badge-purple" style={{ fontSize: '9px', padding: '1px 6px', fontWeight: 800 }}>18% Cosmetics</span>
+                                ) : item.gst_rate === 0 ? (
+                                  <span className="badge badge-slate" style={{ fontSize: '9px', padding: '1px 6px', fontWeight: 700 }}>0% OTC</span>
+                                ) : (
+                                  <span className="badge badge-sky" style={{ fontSize: '9px', padding: '1px 6px', fontWeight: 800 }}>5% Tablets/Meds</span>
+                                )}
+                              </div>
+                              <div className="mono" style={{ fontSize: '11px', fontWeight: 800, color: '#0f172a', marginTop: '3px' }}>
+                                Tax: {currency}{(item.line_tax_amount || 0).toFixed(2)}
+                              </div>
+                              <div style={{ fontSize: '9.5px', color: '#64748b' }}>
+                                Base: {currency}{(item.line_taxable_base || 0).toFixed(2)}
+                              </div>
+                            </td>
+
+                            {/* LINE TOTAL (MRP) */}
                             <td style={{ textAlign: 'right' }}>
                               <div className="mono" style={{ fontWeight: 900, color: '#059669', fontSize: '14px' }}>
                                 {currency}{lineTotal.toFixed(2)}
                               </div>
-                              <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
-                                GST {item.gst_rate}%
-                              </div>
+                              <div style={{ fontSize: '9.5px', color: '#047857', fontWeight: 600 }}>Total MRP</div>
                             </td>
 
                             <td style={{ textAlign: 'center' }}>
@@ -1526,13 +1698,27 @@ export default function PosBillingPage({
                           )}
                         </div>
 
-                        {/* Line Total */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px' }}>
-                          <div style={{ fontSize: '11px', color: '#64748b' }}>
-                            GST {item.gst_rate}%
+                        {/* Line Total & Tax Calculation */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1px dashed #e2e8f0', marginTop: '4px' }}>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              {item.gst_rate === 18 ? (
+                                <span className="badge badge-purple" style={{ fontSize: '9px', padding: '1px 5px', fontWeight: 800 }}>18% Cosmetics</span>
+                              ) : item.gst_rate === 0 ? (
+                                <span className="badge badge-slate" style={{ fontSize: '9px', padding: '1px 5px', fontWeight: 700 }}>0% OTC</span>
+                              ) : (
+                                <span className="badge badge-sky" style={{ fontSize: '9px', padding: '1px 5px', fontWeight: 800 }}>5% Tablets/Meds</span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: '10.5px', color: '#475569', marginTop: '2px' }}>
+                              Tax: <strong className="mono" style={{ color: '#0f172a' }}>{currency}{(item.line_tax_amount || 0).toFixed(2)}</strong> (Base: {currency}{(item.line_taxable_base || 0).toFixed(2)})
+                            </div>
                           </div>
-                          <div className="mono" style={{ fontWeight: 900, color: '#059669', fontSize: '15px' }}>
-                            {currency}{lineTotal.toFixed(2)}
+                          <div style={{ textAlign: 'right' }}>
+                            <div className="mono" style={{ fontWeight: 900, color: '#059669', fontSize: '15px' }}>
+                              {currency}{lineTotal.toFixed(2)}
+                            </div>
+                            <div style={{ fontSize: '9px', color: '#047857', fontWeight: 600 }}>Total MRP</div>
                           </div>
                         </div>
                       </div>
@@ -1765,9 +1951,101 @@ export default function PosBillingPage({
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: '11.5px' }}>
-              <span>GST Included in MRP:</span>
-              <span className="mono">{currency}{effectiveTax.toFixed(2)}</span>
+            {/* Bill Tax Structure Box */}
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '10px 12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.3px', borderBottom: '1px solid #e2e8f0', paddingBottom: '4px' }}>
+                <span>Bill Tax Structure</span>
+                <span style={{ color: '#059669', textTransform: 'none', fontWeight: 700 }}>MRP = Base + GST</span>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569', fontSize: '11.5px' }}>
+                <span>Taxable Base Value:</span>
+                <span className="mono" style={{ fontWeight: 700, color: '#0f172a' }}>{currency}{effectiveTaxableTotal.toFixed(2)}</span>
+              </div>
+
+              {/* 5% Tablets & Medicines Slab */}
+              {(effectiveTax5Amt > 0 || tax5Base > 0) && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: '#f0f9ff',
+                  border: '1px solid #bae6fd',
+                  borderRadius: '6px',
+                  padding: '4px 8px',
+                  fontSize: '11px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span className="badge badge-sky" style={{ fontSize: '9px', padding: '1px 5px', fontWeight: 800 }}>5% GST</span>
+                    <span style={{ color: '#0369a1', fontWeight: 700 }}>Tablets & Meds:</span>
+                  </div>
+                  <div className="mono" style={{ textAlign: 'right' }}>
+                    <strong style={{ color: '#0284c7' }}>{currency}{effectiveTax5Amt.toFixed(2)}</strong>
+                    <span style={{ fontSize: '9.5px', color: '#64748b', display: 'block' }}>Base: {currency}{effectiveTax5Base.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* 18% Cosmetics Slab */}
+              {(effectiveTax18Amt > 0 || tax18Base > 0) && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  background: '#faf5ff',
+                  border: '1px solid #e9d5ff',
+                  borderRadius: '6px',
+                  padding: '4px 8px',
+                  fontSize: '11px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span className="badge badge-purple" style={{ fontSize: '9px', padding: '1px 5px', fontWeight: 800 }}>18% GST</span>
+                    <span style={{ color: '#7c3aed', fontWeight: 700 }}>Cosmetics:</span>
+                  </div>
+                  <div className="mono" style={{ textAlign: 'right' }}>
+                    <strong style={{ color: '#9333ea' }}>{currency}{effectiveTax18Amt.toFixed(2)}</strong>
+                    <span style={{ fontSize: '9.5px', color: '#64748b', display: 'block' }}>Base: {currency}{effectiveTax18Base.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* 0% Candies Slab */}
+              {tax0Base > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: '#64748b', padding: '2px 4px' }}>
+                  <span>0% GST (OTC Candies):</span>
+                  <span className="mono">Exempt ({currency}{(tax0Base * discountRatio).toFixed(2)})</span>
+                </div>
+              )}
+
+              {/* Total GST Included in MRP */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                borderTop: '1px dashed #cbd5e1',
+                paddingTop: '4px',
+                marginTop: '2px',
+                fontSize: '11.5px',
+                fontWeight: 800,
+                color: '#0f172a'
+              }}>
+                <span>Total GST Included in MRP:</span>
+                <span className="mono" style={{ color: '#0284c7' }}>{currency}{effectiveTaxRounded.toFixed(2)}</span>
+              </div>
+
+              {effectiveTaxRounded > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: '#64748b', paddingLeft: '6px' }}>
+                  <span>• CGST: <strong>{currency}{cgst}</strong></span>
+                  <span>• SGST: <strong>{currency}{sgst}</strong></span>
+                </div>
+              )}
             </div>
 
             {parseFloat(roundOff) !== 0 && (
@@ -1784,13 +2062,15 @@ export default function PosBillingPage({
               alignItems: 'center',
               padding: '12px 14px',
               background: 'linear-gradient(135deg, #f0f9ff 0%, #ecfdf5 100%)',
-              border: '1px solid #bae6fd',
+              border: '1.5px solid #0284c7',
               borderRadius: '10px',
               margin: '4px 0'
             }}>
               <div>
-                <div style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Grand Total</div>
-                <div style={{ fontSize: '10.5px', color: '#059669', fontWeight: 600 }}>Tax inclusive</div>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Grand Total (MRP)</div>
+                <div style={{ fontSize: '10.5px', color: '#059669', fontWeight: 700 }}>
+                  Tax Inclusive ({currency}{effectiveTaxableTotal.toFixed(2)} + GST {currency}{effectiveTaxRounded.toFixed(2)})
+                </div>
               </div>
               <div className="mono" style={{ fontSize: '24px', fontWeight: 900, color: '#0284c7' }}>
                 {currency}{grandTotal.toFixed(2)}

@@ -177,10 +177,17 @@ class MedicineViewSet(viewsets.ModelViewSet):
         else:
             requires_prescription = bool(raw_rx)
 
+        cosmetic_kws = ['FACE WASH', 'FACIAL', 'SOAP', 'SHAMPOO', 'SUNSCREEN', 'HAIR OIL', 'TOOTHPASTE', 'DEODORANT', 'BODY WASH', 'LIP BALM', 'LIP CARE', 'PERFUME', 'PETROLEUM JELLY', 'VASELINE', 'TALC', 'KAJAL', 'SCRUB', 'CONDITIONER', 'BEARD', 'AFTER SHAVE', 'SHAVING', 'AIR FRESHENER', 'COLGATE', 'PEPSODENT', 'CLOSEUP', 'SENSODYNE', 'ORAL-B', 'GILLETTE', 'CETAPHIL', 'DERMADEW', 'ATOGLA', 'BELLA', 'NAPKIN', 'DIAPER', 'PAMPERS', 'MAMYPOKO', 'HIMALAYA BABY', 'BABY WIPES', 'WIPES', 'MOISTURIZ', 'MOISTURIS']
+        name_upper = str(data.get('name') or '').upper()
+        hsn_str = str(data.get('hsn_code') or '').strip()
+        cat_str = str(data.get('category_name') or '').lower()
+        is_cosmetic_prod = hsn_str.startswith(('33', '34', '9619', '8212')) or 'personal care' in cat_str or 'cosmetic' in cat_str or any(k in name_upper for k in cosmetic_kws)
+        default_gst = 18.0 if is_cosmetic_prod else 5.0
+
         try:
-            gst_rate = Decimal(str(data.get('gst_rate', 12.0)))
+            gst_rate = Decimal(str(data.get('gst_rate', default_gst)))
         except (ValueError, TypeError):
-            gst_rate = Decimal('12.0')
+            gst_rate = Decimal(str(default_gst))
 
         # Category resolution
         category = None
@@ -567,10 +574,16 @@ class MedicineViewSet(viewsets.ModelViewSet):
             selling_pr = mrp_pr
 
         try:
-            raw_gst = get_val('gst_rate', 'gst%', 'gst', 'tax%', 'tax_rate', 'tax', 'igst', 'cgst', default=12.0)
-            gst_val = float(str(raw_gst).replace('%', '').strip())
+            raw_gst = get_val('gst_rate', 'gst%', 'gst', 'tax%', 'tax_rate', 'tax', 'igst', 'cgst')
+            if raw_gst is not None and str(raw_gst).strip():
+                gst_val = float(str(raw_gst).replace('%', '').strip())
+            else:
+                name_upper = med_name.upper()
+                hsn_upper = str(hsn_cd).strip()
+                is_cosm = hsn_upper.startswith(('33', '34', '9619', '8212')) or any(k in name_upper for k in ['FACE WASH', 'SOAP', 'SHAMPOO', 'SUNSCREEN', 'HAIR OIL', 'TOOTHPASTE', 'DEODORANT', 'BODY WASH', 'LIP BALM', 'COLGATE', 'GILLETTE', 'CETAPHIL'])
+                gst_val = 18.0 if is_cosm else 5.0
         except Exception:
-            gst_val = 12.0
+            gst_val = 5.0
 
         rack = str(get_val('rack_location', 'rack_no', 'rack', 'shelf_no', 'shelf', 'location', 'bin', default='Rack A-1')).strip()
         rx_val = str(get_val('requires_prescription', 'prescription', 'rx', 'schedule_h', 'schedule', default='no')).lower() in ['yes', 'true', '1', 'y']
@@ -662,7 +675,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
                     rack_location=item.get('rack_location') or 'Rack A-1',
                     min_stock_alert=10,
                     requires_prescription=item.get('requires_prescription', False),
-                    gst_rate=Decimal(str(item.get('gst_rate', 12.0))),
+                    gst_rate=Decimal(str(item.get('gst_rate', 5.0))),
                     is_active=True
                 )
                 new_medicines_count += 1
@@ -1060,18 +1073,27 @@ class BatchViewSet(viewsets.ModelViewSet):
         search = request.query_params.get('search', '').strip()
         movement_filter = request.query_params.get('movement_type', '').strip()
 
-        # Find batches with movements or timestamps on target date
-        movements_qs = StockMovement.objects.filter(created_at__date=target_date)
+        # Query stock movements on target date
+        day_all_movements = StockMovement.objects.filter(created_at__date=target_date)
         if movement_filter:
-            movements_qs = movements_qs.filter(movement_type=movement_filter)
-        
-        batch_ids_with_movements = list(movements_qs.values_list('batch_id', flat=True))
+            target_movements = day_all_movements.filter(movement_type=movement_filter)
+            batch_ids = list(target_movements.values_list('batch_id', flat=True))
+            batches_qs = Batch.objects.filter(id__in=batch_ids)
+        else:
+            # Audit ledger default: focus on actual stock additions/inflows (PURCHASE),
+            # physical adjustments (ADJUSTMENT), and new batches created on target_date.
+            # Pure POS customer sales with zero inward and zero adjustments are excluded.
+            inward_or_adj_movements = day_all_movements.filter(
+                movement_type__in=['PURCHASE', 'ADJUSTMENT']
+            )
+            inward_or_adj_batch_ids = set(inward_or_adj_movements.values_list('batch_id', flat=True))
+            
+            batches_qs = Batch.objects.filter(
+                Q(id__in=inward_or_adj_batch_ids) |
+                Q(created_at__date=target_date)
+            )
 
-        batches_qs = Batch.objects.filter(
-            Q(updated_at__date=target_date) |
-            Q(created_at__date=target_date) |
-            Q(id__in=batch_ids_with_movements)
-        ).select_related('medicine__category', 'supplier').prefetch_related('movements').distinct()
+        batches_qs = batches_qs.select_related('medicine__category', 'supplier').prefetch_related('movements').distinct()
 
         if supplier_id:
             batches_qs = batches_qs.filter(supplier_id=supplier_id)
@@ -1101,9 +1123,17 @@ class BatchViewSet(viewsets.ModelViewSet):
             if movement_filter:
                 day_movements = [m for m in day_movements if m.movement_type == movement_filter]
             
-            inward_packs_for_batch = sum(m.quantity_packs for m in day_movements if m.movement_type == 'PURCHASE')
+            inward_packs_for_batch = sum(abs(m.quantity_packs) for m in day_movements if m.movement_type == 'PURCHASE')
             adj_packs_for_batch = sum(m.quantity_packs for m in day_movements if m.movement_type == 'ADJUSTMENT')
-            sold_packs_for_batch = sum(m.quantity_packs for m in day_movements if m.movement_type == 'SALE')
+            sold_packs_for_batch = sum(abs(m.quantity_packs) for m in day_movements if m.movement_type == 'SALE')
+
+            # If created today with initial stock and no separate purchase movement
+            if inward_packs_for_batch == 0 and batch.created_at.date() == target_date and batch.pack_quantity > 0:
+                inward_packs_for_batch = batch.pack_quantity
+
+            # Skip items that have 0 inward and 0 adjustment unless movement_filter was explicitly requested
+            if not movement_filter and inward_packs_for_batch == 0 and adj_packs_for_batch == 0 and batch.created_at.date() != target_date:
+                continue
 
             total_inward_packs += inward_packs_for_batch
             total_adjusted_packs += adj_packs_for_batch
@@ -1113,11 +1143,15 @@ class BatchViewSet(viewsets.ModelViewSet):
                 total_inward_cost += (Decimal(str(batch.purchase_price)) * Decimal(inward_packs_for_batch))
                 total_inward_mrp += (Decimal(str(batch.mrp)) * Decimal(inward_packs_for_batch))
 
-            if batch.supplier:
+            if batch.supplier and (inward_packs_for_batch > 0 or adj_packs_for_batch != 0):
                 distributors_seen.add(batch.supplier.name)
 
+            inward_movements = [m for m in day_movements if m.movement_type == 'PURCHASE']
+            ref_id = inward_movements[0].reference_id if (inward_movements and inward_movements[0].reference_id) else (day_movements[0].reference_id if (day_movements and day_movements[0].reference_id) else "")
+            is_excel_import = any('EXCEL' in (m.reference_id or '').upper() for m in day_movements)
+
             movement_notes = [m.notes for m in day_movements if m.notes]
-            primary_reason = movement_notes[0] if movement_notes else ('Inwarded Stock' if inward_packs_for_batch > 0 else ('Adjusted Stock' if adj_packs_for_batch != 0 else 'Stock / Price Update'))
+            primary_reason = movement_notes[0] if movement_notes else ('Excel Import Inward' if is_excel_import else ('Inwarded Stock' if inward_packs_for_batch > 0 else ('Adjusted Stock' if adj_packs_for_batch != 0 else 'Stock / Price Update')))
 
             results.append({
                 "id": batch.id,
@@ -1144,9 +1178,18 @@ class BatchViewSet(viewsets.ModelViewSet):
                 "day_sold_packs": sold_packs_for_batch,
                 "day_movements_count": len(day_movements),
                 "primary_reason": primary_reason,
+                "reference_id": ref_id,
+                "is_excel_import": is_excel_import,
                 "updated_at": batch.updated_at.isoformat() if batch.updated_at else None,
                 "created_at": batch.created_at.isoformat() if batch.created_at else None,
             })
+
+        # Sort so batches with inward stock appear first (by inward packs descending, then medicine name)
+        results.sort(key=lambda x: (
+            0 if x['day_inward_packs'] > 0 else 1,
+            -x['day_inward_packs'],
+            x['medicine_name'].lower()
+        ))
 
         return Response({
             "date": target_date.strftime('%Y-%m-%d'),
@@ -1261,7 +1304,7 @@ class BatchViewSet(viewsets.ModelViewSet):
                     rack_location=item.get('rack_location', 'Rack A-1'),
                     min_stock_alert=10,
                     requires_prescription=item.get('requires_prescription', False),
-                    gst_rate=Decimal(str(item.get('gst_rate', 12.0))),
+                    gst_rate=Decimal(str(item.get('gst_rate', 5.0))),
                 )
                 new_medicines_count += 1
 

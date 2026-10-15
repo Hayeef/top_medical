@@ -424,7 +424,7 @@ export function parseOCRTextToInvoice(rawText) {
             purchase_price: Math.round(rate * 100) / 100,
             mrp: Math.round(mrp * 100) / 100,
             selling_price: Math.round(mrp * 100) / 100,
-            gst_rate: 12.0,
+            gst_rate: 5.0,
             rack_location: suggestRackLocation(category, dosageCand),
             requires_prescription: rxRequired
           };
@@ -518,7 +518,7 @@ export function parseOCRTextToInvoice(rawText) {
             purchase_price: rate > 0 ? rate : 50.0,
             mrp: mrp > 0 ? mrp : 90.0,
             selling_price: mrp > 0 ? mrp : 90.0,
-            gst_rate: 12.0,
+            gst_rate: 5.0,
             rack_location: suggestRackLocation(category, dosage),
             requires_prescription: rxRequired
           };
@@ -638,7 +638,7 @@ export function parseOCRTextToInvoice(rawText) {
           purchase_price: Math.round(rate * 100) / 100,
           mrp: Math.round(mrp * 100) / 100,
           selling_price: Math.round(mrp * 100) / 100,
-          gst_rate: 12.0,
+          gst_rate: 5.0,
           rack_location: suggestRackLocation(category, dosage),
           requires_prescription: rxRequired
         };

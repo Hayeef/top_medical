@@ -87,7 +87,7 @@ export default function InventoryPage({
     pack_size: '10',
     min_stock_alert: '10',
     requires_prescription: false,
-    gst_rate: '12.0'
+    gst_rate: '5.0'
   });
 
   // Server-fetched Batches (with fallback to client-flattened medicines)
@@ -464,7 +464,7 @@ export default function InventoryPage({
         pack_size: parseInt(quickAddForm.pack_size || 10),
         min_stock_alert: parseInt(quickAddForm.min_stock_alert || 10),
         requires_prescription: quickAddForm.requires_prescription,
-        gst_rate: parseFloat(quickAddForm.gst_rate || 12.0)
+        gst_rate: parseFloat(quickAddForm.gst_rate || 5.0)
       };
 
       const res = await inventoryAPI.quickAddTabletStock(payload);
@@ -497,7 +497,7 @@ export default function InventoryPage({
         pack_size: '10',
         min_stock_alert: '10',
         requires_prescription: false,
-        gst_rate: '12.0'
+        gst_rate: '5.0'
       });
       setIsQuickAddOpen(false);
 
@@ -1188,6 +1188,24 @@ export default function InventoryPage({
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, pack_size: e.target.value })}
                   style={{ height: '36px' }}
                 />
+              </div>
+
+              {/* GST Tax Slab */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  GST Tax Slab %
+                </label>
+                <select
+                  className="input-field"
+                  style={{ height: '36px', fontWeight: 700 }}
+                  value={quickAddForm.gst_rate}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, gst_rate: e.target.value })}
+                >
+                  <option value="5.0">5% - Tablets & General Medicines</option>
+                  <option value="18.0">18% - Cosmetics & Personal Care</option>
+                  <option value="0.0">0% - Exempt / OTC Candies</option>
+                  <option value="12.0">12% - Other Medical Formulations</option>
+                </select>
               </div>
 
             </div>

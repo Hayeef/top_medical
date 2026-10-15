@@ -59,7 +59,7 @@ class Medicine(models.Model):
     rack_location = models.CharField(max_length=100, blank=True, null=True, help_text="e.g. Rack A-3, Shelf 2, Fridge")
     min_stock_alert = models.IntegerField(default=10, help_text="Low stock alert threshold (in packs)")
     requires_prescription = models.BooleanField(default=False, help_text="Schedule H / H1 Rx requirement")
-    gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=12.00, help_text="GST percentage (e.g. 0, 5, 12, 18)")
+    gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=5.00, help_text="GST percentage (e.g. 0, 5, 12, 18)")
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

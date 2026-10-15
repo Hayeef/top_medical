@@ -108,6 +108,32 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
   const formattedDate = billDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const formattedTime = billDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
+  // Compute statutory GST tax slab breakdown (MRP Inclusive)
+  let totalTaxable = 0;
+  let tax5Base = 0;
+  let tax5Amt = 0;
+  let tax18Base = 0;
+  let tax18Amt = 0;
+  let tax0Base = 0;
+
+  (invoice.items || []).forEach(item => {
+    const rate = parseFloat(item.gst_rate || 5);
+    const lineTotal = parseFloat(item.total_amount || 0);
+    const taxAmt = item.tax_amount != null ? parseFloat(item.tax_amount) : (rate > 0 ? (lineTotal - (lineTotal / (1 + rate / 100))) : 0);
+    const taxableBase = Math.max(0, lineTotal - taxAmt);
+    totalTaxable += taxableBase;
+
+    if (rate === 18) {
+      tax18Base += taxableBase;
+      tax18Amt += taxAmt;
+    } else if (rate === 0) {
+      tax0Base += taxableBase;
+    } else {
+      tax5Base += taxableBase;
+      tax5Amt += taxAmt;
+    }
+  });
+
   // Direct Isolated Iframe Print Engine (Eliminates ALL top whitespace & browser margins)
   const handlePrint = () => {
     const printElement = document.getElementById('printable-receipt-section');
@@ -493,6 +519,8 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                     const totalAmt = parseFloat(item.total_amount || 0);
                     const packSize = item.pack_size || 10;
                     const isCapsule = (item.dosage_form || '').toLowerCase() === 'capsule' || /\b(CAP|CAPSULE|CAPSULES)\b/i.test(item.medicine_name || '');
+                    const rate = parseFloat(item.gst_rate || 5);
+                    const itemTax = item.tax_amount != null ? parseFloat(item.tax_amount) : (rate > 0 ? (totalAmt - (totalAmt / (1 + rate / 100))) : 0);
 
                     return (
                       <tr key={idx} style={{ borderBottom: '1px dotted #000000' }}>
@@ -502,6 +530,7 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                           </div>
                           <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000' }}>
                             {item.batch_number ? `B:${item.batch_number}` : ''}
+                            {` | GST:${rate}% (Tax:${currency}${itemTax.toFixed(2)})`}
                             {item.is_loose
                               ? ` (Loose ${item.quantity} ${isCapsule ? 'caps' : 'tabs'} @ ${currency}${unitMrp.toFixed(2)}/${isCapsule ? 'cap' : 'tab'})`
                               : isStrip
@@ -527,7 +556,7 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
               {/* Totals & Net Amount */}
               <div style={{ borderTop: '1.5px solid #000000', paddingTop: '6px', fontSize: '12px', fontWeight: 700, display: 'flex', flexDirection: 'column', gap: '2px', color: '#000000' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Gross Subtotal:</span>
+                  <span>Gross Subtotal (MRP):</span>
                   <span style={{ fontWeight: 800 }}>{currency}{parseFloat(invoice.subtotal || invoice.grand_total || 0).toFixed(2)}</span>
                 </div>
 
@@ -538,10 +567,36 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                   </div>
                 )}
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px' }}>
-                  <span>GST Included in MRP:</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                  <span>Taxable Base Value:</span>
+                  <span>{currency}{totalTaxable.toFixed(2)}</span>
+                </div>
+
+                {tax5Amt > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                    <span>• GST 5% (Tablets):</span>
+                    <span>{currency}{tax5Amt.toFixed(2)} (on {currency}{tax5Base.toFixed(2)})</span>
+                  </div>
+                )}
+
+                {tax18Amt > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                    <span>• GST 18% (Cosmetics):</span>
+                    <span>{currency}{tax18Amt.toFixed(2)} (on {currency}{tax18Base.toFixed(2)})</span>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', fontWeight: 800 }}>
+                  <span>Total GST in MRP:</span>
                   <span>{currency}{parseFloat(invoice.tax_amount || 0).toFixed(2)}</span>
                 </div>
+
+                {parseFloat(invoice.tax_amount || 0) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: '#000000', fontWeight: 700, paddingLeft: '8px' }}>
+                    <span>- CGST: {currency}{parseFloat(invoice.cgst_amount || (invoice.tax_amount / 2)).toFixed(2)}</span>
+                    <span>- SGST: {currency}{parseFloat(invoice.sgst_amount || (invoice.tax_amount / 2)).toFixed(2)}</span>
+                  </div>
+                )}
 
                 {parseFloat(invoice.round_off || 0) !== 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
@@ -684,17 +739,20 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
               </div>
 
               {/* Line Items Table */}
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px', marginBottom: '14px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', marginBottom: '14px' }}>
                 <thead>
                   <tr style={{ background: '#f1f5f9', borderTop: '1px solid #cbd5e1', borderBottom: '2px solid #0f172a', textAlign: 'left' }}>
-                    <th style={{ padding: '6px 8px', width: '30px' }}>#</th>
-                    <th style={{ padding: '6px 10px' }}>Item Description & Composition</th>
-                    <th style={{ padding: '6px 8px' }}>HSN</th>
-                    <th style={{ padding: '6px 8px' }}>Batch</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'center' }}>Expiry</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'center' }}>Qty</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>MRP</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right' }}>Total</th>
+                    <th style={{ padding: '6px 6px', width: '25px' }}>#</th>
+                    <th style={{ padding: '6px 8px' }}>Item Description & Composition</th>
+                    <th style={{ padding: '6px 6px' }}>HSN</th>
+                    <th style={{ padding: '6px 6px' }}>Batch</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center' }}>Expiry</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center' }}>Qty</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right' }}>Unit MRP</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right' }}>Taxable Base</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center' }}>GST %</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right' }}>Tax Amt</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right' }}>Total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -704,61 +762,109 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                     const totalAmt = parseFloat(item.total_amount || 0);
                     const packSize = item.pack_size || 10;
                     const isCapsule = (item.dosage_form || '').toLowerCase() === 'capsule' || /\b(CAP|CAPSULE|CAPSULES)\b/i.test(item.medicine_name || '');
+                    const rate = parseFloat(item.gst_rate || 5);
+                    const taxAmt = item.tax_amount != null ? parseFloat(item.tax_amount) : (rate > 0 ? (totalAmt - (totalAmt / (1 + rate / 100))) : 0);
+                    const taxableBase = Math.max(0, totalAmt - taxAmt);
 
                     return (
                       <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#fcfdfe' }}>
-                        <td style={{ padding: '6px 8px' }}>{idx + 1}</td>
-                        <td style={{ padding: '6px 10px' }}>
+                        <td style={{ padding: '6px 6px' }}>{idx + 1}</td>
+                        <td style={{ padding: '6px 8px' }}>
                           <div style={{ fontWeight: 800, color: '#0f172a' }}>{item.medicine_name}</div>
                           {item.is_loose ? (
-                            <div style={{ fontSize: '10.5px', color: '#0284c7', fontWeight: 600 }}>
+                            <div style={{ fontSize: '10px', color: '#0284c7', fontWeight: 600 }}>
                               Loose {item.quantity} {isCapsule ? 'caps' : 'tabs'} @ {currency}{unitMrp.toFixed(2)}/{isCapsule ? 'cap' : 'tab'} (Strip: {currency}${(unitMrp * packSize).toFixed(2)} / {packSize}s)
                             </div>
                           ) : isStrip ? (
-                            <div style={{ fontSize: '10px', color: '#64748b' }}>
+                            <div style={{ fontSize: '9.5px', color: '#64748b' }}>
                               Strip of {packSize} {isCapsule ? 'capsules' : 'tablets'}
                             </div>
                           ) : item.dosage_form && !['Other', 'Tablet'].includes(item.dosage_form) ? (
-                            <div style={{ fontSize: '10px', color: '#64748b' }}>{item.dosage_form}</div>
+                            <div style={{ fontSize: '9.5px', color: '#64748b' }}>{item.dosage_form}</div>
                           ) : null}
                         </td>
-                        <td style={{ padding: '6px 8px', color: '#64748b' }}>{item.hsn_code || '3004'}</td>
-                        <td style={{ padding: '6px 8px', fontWeight: 700 }} className="mono">{item.batch_number}</td>
-                        <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                        <td style={{ padding: '6px 6px', color: '#64748b' }}>{item.hsn_code || '3004'}</td>
+                        <td style={{ padding: '6px 6px', fontWeight: 700 }} className="mono">{item.batch_number}</td>
+                        <td style={{ padding: '6px 6px', textAlign: 'center' }}>
                           {item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('en-GB', { month: '2-digit', year: 'numeric' }) : '-'}
                         </td>
-                        <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 800 }}>
+                        <td style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 800 }}>
                           {item.quantity}{item.is_loose ? (isCapsule ? ' caps' : ' tabs') : ' pk'}
                         </td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>{currency}{unitMrp.toFixed(2)}</td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 800 }}>{currency}{totalAmt.toFixed(2)}</td>
+                        <td style={{ padding: '6px 6px', textAlign: 'right' }}>{currency}{unitMrp.toFixed(2)}</td>
+                        <td style={{ padding: '6px 6px', textAlign: 'right' }}>{currency}{taxableBase.toFixed(2)}</td>
+                        <td style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 800 }}>{rate}%</td>
+                        <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700 }}>{currency}{taxAmt.toFixed(2)}</td>
+                        <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 800 }}>{currency}{totalAmt.toFixed(2)}</td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
 
-              {/* Totals Summary */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '16px', marginBottom: '14px' }}>
+              {/* Totals Summary & Statutory GST Breakdown */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '16px', marginBottom: '14px' }}>
                 <div style={{ padding: '10px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '11px', background: '#f8fafc' }}>
-                  <div style={{ fontWeight: 800, marginBottom: '4px', color: '#0f172a' }}>GST Tax Included in MRP:</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
-                    <span>CGST (Central Tax):</span>
-                    <span>{currency}{parseFloat(invoice.cgst_amount || 0).toFixed(2)}</span>
+                  <div style={{ fontWeight: 800, marginBottom: '6px', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.2px' }}>
+                    GST TAX SLAB BREAKDOWN (INCLUDED IN MRP):
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
-                    <span>SGST (State Tax):</span>
-                    <span>{currency}{parseFloat(invoice.sgst_amount || 0).toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, borderTop: '1px solid #cbd5e1', paddingTop: '4px', marginTop: '4px' }}>
-                    <span>Total Tax Extracted:</span>
-                    <span>{currency}{parseFloat(invoice.tax_amount || 0).toFixed(2)}</span>
+
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10.5px', marginBottom: '8px' }}>
+                    <thead>
+                      <tr style={{ background: '#e2e8f0', borderBottom: '1px solid #cbd5e1', textAlign: 'left' }}>
+                        <th style={{ padding: '4px 6px' }}>Tax Slab</th>
+                        <th style={{ padding: '4px 6px', textAlign: 'right' }}>Taxable Base</th>
+                        <th style={{ padding: '4px 6px', textAlign: 'right' }}>CGST</th>
+                        <th style={{ padding: '4px 6px', textAlign: 'right' }}>SGST</th>
+                        <th style={{ padding: '4px 6px', textAlign: 'right' }}>Total Tax</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tax5Amt > 0 && (
+                        <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                          <td style={{ padding: '4px 6px', fontWeight: 700 }}>5% (Tablets & Meds)</td>
+                          <td style={{ padding: '4px 6px', textAlign: 'right' }}>{currency}{tax5Base.toFixed(2)}</td>
+                          <td style={{ padding: '4px 6px', textAlign: 'right' }}>{currency}{(tax5Amt / 2).toFixed(2)}</td>
+                          <td style={{ padding: '4px 6px', textAlign: 'right' }}>{currency}{(tax5Amt / 2).toFixed(2)}</td>
+                          <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>{currency}{tax5Amt.toFixed(2)}</td>
+                        </tr>
+                      )}
+                      {tax18Amt > 0 && (
+                        <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                          <td style={{ padding: '4px 6px', fontWeight: 700 }}>18% (Cosmetics)</td>
+                          <td style={{ padding: '4px 6px', textAlign: 'right' }}>{currency}{tax18Base.toFixed(2)}</td>
+                          <td style={{ padding: '4px 6px', textAlign: 'right' }}>{currency}{(tax18Amt / 2).toFixed(2)}</td>
+                          <td style={{ padding: '4px 6px', textAlign: 'right' }}>{currency}{(tax18Amt / 2).toFixed(2)}</td>
+                          <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 700, color: '#7c3aed' }}>{currency}{tax18Amt.toFixed(2)}</td>
+                        </tr>
+                      )}
+                      {tax0Base > 0 && (
+                        <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                          <td style={{ padding: '4px 6px', fontWeight: 700 }}>0% (OTC Candies)</td>
+                          <td style={{ padding: '4px 6px', textAlign: 'right' }}>{currency}{tax0Base.toFixed(2)}</td>
+                          <td style={{ padding: '4px 6px', textAlign: 'right' }}>{currency}0.00</td>
+                          <td style={{ padding: '4px 6px', textAlign: 'right' }}>{currency}0.00</td>
+                          <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 700 }}>{currency}0.00</td>
+                        </tr>
+                      )}
+                      <tr style={{ fontWeight: 800, background: '#f1f5f9', borderTop: '1px solid #cbd5e1' }}>
+                        <td style={{ padding: '5px 6px' }}>Total</td>
+                        <td style={{ padding: '5px 6px', textAlign: 'right' }}>{currency}{totalTaxable.toFixed(2)}</td>
+                        <td style={{ padding: '5px 6px', textAlign: 'right' }}>{currency}{parseFloat(invoice.cgst_amount || (invoice.tax_amount / 2)).toFixed(2)}</td>
+                        <td style={{ padding: '5px 6px', textAlign: 'right' }}>{currency}{parseFloat(invoice.sgst_amount || (invoice.tax_amount / 2)).toFixed(2)}</td>
+                        <td style={{ padding: '5px 6px', textAlign: 'right', color: '#0284c7' }}>{currency}{parseFloat(invoice.tax_amount || 0).toFixed(2)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  <div style={{ fontSize: '10px', color: '#059669', fontWeight: 700, marginTop: '4px' }}>
+                    ✔ MRP is Tax-Inclusive: Taxable Base ({currency}{totalTaxable.toFixed(2)}) + Total GST ({currency}{parseFloat(invoice.tax_amount || 0).toFixed(2)}) = Total ({currency}{parseFloat(invoice.subtotal || invoice.grand_total || 0).toFixed(2)})
                   </div>
                 </div>
 
                 <div style={{ fontSize: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
-                    <span>Items Gross Total:</span>
+                    <span>Items Gross Total (MRP):</span>
                     <span style={{ fontWeight: 700 }}>{currency}{parseFloat(invoice.subtotal || invoice.grand_total || 0).toFixed(2)}</span>
                   </div>
                   {parseFloat(invoice.discount_amount || 0) > 0 && (
@@ -767,6 +873,14 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                       <span>-{currency}{parseFloat(invoice.discount_amount || 0).toFixed(2)}</span>
                     </div>
                   )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#475569' }}>
+                    <span>Taxable Base Value:</span>
+                    <span>{currency}{totalTaxable.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#0284c7', fontWeight: 700 }}>
+                    <span>Total GST Included in MRP:</span>
+                    <span>{currency}{parseFloat(invoice.tax_amount || 0).toFixed(2)}</span>
+                  </div>
                   {parseFloat(invoice.round_off || 0) !== 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#64748b' }}>
                       <span>Round Off:</span>

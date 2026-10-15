@@ -255,7 +255,15 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
         const sellingPrice = Math.max(0, parseFloat(String(rawSelling).replace(/[^0-9.]/g, '')) || mrp);
 
         const rawGst = getVal('gst_rate', 'gst%', 'gst', 'tax%', 'tax_rate', 'tax', 'igst', 'cgst');
-        const gstRate = parseFloat(String(rawGst).replace(/[^0-9.]/g, '')) || 12.0;
+        let gstRate = 5.0;
+        if (rawGst !== undefined && rawGst !== null && String(rawGst).trim() !== '') {
+          gstRate = parseFloat(String(rawGst).replace(/[^0-9.]/g, '')) || 5.0;
+        } else {
+          const nameUp = name.toUpperCase();
+          const isCosm = /^(33|34|9619|8212)/.test(hsn) ||
+            /FACE WASH|SOAP|SHAMPOO|SUNSCREEN|HAIR OIL|TOOTHPASTE|DEODORANT|BODY WASH|LIP BALM|COLGATE|GILLETTE|CETAPHIL|PAMPERS|DIAPER/i.test(nameUp);
+          gstRate = isCosm ? 18.0 : 5.0;
+        }
 
         const rackLocation = String(getVal('rack_location', 'rack_no', 'rack', 'shelf_no', 'shelf', 'location', 'bin') || 'Rack A-1').trim();
 
@@ -350,7 +358,7 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
         purchase_price: 18.50,
         mrp: 34.00,
         selling_price: 34.00,
-        gst_rate: 12.0,
+        gst_rate: 5.0,
         rack_location: 'Rack A-1'
       },
       {

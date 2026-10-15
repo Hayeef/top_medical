@@ -849,8 +849,27 @@ export default function DailyUpdatedInventoryModal({
                       
                       {/* Medicine Name & Formulation */}
                       <td style={{ padding: '8px 14px' }}>
-                        <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '13px' }}>
-                          {it.medicine_name}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '13px' }}>
+                            {it.medicine_name}
+                          </span>
+                          {it.is_excel_import && (
+                            <span style={{
+                              background: '#ecfdf5',
+                              color: '#047857',
+                              border: '1px solid #a7f3d0',
+                              borderRadius: '4px',
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              padding: '1px 6px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px'
+                            }} title={`Imported via Excel (${it.reference_id || 'EXCEL'})`}>
+                              <FileSpreadsheet size={10} color="#059669" />
+                              Excel Inward
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                           <span style={{ fontStyle: 'italic' }}>{it.medicine_generic || 'Composition Not Specified'}</span>
@@ -943,9 +962,16 @@ export default function DailyUpdatedInventoryModal({
                       {/* Today Inward */}
                       <td style={{ textAlign: 'center', padding: '8px 8px' }}>
                         {hasInward ? (
-                          <span className="badge badge-emerald" style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px' }}>
-                            +{it.day_inward_packs} pk
-                          </span>
+                          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                            <span className="badge badge-emerald" style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px' }}>
+                              +{it.day_inward_packs} pk
+                            </span>
+                            {it.is_excel_import && (
+                              <span style={{ fontSize: '9px', color: '#047857', fontWeight: 700 }}>
+                                Excel
+                              </span>
+                            )}
+                          </div>
                         ) : hasAdj ? (
                           <span className="badge badge-amber" style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px' }}>
                             {it.day_adj_packs > 0 ? `+${it.day_adj_packs}` : it.day_adj_packs} pk

@@ -324,6 +324,126 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
                     cell.alignment = ALIGN_LEFT
             cur_row += 1
 
+        # Table 3: GST Tax Slabs Statutory Breakdown
+        cur_row += 2
+        ws_sum.cell(row=cur_row, column=1, value="GST TAX SLABS & STATUTORY BREAKDOWN (5% TABLETS vs 18% COSMETICS)").font = FONT_SECTION
+        ws_sum.merge_cells(f"A{cur_row}:H{cur_row}")
+        cur_row += 1
+
+        gst_headers = [
+            "GST Rate / Category",
+            "Applicable Items Scope",
+            "Units Sold",
+            "Taxable Base (₹)",
+            "CGST (₹)",
+            "SGST (₹)",
+            "Total GST (₹)",
+            "Gross Sales (₹)"
+        ]
+        for col_idx, h in enumerate(gst_headers, start=1):
+            cell = ws_sum.cell(row=cur_row, column=col_idx, value=h)
+            cell.font = FONT_HEADER
+            cell.fill = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
+            cell.alignment = ALIGN_HEADER
+            cell.border = BORDER_THIN
+        ws_sum.row_dimensions[cur_row].height = 24
+        cur_row += 1
+        start_gst_row = cur_row
+
+        gst_buckets = {
+            Decimal('5.00'): {
+                'label': 'GST 5% (Tablets, Ointments, Gels & Meds)',
+                'items_type': 'Tablets, Ointments, Gels, Suspensions, Pharma Formulations',
+                'count': 0, 'taxable': Decimal('0.00'), 'cgst': Decimal('0.00'), 'sgst': Decimal('0.00'), 'tax': Decimal('0.00'), 'gross': Decimal('0.00')
+            },
+            Decimal('18.00'): {
+                'label': 'GST 18% (Cosmetics & Personal Care)',
+                'items_type': 'Soaps, Shampoos, Face Wash, Toiletries, Hygiene',
+                'count': 0, 'taxable': Decimal('0.00'), 'cgst': Decimal('0.00'), 'sgst': Decimal('0.00'), 'tax': Decimal('0.00'), 'gross': Decimal('0.00')
+            },
+            Decimal('0.00'): {
+                'label': 'GST 0% (Exempt / OTC Candies)',
+                'items_type': 'Confectionery, OTC Candies, Exempt items',
+                'count': 0, 'taxable': Decimal('0.00'), 'cgst': Decimal('0.00'), 'sgst': Decimal('0.00'), 'tax': Decimal('0.00'), 'gross': Decimal('0.00')
+            },
+        }
+
+        for inv in active_invoices:
+            for item in inv.items.all():
+                rate = Decimal(str(item.gst_rate or '5.00'))
+                if rate not in gst_buckets:
+                    gst_buckets[rate] = {
+                        'label': f'GST {rate}% (Other Formulations)',
+                        'items_type': 'Other medical supplies',
+                        'count': 0, 'taxable': Decimal('0.00'), 'cgst': Decimal('0.00'), 'sgst': Decimal('0.00'), 'tax': Decimal('0.00'), 'gross': Decimal('0.00')
+                    }
+                b = gst_buckets[rate]
+                b['count'] += item.quantity
+                line_total = Decimal(str(item.total_amount or '0.00'))
+                item_tax = Decimal(str(item.tax_amount or '0.00'))
+                item_taxable = max(Decimal('0.00'), line_total - item_tax)
+                item_cgst = round(item_tax / Decimal('2.0'), 2)
+                item_sgst = round(item_tax - item_cgst, 2)
+                b['taxable'] += item_taxable
+                b['cgst'] += item_cgst
+                b['sgst'] += item_sgst
+                b['tax'] += item_tax
+                b['gross'] += line_total
+
+        for rate_key in sorted(gst_buckets.keys(), reverse=True):
+            b = gst_buckets[rate_key]
+            row_data = [
+                b['label'],
+                b['items_type'],
+                b['count'],
+                float(b['taxable']),
+                float(b['cgst']),
+                float(b['sgst']),
+                float(b['tax']),
+                float(b['gross'])
+            ]
+            for col_idx, val in enumerate(row_data, start=1):
+                cell = ws_sum.cell(row=cur_row, column=col_idx, value=val)
+                cell.font = FONT_DATA
+                cell.border = BORDER_THIN
+                if col_idx in [1, 2]:
+                    cell.alignment = ALIGN_LEFT
+                elif col_idx == 3:
+                    cell.alignment = ALIGN_CENTER
+                    cell.number_format = FORMAT_INTEGER
+                else:
+                    cell.alignment = ALIGN_RIGHT
+                    cell.number_format = FORMAT_CURRENCY
+            cur_row += 1
+
+        # GST Totals row
+        ws_sum.cell(row=cur_row, column=1, value="TOTAL GST SUMMARY").font = FONT_TOTAL
+        ws_sum.cell(row=cur_row, column=1).alignment = ALIGN_LEFT
+        ws_sum.cell(row=cur_row, column=1).border = BORDER_TOTAL
+        ws_sum.cell(row=cur_row, column=1).fill = FILL_TOTAL
+
+        ws_sum.cell(row=cur_row, column=2, value="All Statutory Slabs Reconciled").font = FONT_TOTAL
+        ws_sum.cell(row=cur_row, column=2).alignment = ALIGN_LEFT
+        ws_sum.cell(row=cur_row, column=2).border = BORDER_TOTAL
+        ws_sum.cell(row=cur_row, column=2).fill = FILL_TOTAL
+
+        q_cell = ws_sum.cell(row=cur_row, column=3, value=f"=SUM(C{start_gst_row}:C{cur_row-1})")
+        q_cell.font = FONT_TOTAL
+        q_cell.alignment = ALIGN_CENTER
+        q_cell.number_format = FORMAT_INTEGER
+        q_cell.border = BORDER_TOTAL
+        q_cell.fill = FILL_TOTAL
+
+        for c_idx in range(4, 9):
+            c_let = get_column_letter(c_idx)
+            cell = ws_sum.cell(row=cur_row, column=c_idx, value=f"=SUM({c_let}{start_gst_row}:{c_let}{cur_row-1})")
+            cell.font = FONT_TOTAL
+            cell.alignment = ALIGN_RIGHT
+            cell.number_format = FORMAT_CURRENCY
+            cell.border = BORDER_TOTAL
+            cell.fill = FILL_TOTAL
+        cur_row += 1
+
         auto_fit_columns(ws_sum)
 
     # -------------------------------------------------------------
@@ -332,7 +452,7 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
     if export_type in ['full', 'ledger']:
         ws_led = wb.create_sheet(title="Bills Ledger")
         ws_led.views.sheetView[0].showGridLines = True
-        add_pharmacy_header(ws_led, profile, f"BILLS LEDGER - {report_title}", filter_info, end_col_letter="X")
+        add_pharmacy_header(ws_led, profile, f"BILLS LEDGER - {report_title}", filter_info, end_col_letter="Y")
 
         ledger_headers = [
             "S.No",
@@ -348,6 +468,7 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
             "Subtotal (₹)",
             "Discount (₹)",
             "Taxable Amt (₹)",
+            "Tax %",
             "CGST (₹)",
             "SGST (₹)",
             "Total GST (₹)",
@@ -381,10 +502,11 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
 
             subtotal_val = float(inv.subtotal or inv.grand_total or 0.0)
             disc_val = float(inv.discount_amount or 0.0)
-            taxable_val = max(0.0, subtotal_val - disc_val)
+            net_val = max(0.0, subtotal_val - disc_val)
+            tot_tax_val = float(inv.tax_amount or 0.0)
+            taxable_val = max(0.0, net_val - tot_tax_val)
             cgst_val = float(inv.cgst_amount or 0.0)
             sgst_val = float(inv.sgst_amount or 0.0)
-            tot_tax_val = float(inv.tax_amount or 0.0)
             round_val = float(inv.round_off or 0.0)
             gt_val = float(inv.grand_total or 0.0)
             paid_val = float(inv.amount_paid or 0.0)
@@ -392,6 +514,16 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
             upi_val = float(inv.upi_amount or 0.0)
             card_val = float(inv.card_amount or 0.0)
             due_val = max(0.0, gt_val - paid_val) if not is_cancelled else 0.0
+
+            # Determine Bill Tax Percentage(s)
+            inv_rates = sorted(list(set(float(it.gst_rate or 0.0) for it in inv.items.all())))
+            if not inv_rates:
+                tax_rate_str = "0%"
+            elif len(inv_rates) == 1:
+                r = inv_rates[0]
+                tax_rate_str = f"{int(r) if r.is_integer() else r}%"
+            else:
+                tax_rate_str = ", ".join(f"{int(r) if r.is_integer() else r}%" for r in inv_rates)
 
             row_values = [
                 idx,
@@ -407,6 +539,7 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
                 subtotal_val,
                 disc_val,
                 taxable_val,
+                tax_rate_str,
                 cgst_val,
                 sgst_val,
                 tot_tax_val,
@@ -430,7 +563,7 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
                     cell.fill = fill_to_use
 
                 # Alignments & formats
-                if col_idx in [1, 3, 4, 8, 10, 24]:
+                if col_idx in [1, 3, 4, 8, 10, 14, 25]:
                     cell.alignment = ALIGN_CENTER
                 elif col_idx in [2, 5, 6, 7, 9]:
                     cell.alignment = ALIGN_LEFT
@@ -456,8 +589,8 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
                 ws_led.cell(row=cur_row, column=c).border = BORDER_TOTAL
                 ws_led.cell(row=cur_row, column=c).fill = FILL_TOTAL
 
-            # SUM Formulas for numeric columns 11 to 23
-            for c_idx in range(11, 24):
+            # SUM Formulas for numeric columns: 11, 12, 13, 15 to 24
+            for c_idx in [11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]:
                 c_let = get_column_letter(c_idx)
                 cell = ws_led.cell(row=cur_row, column=c_idx)
                 cell.value = f"=SUM({c_let}{start_data_row}:{c_let}{cur_row-1})"
@@ -467,8 +600,11 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
                 cell.border = BORDER_TOTAL
                 cell.fill = FILL_TOTAL
 
-            ws_led.cell(row=cur_row, column=24, value="").border = BORDER_TOTAL
-            ws_led.cell(row=cur_row, column=24).fill = FILL_TOTAL
+            ws_led.cell(row=cur_row, column=14, value="").border = BORDER_TOTAL
+            ws_led.cell(row=cur_row, column=14).fill = FILL_TOTAL
+
+            ws_led.cell(row=cur_row, column=25, value="").border = BORDER_TOTAL
+            ws_led.cell(row=cur_row, column=25).fill = FILL_TOTAL
 
         auto_fit_columns(ws_led)
 
@@ -478,7 +614,7 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
     if export_type in ['full', 'items']:
         ws_items = wb.create_sheet(title="Itemized Sales")
         ws_items.views.sheetView[0].showGridLines = True
-        add_pharmacy_header(ws_items, profile, f"DISPENSED MEDICINES - {report_title}", filter_info, end_col_letter="W")
+        add_pharmacy_header(ws_items, profile, f"DISPENSED MEDICINES - {report_title}", filter_info, end_col_letter="X")
 
         items_headers = [
             "S.No",
@@ -487,6 +623,7 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
             "Customer / Patient",
             "Staff Code",
             "Medicine Name",
+            "Tax Category",
             "Batch Number",
             "Expiry Date",
             "HSN Code",
@@ -531,7 +668,7 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
                 mrp_val = float(item.unit_mrp or 0.0)
                 sp_val = float(item.unit_selling_price or 0.0)
                 disc_pct = float(item.discount_percent or 0.0)
-                gst_pct = float(item.gst_rate or 12.0)
+                gst_pct = float(item.gst_rate or 5.0)
                 line_total = float(item.total_amount or 0.0)
                 
                 # Tax calculations
@@ -539,6 +676,15 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
                 taxable_val = max(0.0, line_total - tax_val)
                 cgst_val = round(tax_val / 2.0, 2)
                 sgst_val = round(tax_val - cgst_val, 2)
+
+                if gst_pct == 18.0:
+                    tax_cat_label = "Cosmetics (18%)"
+                elif gst_pct == 5.0:
+                    tax_cat_label = "Tablets, Ointments & Meds (5%)"
+                elif gst_pct == 0.0:
+                    tax_cat_label = "Exempt / Candies (0%)"
+                else:
+                    tax_cat_label = f"Pharma ({gst_pct:.0f}%)"
 
                 exp_str = item.expiry_date.strftime('%m/%Y') if item.expiry_date else ''
 
@@ -549,6 +695,7 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
                     inv.customer_name or 'Walk-in',
                     inv.staff_code or 'SC-101',
                     item.medicine_name,
+                    tax_cat_label,
                     item.batch_number or 'N/A',
                     exp_str,
                     item.hsn_code or '3004',
@@ -578,14 +725,14 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
                         cell.fill = fill_to_use
 
                     # Alignments & formats
-                    if col_idx in [1, 3, 5, 7, 8, 9, 10, 22, 23]:
+                    if col_idx in [1, 3, 5, 7, 8, 9, 10, 11, 23, 24]:
                         cell.alignment = ALIGN_CENTER
                     elif col_idx in [2, 4, 6]:
                         cell.alignment = ALIGN_LEFT
-                    elif col_idx in [11, 12]:
+                    elif col_idx in [12, 13]:
                         cell.alignment = ALIGN_CENTER
                         cell.number_format = FORMAT_INTEGER
-                    elif col_idx in [15, 17]:
+                    elif col_idx in [16, 18]:
                         cell.alignment = ALIGN_RIGHT
                         cell.number_format = FORMAT_PERCENT
                     else:
@@ -600,31 +747,31 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
             ws_items.cell(row=cur_row, column=1).border = BORDER_TOTAL
             ws_items.cell(row=cur_row, column=1).fill = FILL_TOTAL
 
-            ws_items.merge_cells(start_row=cur_row, start_column=2, end_row=cur_row, end_column=10)
+            ws_items.merge_cells(start_row=cur_row, start_column=2, end_row=cur_row, end_column=11)
             items_lbl = ws_items.cell(row=cur_row, column=2, value=f"{item_count} Dispensed Medicine Line Items")
             items_lbl.font = FONT_TOTAL
             items_lbl.alignment = ALIGN_LEFT
             items_lbl.border = BORDER_TOTAL
             items_lbl.fill = FILL_TOTAL
-            for c in range(3, 11):
+            for c in range(3, 12):
                 ws_items.cell(row=cur_row, column=c).border = BORDER_TOTAL
                 ws_items.cell(row=cur_row, column=c).fill = FILL_TOTAL
 
             # Qty SUM
-            qty_cell = ws_items.cell(row=cur_row, column=11)
-            qty_cell.value = f"=SUM(K{start_items_row}:K{cur_row-1})"
+            qty_cell = ws_items.cell(row=cur_row, column=12)
+            qty_cell.value = f"=SUM(L{start_items_row}:L{cur_row-1})"
             qty_cell.font = FONT_TOTAL
             qty_cell.alignment = ALIGN_CENTER
             qty_cell.number_format = FORMAT_INTEGER
             qty_cell.border = BORDER_TOTAL
             qty_cell.fill = FILL_TOTAL
 
-            for c_idx in [12, 13, 14, 15]:
+            for c_idx in [13, 14, 15, 16]:
                 ws_items.cell(row=cur_row, column=c_idx, value="").border = BORDER_TOTAL
                 ws_items.cell(row=cur_row, column=c_idx).fill = FILL_TOTAL
 
             # SUM for Taxable, CGST, SGST, Tax, Line Total
-            for c_idx in [16, 18, 19, 20, 21]:
+            for c_idx in [17, 19, 20, 21, 22]:
                 c_let = get_column_letter(c_idx)
                 cell = ws_items.cell(row=cur_row, column=c_idx)
                 cell.value = f"=SUM({c_let}{start_items_row}:{c_let}{cur_row-1})"
@@ -634,7 +781,7 @@ def generate_bills_excel(invoices_qs, profile, filter_info, report_title, export
                 cell.border = BORDER_TOTAL
                 cell.fill = FILL_TOTAL
 
-            for c_idx in [17, 22, 23]:
+            for c_idx in [18, 23, 24]:
                 ws_items.cell(row=cur_row, column=c_idx, value="").border = BORDER_TOTAL
                 ws_items.cell(row=cur_row, column=c_idx).fill = FILL_TOTAL
 

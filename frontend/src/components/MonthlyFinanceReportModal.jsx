@@ -22,6 +22,7 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ShieldCheck,
   RefreshCw,
   Layers,
@@ -53,6 +54,7 @@ export default function MonthlyFinanceReportModal({
   const [searchQuery, setSearchQuery] = useState('');
   
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
   const [downloadingExcel, setDownloadingExcel] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
 
@@ -185,12 +187,21 @@ export default function MonthlyFinanceReportModal({
     }
   }, [isOpen, selectedMonth, selectedYear]);
 
-  // Direct Backend PDF Download
-  const handleDownloadPdf = async () => {
+  // Direct Backend PDF Download with targeted section support
+  const handleDownloadPdf = async (customSection = null) => {
+    // If not specified, automatically match current active tab:
+    // 'overview' -> 'daily_statement' (Daily Statement & Register only)
+    // 'payments' -> 'payments' (Payment History & Outflows only)
+    // 'printable' -> 'all' (Complete Combined Report)
+    const targetSection = customSection || (
+      activeTab === 'overview' ? 'daily_statement' :
+      activeTab === 'payments' ? 'payments' : 'all'
+    );
     setDownloadingPdf(true);
+    setDownloadMenuOpen(false);
     try {
-      const res = await dailyFinanceAPI.exportPdf(`month=${selectedMonth}&year=${selectedYear}`);
-      showToast(`Monthly PDF report downloaded: ${res.filename}`);
+      const res = await dailyFinanceAPI.exportPdf(`month=${selectedMonth}&year=${selectedYear}&section=${targetSection}`);
+      showToast(`PDF report downloaded: ${res.filename}`);
     } catch (err) {
       alert(`PDF download failed: ${err.message}`);
     } finally {
@@ -521,26 +532,168 @@ export default function MonthlyFinanceReportModal({
               )}
             </div>
 
-            {/* Direct PDF Download Button */}
-            <button
-              type="button"
-              onClick={handleDownloadPdf}
-              disabled={downloadingPdf || loading}
-              className="btn btn-primary btn-sm"
-              style={{
-                height: '36px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontWeight: 700,
-                background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-                boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)'
-              }}
-              title="Download High-Resolution Formatted PDF Report"
-            >
-              <Download size={15} />
-              <span>{downloadingPdf ? 'Generating PDF...' : 'Download PDF Report'}</span>
-            </button>
+            {/* Direct PDF Download Split Button Group */}
+            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'stretch' }}>
+              <button
+                type="button"
+                onClick={() => handleDownloadPdf()}
+                disabled={downloadingPdf || loading}
+                className="btn btn-primary btn-sm"
+                style={{
+                  height: '36px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 700,
+                  background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                  boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
+                  borderTopRightRadius: 0,
+                  borderBottomRightRadius: 0,
+                  borderRight: '1px solid rgba(255, 255, 255, 0.25)'
+                }}
+                title={
+                  activeTab === 'overview'
+                    ? 'Download Daily Statement & Register only (PDF)'
+                    : activeTab === 'payments'
+                    ? 'Download Payment History & Outflow Audit only (PDF)'
+                    : 'Download Complete Statement (Both Sections) (PDF)'
+                }
+              >
+                <Download size={15} />
+                <span>
+                  {downloadingPdf
+                    ? 'Generating...'
+                    : activeTab === 'overview'
+                    ? 'Download Daily Register (PDF)'
+                    : activeTab === 'payments'
+                    ? 'Download Payment Audit (PDF)'
+                    : 'Download Complete Report (PDF)'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDownloadMenuOpen(prev => !prev)}
+                disabled={downloadingPdf || loading}
+                className="btn btn-primary btn-sm"
+                style={{
+                  height: '36px',
+                  padding: '0 9px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                  borderTopLeftRadius: 0,
+                  borderBottomLeftRadius: 0,
+                  cursor: 'pointer'
+                }}
+                title="Choose Section to Download"
+              >
+                <ChevronDown size={14} />
+              </button>
+
+              {downloadMenuOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '42px',
+                    right: 0,
+                    zIndex: 1200,
+                    minWidth: '270px',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '10px',
+                    boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.2)',
+                    padding: '6px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}
+                >
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', padding: '6px 10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Select PDF Download Section
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadPdf('daily_statement')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: activeTab === 'overview' ? '#f0f9ff' : 'transparent',
+                      color: activeTab === 'overview' ? '#0369a1' : '#0f172a',
+                      fontWeight: activeTab === 'overview' ? 800 : 600,
+                      fontSize: '12.5px',
+                      textAlign: 'left',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <span>📊</span>
+                    <div style={{ flex: 1 }}>
+                      <div>Daily Statement & Register Only</div>
+                      <div style={{ fontSize: '10.5px', color: '#64748b', fontWeight: 400 }}>Day-by-day sales, cash/UPI & balance</div>
+                    </div>
+                    {activeTab === 'overview' && <span style={{ fontSize: '10px', background: '#0284c7', color: '#fff', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>ACTIVE</span>}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadPdf('payments')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: activeTab === 'payments' ? '#f0f9ff' : 'transparent',
+                      color: activeTab === 'payments' ? '#0369a1' : '#0f172a',
+                      fontWeight: activeTab === 'payments' ? 800 : 600,
+                      fontSize: '12.5px',
+                      textAlign: 'left',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <span>💳</span>
+                    <div style={{ flex: 1 }}>
+                      <div>Payment History & Outflows Only</div>
+                      <div style={{ fontSize: '10.5px', color: '#64748b', fontWeight: 400 }}>Itemized payouts, staff & vendor audit</div>
+                    </div>
+                    {activeTab === 'payments' && <span style={{ fontSize: '10px', background: '#0284c7', color: '#fff', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>ACTIVE</span>}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadPdf('all')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: activeTab === 'printable' ? '#f0f9ff' : 'transparent',
+                      color: activeTab === 'printable' ? '#0369a1' : '#0f172a',
+                      fontWeight: activeTab === 'printable' ? 800 : 600,
+                      fontSize: '12.5px',
+                      textAlign: 'left',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <span>📑</span>
+                    <div style={{ flex: 1 }}>
+                      <div>Complete Statement (Both Sections)</div>
+                      <div style={{ fontSize: '10.5px', color: '#64748b', fontWeight: 400 }}>Full 2-part executive report</div>
+                    </div>
+                    {activeTab === 'printable' && <span style={{ fontSize: '10px', background: '#0284c7', color: '#fff', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>ACTIVE</span>}
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Print / Save A4 PDF Button */}
             <button
@@ -747,59 +900,87 @@ export default function MonthlyFinanceReportModal({
                 </div>
               </div>
 
-              {/* Branded Official Letterhead Banner for Printing & Clean Display */}
+              {/* Branded Official Letterhead Banner Matching System Default Theme */}
               <div
                 style={{
-                  borderBottom: '2px solid #0f172a',
-                  paddingBottom: '12px',
-                  marginBottom: '16px',
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderTop: '3px solid #0284c7',
+                  borderRadius: '12px',
+                  padding: '16px 20px',
+                  marginBottom: '18px',
                   display: 'flex',
                   justifyContent: 'space-between',
-                  alignItems: 'flex-start',
+                  alignItems: 'center',
                   flexWrap: 'wrap',
-                  gap: '12px'
+                  gap: '16px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
                 }}
               >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <h1 style={{ fontSize: '22px', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
-                      {pharmacyName.toUpperCase()}
-                    </h1>
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#475569', marginTop: '3px', maxWidth: '650px', lineHeight: 1.4 }}>
-                    {pharmacyAddress} &nbsp;|&nbsp; <b>Phone:</b> {pharmacyPhone}
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '3px', display: 'flex', gap: '14px' }}>
-                    <span><b>GSTIN:</b> {pharmacyGstin}</span>
-                    <span><b>DL No:</b> {pharmacyDl} {pharmacyDl21 && pharmacyDl21 !== pharmacyDl ? `/ ${pharmacyDl21}` : ''}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <PharmacyLogo size={42} />
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <h1 style={{ fontSize: '20px', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
+                        {pharmacyName.toUpperCase()}
+                      </h1>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '2px 8px',
+                        background: '#ecfdf5',
+                        border: '1px solid #a7f3d0',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        color: '#059669'
+                      }}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#059669' }} />
+                        Admin Portal
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <span style={{ background: '#f0fdf4', padding: '1px 7px', borderRadius: '4px', color: '#166534', fontWeight: 600 }}>
+                        DL: {pharmacyDl} {pharmacyDl21 && pharmacyDl21 !== pharmacyDl ? `/ ${pharmacyDl21}` : ''}
+                      </span>
+                      <span style={{ background: '#f0f9ff', padding: '1px 7px', borderRadius: '4px', color: '#0369a1', fontWeight: 600 }}>
+                        GSTIN: {pharmacyGstin}
+                      </span>
+                      <span>Phone: <b>{pharmacyPhone}</b></span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                      {pharmacyAddress}
+                    </div>
                   </div>
                 </div>
 
                 <div style={{ textAlign: 'right' }}>
                   <div
                     style={{
-                      background: '#0f172a',
-                      color: '#ffffff',
+                      background: '#f0f9ff',
+                      color: '#0284c7',
+                      border: '1px solid #bae6fd',
                       padding: '4px 12px',
-                      borderRadius: '6px',
-                      fontSize: '13px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
                       fontWeight: 800,
                       display: 'inline-block',
-                      letterSpacing: '0.05em'
+                      letterSpacing: '0.04em'
                     }}
                   >
-                    MONTHLY FINANCIAL STATEMENT
+                    MONTHLY FINANCIAL STATEMENT & AUDIT
                   </div>
-                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#0284c7', marginTop: '5px' }}>
-                    Period: {currentMonthName} {selectedYear}
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', marginTop: '5px' }}>
+                    Period: <span style={{ color: '#0284c7' }}>{currentMonthName} {selectedYear}</span>
                   </div>
                   <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                    Generated: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                    Generated: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} &nbsp;|&nbsp; <span style={{ color: '#059669', fontWeight: 700 }}>Live Reconciled</span>
                   </div>
                 </div>
               </div>
 
-              {/* Executive Monthly KPI Summary Metric Cards */}
+              {/* Executive Monthly KPI Summary Metric Cards (Matching System Theme) */}
               <div
                 style={{
                   display: 'grid',
@@ -811,24 +992,26 @@ export default function MonthlyFinanceReportModal({
                 {/* Total Inflow (Cash + UPI) */}
                 <div
                   style={{
-                    background: '#f0fdf4',
-                    border: '1.5px solid #86efac',
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderTop: '3px solid #059669',
                     borderRadius: '10px',
-                    padding: '12px 14px'
+                    padding: '12px 14px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       Total Inflow (Earned)
                     </span>
-                    <TrendingUp size={16} color="#16a34a" />
+                    <TrendingUp size={16} color="#059669" />
                   </div>
-                  <div style={{ fontSize: '20px', fontWeight: 900, color: '#15803d' }}>
+                  <div style={{ fontSize: '20px', fontWeight: 900, color: '#059669' }}>
                     {currency} {Number(summary?.total_earned || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#166534', marginTop: '3px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
-                    <span>Cash: <b>{currency}{Number(summary?.cash_earned || 0).toLocaleString('en-IN')}</b></span>
-                    <span>UPI: <b>{currency}{Number(summary?.upi_earned || 0).toLocaleString('en-IN')}</b></span>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
+                    <span>Cash: <b style={{ color: '#059669' }}>{currency}{Number(summary?.cash_earned || 0).toLocaleString('en-IN')}</b></span>
+                    <span>UPI: <b style={{ color: '#4f46e5' }}>{currency}{Number(summary?.upi_earned || 0).toLocaleString('en-IN')}</b></span>
                     {Number(summary?.capital_investment || 0) > 0 && (
                       <span>Capital: <b>{currency}{Number(summary?.capital_investment || 0).toLocaleString('en-IN')}</b></span>
                     )}
@@ -838,22 +1021,24 @@ export default function MonthlyFinanceReportModal({
                 {/* Total Sales */}
                 <div
                   style={{
-                    background: '#f0fdf4',
-                    border: '1.5px solid #86efac',
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderTop: '3px solid #059669',
                     borderRadius: '10px',
-                    padding: '12px 14px'
+                    padding: '12px 14px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      Total Sales Billed
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Total Sales (POS)
                     </span>
-                    <Receipt size={16} color="#16a34a" />
+                    <Receipt size={16} color="#059669" />
                   </div>
-                  <div style={{ fontSize: '20px', fontWeight: 900, color: '#15803d' }}>
+                  <div style={{ fontSize: '20px', fontWeight: 900, color: '#059669' }}>
                     {currency} {Number(summary?.total_sales || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#166534', marginTop: '3px' }}>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>
                     Across <b>{records.length}</b> Recorded Trading Days
                   </div>
                 </div>
@@ -861,14 +1046,16 @@ export default function MonthlyFinanceReportModal({
                 {/* Total Outflow (Paid) */}
                 <div
                   style={{
-                    background: '#fef2f2',
-                    border: '1.5px solid #fca5a5',
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderTop: '3px solid #ef4444',
                     borderRadius: '10px',
-                    padding: '12px 14px'
+                    padding: '12px 14px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       Total Outflow (Paid)
                     </span>
                     <TrendingDown size={16} color="#dc2626" />
@@ -876,7 +1063,7 @@ export default function MonthlyFinanceReportModal({
                   <div style={{ fontSize: '20px', fontWeight: 900, color: '#dc2626' }}>
                     {currency} {Number(summary?.total_paid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#991b1b', marginTop: '3px' }}>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>
                     Vendors: {currency}{Number(summary?.supplier_payments || 0).toLocaleString('en-IN')} | Ops: {currency}{Number((summary?.total_paid || 0) - (summary?.supplier_payments || 0)).toLocaleString('en-IN')}
                   </div>
                 </div>
@@ -884,45 +1071,49 @@ export default function MonthlyFinanceReportModal({
                 {/* Net Cashflow Change */}
                 <div
                   style={{
-                    background: (summary?.net_change || 0) < 0 ? '#fef2f2' : '#f0fdf4',
-                    border: `1.5px solid ${(summary?.net_change || 0) < 0 ? '#fca5a5' : '#86efac'}`,
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderTop: `3px solid ${(summary?.net_change || 0) < 0 ? '#ef4444' : '#0284c7'}`,
                     borderRadius: '10px',
-                    padding: '12px 14px'
+                    padding: '12px 14px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: (summary?.net_change || 0) < 0 ? '#991b1b' : '#166534', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       {(summary?.net_change || 0) < 0 ? 'Net Cash Deficit' : 'Net Cash Surplus'}
                     </span>
-                    <DollarSign size={16} color={(summary?.net_change || 0) < 0 ? '#dc2626' : '#16a34a'} />
+                    <DollarSign size={16} color={(summary?.net_change || 0) < 0 ? '#dc2626' : '#0284c7'} />
                   </div>
-                  <div style={{ fontSize: '20px', fontWeight: 900, color: (summary?.net_change || 0) < 0 ? '#dc2626' : '#15803d' }}>
+                  <div style={{ fontSize: '20px', fontWeight: 900, color: (summary?.net_change || 0) < 0 ? '#dc2626' : '#0284c7' }}>
                     {formatInrCurrency(summary?.net_change, true)}
                   </div>
-                  <div style={{ fontSize: '11px', color: (summary?.net_change || 0) < 0 ? '#991b1b' : '#166534', marginTop: '3px' }}>
-                    {(summary?.net_change || 0) < 0 ? 'Outflow exceeded Inflow' : 'Total Inflow minus Total Outflow'}
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>
+                    {(summary?.net_change || 0) < 0 ? 'Outflow exceeded Inflow' : 'Inflow minus Outflow'}
                   </div>
                 </div>
 
                 {/* Closing Firm Balance */}
                 <div
                   style={{
-                    background: '#f0f9ff',
-                    border: '1.5px solid #7dd3fc',
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderTop: `3px solid ${(summary?.closing_balance || 0) < 0 ? '#ef4444' : '#0284c7'}`,
                     borderRadius: '10px',
-                    padding: '12px 14px'
+                    padding: '12px 14px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      Firm Balance (Closing){(summary?.closing_balance || 0) < 0 ? ' (MINUS)' : ''}
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Firm Balance{(summary?.closing_balance || 0) < 0 ? ' (MINUS)' : ''}
                     </span>
-                    <Landmark size={16} color="#0284c7" />
+                    <Landmark size={16} color={(summary?.closing_balance || 0) < 0 ? '#dc2626' : '#0284c7'} />
                   </div>
-                  <div style={{ fontSize: '20px', fontWeight: 900, color: '#0284c7' }}>
+                  <div style={{ fontSize: '20px', fontWeight: 900, color: (summary?.closing_balance || 0) < 0 ? '#dc2626' : '#0284c7' }}>
                     {formatInrCurrency(summary?.closing_balance)}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#0369a1', marginTop: '3px' }}>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>
                     Opening: {formatInrCurrency(summary?.opening_balance)} &bull; {(summary?.closing_balance || 0) < 0 ? 'Deficit / Minus Balance' : 'Healthy Balance'}
                   </div>
                 </div>
@@ -931,31 +1122,55 @@ export default function MonthlyFinanceReportModal({
               {/* View 1: Overview & Day-by-Day Statement Table */}
               {(activeTab === 'overview' || activeTab === 'printable') && (
                 <div style={{ marginBottom: '28px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                    <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                      1. Day-by-Day Financial Register ({records.length} Recorded Days)
-                    </h3>
-                    <span style={{ fontSize: '12px', color: '#64748b' }}>
-                      Figures strictly categorized into Cash, UPI & Expense Payouts
-                    </span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                        1. Day-by-Day Financial Register ({records.length} Recorded Days)
+                      </h3>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>
+                        Figures strictly categorized into Cash, UPI & Expense Payouts
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadPdf('daily_statement')}
+                      disabled={downloadingPdf || loading}
+                      className="btn btn-secondary btn-sm no-print"
+                      style={{
+                        height: '32px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontWeight: 700,
+                        fontSize: '12px',
+                        color: '#0284c7',
+                        border: '1.5px solid #0284c7',
+                        background: '#f0f9ff'
+                      }}
+                      title="Download ONLY this Day-by-Day Statement & Financial Register as PDF"
+                    >
+                      <Download size={14} color="#0284c7" />
+                      <span>Download Daily Register (PDF)</span>
+                    </button>
                   </div>
 
                   <div style={{ overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '10px' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
                       <thead>
-                        <tr style={{ background: '#0f172a', color: '#ffffff', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                          <th style={{ padding: '10px 8px', borderRight: '1px solid #334155' }}>Date</th>
-                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #334155', background: '#065f46', color: '#ffffff' }}>Sales / Total Inflow ({currency})</th>
-                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #334155', background: '#312e81', color: '#ffffff' }}>UPI / GPay ({currency})</th>
-                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #334155', background: '#064e3b', color: '#ffffff' }}>Cash ({currency})</th>
-                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #334155' }}>Supplier ({currency})</th>
-                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #334155' }}>Staff ({currency})</th>
-                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #334155' }}>Shop Exp ({currency})</th>
-                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #334155' }}>Vehicle ({currency})</th>
-                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #334155', background: '#7f1d1d', color: '#ffffff' }}>Total Outflow ({currency})</th>
-                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #334155' }}>Opening ({currency})</th>
-                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #334155' }}>Net Change ({currency})</th>
-                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #334155', background: '#0369a1', color: '#ffffff' }}>Firm Bal ({currency})</th>
+                        <tr style={{ background: '#f8fafc', color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #cbd5e1' }}>
+                          <th style={{ padding: '10px 8px', borderRight: '1px solid #e2e8f0' }}>Date</th>
+                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #e2e8f0', color: '#059669' }}>Sales / Total Inflow ({currency})</th>
+                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #e2e8f0', color: '#4f46e5' }}>UPI / GPay ({currency})</th>
+                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #e2e8f0', color: '#059669' }}>Cash ({currency})</th>
+                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #e2e8f0' }}>Supplier ({currency})</th>
+                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #e2e8f0' }}>Staff ({currency})</th>
+                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #e2e8f0' }}>Shop Exp ({currency})</th>
+                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #e2e8f0' }}>Vehicle ({currency})</th>
+                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #e2e8f0', color: '#dc2626' }}>Total Outflow ({currency})</th>
+                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #e2e8f0' }}>Opening ({currency})</th>
+                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #e2e8f0' }}>Net Change ({currency})</th>
+                          <th style={{ padding: '10px 8px', textAlign: 'right', borderRight: '1px solid #e2e8f0', color: '#0284c7' }}>Firm Bal ({currency})</th>
                           <th style={{ padding: '10px 8px' }}>Remarks / Summary</th>
                         </tr>
                       </thead>
@@ -1107,26 +1322,50 @@ export default function MonthlyFinanceReportModal({
               {/* View 2: Payment History & Outflow Breakdown */}
               {(activeTab === 'payments' || activeTab === 'printable') && (
                 <div style={{ marginBottom: '28px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                    <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                      2. Summary of Payment History & Outflow Audit ({paymentHistory.length} Disbursements)
-                    </h3>
-                    <span style={{ fontSize: '12px', color: '#64748b' }}>
-                      Detailed audit trail of supplier payments, staff disbursements & operations
-                    </span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div>
+                      <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                        2. Summary of Payment History & Outflow Audit ({paymentHistory.length} Disbursements)
+                      </h3>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>
+                        Detailed audit trail of supplier payments, staff disbursements & operations
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadPdf('payments')}
+                      disabled={downloadingPdf || loading}
+                      className="btn btn-secondary btn-sm no-print"
+                      style={{
+                        height: '32px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontWeight: 700,
+                        fontSize: '12px',
+                        color: '#0284c7',
+                        border: '1.5px solid #0284c7',
+                        background: '#f0f9ff'
+                      }}
+                      title="Download ONLY this Payment History & Outflow Audit as PDF"
+                    >
+                      <Download size={14} color="#0284c7" />
+                      <span>Download Payment Audit (PDF)</span>
+                    </button>
                   </div>
 
                   {/* Category Summary Matrix */}
                   <div style={{ overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '10px', marginBottom: '16px' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                       <thead>
-                        <tr style={{ background: '#0f172a', color: '#ffffff', fontSize: '11px', textTransform: 'uppercase' }}>
-                          <th style={{ padding: '9px 12px', textAlign: 'left' }}>Disbursement Category</th>
-                          <th style={{ padding: '9px 12px', textAlign: 'center' }}>Vouchers</th>
-                          <th style={{ padding: '9px 12px', textAlign: 'right' }}>Cash ({currency})</th>
-                          <th style={{ padding: '9px 12px', textAlign: 'right' }}>UPI ({currency})</th>
-                          <th style={{ padding: '9px 12px', textAlign: 'right' }}>Credit ({currency})</th>
-                          <th style={{ padding: '9px 12px', textAlign: 'right' }}>Total Amount ({currency})</th>
+                        <tr style={{ background: '#f8fafc', color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #cbd5e1' }}>
+                          <th style={{ padding: '9px 12px', textAlign: 'left', borderRight: '1px solid #e2e8f0' }}>Disbursement Category</th>
+                          <th style={{ padding: '9px 12px', textAlign: 'center', borderRight: '1px solid #e2e8f0' }}>Vouchers</th>
+                          <th style={{ padding: '9px 12px', textAlign: 'right', borderRight: '1px solid #e2e8f0', color: '#059669' }}>Cash ({currency})</th>
+                          <th style={{ padding: '9px 12px', textAlign: 'right', borderRight: '1px solid #e2e8f0', color: '#4f46e5' }}>UPI ({currency})</th>
+                          <th style={{ padding: '9px 12px', textAlign: 'right', borderRight: '1px solid #e2e8f0' }}>Credit ({currency})</th>
+                          <th style={{ padding: '9px 12px', textAlign: 'right', borderRight: '1px solid #e2e8f0' }}>Total Amount ({currency})</th>
                           <th style={{ padding: '9px 12px', textAlign: 'center' }}>% Outflow</th>
                         </tr>
                       </thead>
@@ -1173,13 +1412,13 @@ export default function MonthlyFinanceReportModal({
                   <div style={{ overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '10px' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                       <thead>
-                        <tr style={{ background: '#1e293b', color: '#ffffff', fontSize: '11px', textTransform: 'uppercase' }}>
-                          <th style={{ padding: '8px 10px', textAlign: 'left' }}>Date</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'left' }}>Type</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'left' }}>Payee / Staff / Vendor</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'center' }}>Staff Code</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'left' }}>Bill / Ref #</th>
-                          <th style={{ padding: '8px 10px', textAlign: 'center' }}>Mode</th>
+                        <tr style={{ background: '#f8fafc', color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '2px solid #cbd5e1' }}>
+                          <th style={{ padding: '8px 10px', textAlign: 'left', borderRight: '1px solid #e2e8f0' }}>Date</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'left', borderRight: '1px solid #e2e8f0' }}>Type</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'left', borderRight: '1px solid #e2e8f0' }}>Payee / Staff / Vendor</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'center', borderRight: '1px solid #e2e8f0' }}>Staff Code</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'left', borderRight: '1px solid #e2e8f0' }}>Bill / Ref #</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'center', borderRight: '1px solid #e2e8f0' }}>Mode</th>
                           <th style={{ padding: '8px 10px', textAlign: 'right' }}>Amount ({currency})</th>
                         </tr>
                       </thead>

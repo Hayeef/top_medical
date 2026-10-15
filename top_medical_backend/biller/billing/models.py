@@ -206,7 +206,7 @@ class InvoiceItem(models.Model):
     unit_mrp = models.DecimalField(max_digits=10, decimal_places=2)
     unit_selling_price = models.DecimalField(max_digits=10, decimal_places=2)
     discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
-    gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=12.00)
+    gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=5.00)
     
     tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)

@@ -15,7 +15,8 @@ from decimal import Decimal, InvalidOperation
 from .models import PharmacyProfile, StaffMember, Doctor, Customer, Invoice, InvoiceItem, DailyFinanceRecord, VendorBill
 from .serializers import (
     PharmacyProfileSerializer, StaffMemberSerializer, DoctorSerializer, CustomerSerializer,
-    InvoiceSerializer, InvoiceItemSerializer, DailyFinanceRecordSerializer, VendorBillSerializer
+    InvoiceSerializer, InvoiceItemSerializer, DailyFinanceRecordSerializer, VendorBillSerializer,
+    resolve_canonical_gst_rate
 )
 from .excel_export import generate_bills_excel, generate_daily_finance_excel
 from .pdf_export import generate_monthly_finance_pdf, get_reconciled_finance_ledger
@@ -480,10 +481,11 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         for item in items:
             item_gross = item.unit_selling_price * Decimal(item.quantity)
             item_net = round(item_gross * discount_ratio, 2)
-            item_gst_rate = item.gst_rate or Decimal('12.0')
+            item_gst_rate = resolve_canonical_gst_rate(item.medicine, item.gst_rate)
             item_taxable = round(item_net / (Decimal('1.0') + (item_gst_rate / Decimal('100.0'))), 2)
             item_tax = round(item_net - item_taxable, 2)
 
+            item.gst_rate = item_gst_rate
             item.discount_percent = round(effective_disc_pct, 2)
             item.tax_amount = item_tax
             item.total_amount = item_net
@@ -1037,6 +1039,18 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
         year = request.query_params.get('year')
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
+        section = (request.query_params.get('section') or 'all').lower().strip()
+
+        # Determine report prefix and title based on section
+        if section in ['daily_statement', 'register', 'overview', 'daily']:
+            sec_prefix = "TopMedical_DailyRegister"
+            report_title = "MONTHLY FINANCIAL STATEMENT & DAILY REGISTER"
+        elif section in ['payments', 'outflows', 'expenses', 'vouchers']:
+            sec_prefix = "TopMedical_PaymentAudit"
+            report_title = "MONTHLY PAYMENT HISTORY & OUTFLOW AUDIT"
+        else:
+            sec_prefix = "TopMedical_MonthlyFinance"
+            report_title = "MONTHLY FINANCIAL STATEMENT & CASH/UPI AUDIT"
 
         filter_info = ""
         m_int = None
@@ -1047,16 +1061,16 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
                 y_int = int(year) if year else timezone.now().year
                 month_dt = datetime(y_int, m_int, 1)
                 filter_info = f"Month: {month_dt.strftime('%B %Y')}"
-                filename = f"TopMedical_MonthlyFinance_{month_dt.strftime('%b_%Y')}.pdf"
+                filename = f"{sec_prefix}_{month_dt.strftime('%b_%Y')}.pdf"
             except (ValueError, TypeError):
                 filter_info = "Current Month"
-                filename = f"TopMedical_MonthlyFinance_{timezone.now().strftime('%Y%m')}.pdf"
+                filename = f"{sec_prefix}_{timezone.now().strftime('%Y%m')}.pdf"
         elif start_date or end_date:
             filter_info = f"Date Range: {start_date or 'Start'} to {end_date or 'Now'}"
-            filename = f"TopMedical_Finance_{start_date or 'Start'}_to_{end_date or 'Now'}.pdf"
+            filename = f"{sec_prefix}_{start_date or 'Start'}_to_{end_date or 'Now'}.pdf"
         else:
             filter_info = "All Recorded Entries"
-            filename = f"TopMedical_Finance_All_{timezone.now().strftime('%Y%m%d')}.pdf"
+            filename = f"{sec_prefix}_All_{timezone.now().strftime('%Y%m%d')}.pdf"
 
         # Reconcile live POS invoices with daily financial records
         reconciled_rows = get_reconciled_finance_ledger(
@@ -1072,8 +1086,9 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
             filter_info=filter_info,
             month=m_int,
             year=y_int,
-            report_title="MONTHLY FINANCIAL STATEMENT & CASH/UPI AUDIT",
-            reconciled_data=reconciled_rows
+            report_title=report_title,
+            reconciled_data=reconciled_rows,
+            section=section
         )
 
         inline = request.query_params.get('inline') == '1'

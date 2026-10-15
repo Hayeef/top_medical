@@ -76,7 +76,101 @@ class InvoiceItemCreateSerializer(serializers.Serializer):
     unit_mrp = serializers.DecimalField(max_digits=10, decimal_places=2)
     unit_selling_price = serializers.DecimalField(max_digits=10, decimal_places=2)
     discount_percent = serializers.DecimalField(max_digits=5, decimal_places=2, default=0.0)
-    gst_rate = serializers.DecimalField(max_digits=5, decimal_places=2, default=12.0)
+    gst_rate = serializers.DecimalField(max_digits=5, decimal_places=2, default=5.0)
+
+
+def resolve_canonical_gst_rate(medicine, raw_gst=None):
+    """
+    Strict Statutory GST Tax Slab Assignment:
+    - 0.00% for chocolates, candies, and OTC confectionery
+    - 5.00% for TABLETS and all pharmaceutical medicines
+    - 18.00% for COSMETICS, toiletries, soaps, shampoos, skincare, perfumes, personal care
+    """
+    if not medicine:
+        if raw_gst is not None:
+            try:
+                rg = Decimal(str(raw_gst))
+                if rg in [Decimal('0.00'), Decimal('5.00'), Decimal('18.00')]:
+                    return rg
+            except Exception:
+                pass
+        return Decimal('5.00')
+
+    med_name = (medicine.name or '').upper()
+    cat_name = (medicine.category.name if medicine.category else '').lower()
+    hsn_str = str(medicine.hsn_code or '').strip()
+    df_str = (medicine.dosage_form or '').strip()
+
+    # 1. Candies / Chocolates / Confectionery -> 0%
+    if any(k in med_name for k in ['CHOCOLATE', 'CANDY', 'TOFFEE', 'GUMMY']) or 'confectionery' in cat_name:
+        return Decimal('0.00')
+
+    # Comprehensive pure non-pharma cosmetics & personal care keywords
+    cosmetic_non_pharma_kws = [
+        'SOAP', 'SHAMPOO', 'HAIR OIL', 'HAIR COLOR', 'TOOTHPASTE', 'TOOTH PASTE', 
+        'TOOTHBRUSH', 'TOOTH BRUSH', 'BRUSH', 'RAZOR', 'BLADE', 'CARTRIDGE',
+        'DEODORANT', 'BODY WASH', 'PERFUME', 'AIR FRESHENER', 'AFTER SHAVE',
+        'SHAVING', 'TALC', 'KAJAL', 'SCRUB', 'CONDITIONER', 'BEARD',
+        'COLGATE', 'PEPSODENT', 'CLOSEUP', 'SENSODYNE', 'ORAL-B', 'LISTERINE',
+        'MOUTHWASH', 'DIAPER', 'PAMPERS', 'MAMYPOKO', 'BABY WIPES', 'WIPES',
+        'NAPKIN', 'SANITARY', 'LIP BALM', 'LIP CARE', 'MILD BAR', 'BODY LOTION',
+        'HEAD & SHOULDERS', 'PANTENE', 'SUNSILK', 'CLINIC PLUS', 'CLINICAL PLUS',
+        'MEERA', 'KARTHIKA', 'LOREAL', 'LORIAL', 'SEBAMED', 'INDULEKHA',
+        'LUX', 'LIFEBUOY', 'LIFEBOUY', 'SANTOOR', 'CHANDRIKA', 'PEARS', 'LIRIL',
+        'REXONE', 'VASELINE', 'WHISPER', 'SOFY', 'BELLA',
+        'FACE WASH', 'FACIAL WASH', 'FOAMING FACE WASH', 'CLEANSER', 'INTIMATE WASH',
+        'OLAY', 'PONDS', 'GILLETTE', 'OLD SPICE', 'SUNSCREEN', 'FACIAL', 'MOISTURIZ', 'MOISTURIS'
+    ]
+
+    # Strictly medical supply exceptions
+    pharma_exceptions = ['STERIPAD', 'WOUND PAD', 'UPADACOL']
+
+    is_pure_cosmetic = any(k in med_name for k in cosmetic_non_pharma_kws)
+    if any(k in med_name for k in pharma_exceptions):
+        is_pure_cosmetic = False
+
+    if any(c in cat_name for c in ['cosmetic', 'personal care', 'beauty', 'skincare', 'haircare']):
+        is_pure_cosmetic = True
+
+    # 2. Tablets Rule: 5% for all medical tablets
+    if df_str == 'Tablet' or 'TABLET' in med_name or med_name.endswith(' TAB') or ' TAB ' in med_name or ' TABS' in med_name:
+        if is_pure_cosmetic:
+            return Decimal('18.00')
+        return Decimal('5.00')
+
+    # Ointments, Gels, Suspensions -> 5%
+    if df_str in ['Ointment', 'Gel', 'Suspension']:
+        if not (is_pure_cosmetic and any(k in med_name for k in ['SOAP', 'SHAMPOO', 'SHAVING', 'RAZOR', 'BLADE', 'OLAY', 'PONDS', 'GILLETTE', 'OLD SPICE'])):
+            return Decimal('5.00')
+        return Decimal('18.00')
+
+    # Other pharmaceutical dosage forms: Capsule, Syrup, Cream, Drops, Injection, Inhaler, Powder
+    if df_str in ['Capsule', 'Syrup', 'Cream', 'Drops', 'Injection', 'Inhaler', 'Powder']:
+        if any(k in med_name for k in ['OINTMENT', 'GEL', 'SUSPENSION', 'TABLET', 'CAPSULE', 'CREAM']):
+            if not (is_pure_cosmetic and any(k in med_name for k in ['SHAVING', 'SOAP', 'SHAMPOO', 'OLAY', 'PONDS', 'GILLETTE', 'OLD SPICE'])):
+                return Decimal('5.00')
+        if is_pure_cosmetic:
+            return Decimal('18.00')
+        return Decimal('5.00')
+
+    # Fallback for cosmetics HSN or categories
+    if is_pure_cosmetic or hsn_str.startswith(('33', '34', '9619', '8212')) or 'cosmetic' in cat_name or 'personal care' in cat_name:
+        return Decimal('18.00')
+
+    # Explicit 18% in database or request
+    if hasattr(medicine, 'gst_rate') and (medicine.gst_rate == Decimal('18.00') or medicine.gst_rate == Decimal('18')):
+        return Decimal('18.00')
+    if raw_gst is not None:
+        try:
+            if Decimal(str(raw_gst)) in [Decimal('18.00'), Decimal('18')]:
+                return Decimal('18.00')
+            if Decimal(str(raw_gst)) in [Decimal('0.00'), Decimal('0')]:
+                return Decimal('0.00')
+        except Exception:
+            pass
+
+    # Default for all pharmaceuticals and medicines -> 5%
+    return Decimal('5.00')
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
@@ -163,6 +257,15 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
         invoice = Invoice.objects.create(**validated_data)
 
+        # Prepare bill-level discount scaling if applied
+        invoice_subtotal = Decimal(str(invoice.subtotal or '0.00'))
+        invoice_disc_amt = Decimal(str(invoice.discount_amount or '0.00'))
+        bill_disc_ratio = Decimal('1.0')
+        if invoice_subtotal > Decimal('0.00') and invoice_disc_amt > Decimal('0.00'):
+            bill_disc_ratio = max(Decimal('0.00'), Decimal('1.0') - (invoice_disc_amt / invoice_subtotal))
+
+        total_items_tax = Decimal('0.00')
+        raw_items_gross = Decimal('0.00')
 
         # Create items and deduct stock from batches
         for item_data in items_data:
@@ -173,12 +276,21 @@ class InvoiceSerializer(serializers.ModelSerializer):
             unit_mrp = item_data['unit_mrp']
             unit_sp = item_data['unit_selling_price']
             disc_pct = item_data.get('discount_percent', Decimal('0.0'))
-            gst_rate = item_data.get('gst_rate', Decimal('12.0'))
+            raw_gst = item_data.get('gst_rate')
 
             try:
                 batch = Batch.objects.select_for_update().get(id=batch_id, medicine_id=medicine_id)
             except Batch.DoesNotExist:
                 raise serializers.ValidationError(f"Batch {batch_id} for medicine {medicine_id} not found.")
+
+            # Strict statutory canonical GST rate enforcement:
+            # 0% for candies/chocolates, 18% for cosmetics/personal care, 5% for tablets & pharmaceutical medicines
+            gst_rate = resolve_canonical_gst_rate(batch.medicine, raw_gst)
+
+            # Keep medicine master synchronized
+            if batch.medicine and batch.medicine.gst_rate != gst_rate:
+                batch.medicine.gst_rate = gst_rate
+                batch.medicine.save(update_fields=['gst_rate'])
 
             # Validate stock availability & deduct
             if not is_loose:
@@ -218,9 +330,15 @@ class InvoiceSerializer(serializers.ModelSerializer):
             # Calculate item line totals (MRP / Selling price is inclusive of GST)
             gross = unit_sp * Decimal(qty)
             disc_amt = (gross * disc_pct) / Decimal('100.0')
-            item_total = gross - disc_amt
-            taxable_base = item_total / (Decimal('1.0') + (gst_rate / Decimal('100.0')))
-            tax_amt = item_total - taxable_base
+            line_net_before_bill_disc = gross - disc_amt
+
+            if bill_disc_ratio < Decimal('1.0'):
+                item_total = round(line_net_before_bill_disc * bill_disc_ratio, 2)
+            else:
+                item_total = round(line_net_before_bill_disc, 2)
+
+            taxable_base = round(item_total / (Decimal('1.0') + (gst_rate / Decimal('100.0'))), 2)
+            tax_amt = round(item_total - taxable_base, 2)
 
             InvoiceItem.objects.create(
                 invoice=invoice,
@@ -239,9 +357,23 @@ class InvoiceSerializer(serializers.ModelSerializer):
                 unit_selling_price=unit_sp,
                 discount_percent=disc_pct,
                 gst_rate=gst_rate,
-                tax_amount=round(tax_amt, 2),
-                total_amount=round(item_total, 2)
+                tax_amount=tax_amt,
+                total_amount=item_total
             )
+
+            total_items_tax += tax_amt
+            raw_items_gross += gross
+
+        # Re-synchronize invoice tax amounts with the EXACT item totals
+        cgst_amt = round(total_items_tax / Decimal('2.0'), 2)
+        sgst_amt = round(total_items_tax - cgst_amt, 2)
+
+        invoice.tax_amount = total_items_tax
+        invoice.cgst_amount = cgst_amt
+        invoice.sgst_amount = sgst_amt
+        if raw_items_gross > Decimal('0.00') and (invoice.subtotal == Decimal('0.00') or not invoice.subtotal):
+            invoice.subtotal = raw_items_gross
+        invoice.save(update_fields=['tax_amount', 'cgst_amount', 'sgst_amount', 'subtotal'])
 
         # Handle credit account if customer is paying on due
         if invoice.payment_method == 'CREDIT' or invoice.payment_status == 'DUE':

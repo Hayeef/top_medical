@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { billingAPI } from '../api';
 import PharmacyLogo from './PharmacyLogo';
+import '../utils/styles/BillsExcelExportModal.css';
 
 export default function BillsExcelExportModal({ 
   isOpen, 

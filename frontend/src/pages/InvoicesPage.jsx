@@ -23,6 +23,7 @@ import {
 import { billingAPI } from '../api';
 import UpdateDiscountModal from '../components/UpdateDiscountModal';
 import BillsExcelExportModal from '../components/BillsExcelExportModal';
+import '../utils/styles/InvoicesPage.css';
 
 const getTodayStr = () => {
   const now = new Date();
@@ -215,74 +216,74 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
 
       {/* 1. Daily Account & Drawer Settlement Summary Cards (Admin Only) */}
       {isAdmin && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+        <div className="invoices-settlement-grid">
 
           {/* Cash in Counter Drawer */}
-          <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #10b981', background: '#f0fdf4' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div className="glass-panel invoices-kpi-card cash">
+            <div className="invoices-kpi-header">
+              <span className="invoices-kpi-label cash">
                 Cash in Drawer
               </span>
-              <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="invoices-kpi-icon-wrap cash">
                 <Banknote size={17} color="#059669" />
               </div>
             </div>
-            <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#065f46', marginTop: '6px' }}>
+            <div className="mono invoices-kpi-value cash">
               {currency}{totalCashCollected.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </div>
-            <div style={{ fontSize: '11px', color: '#16a34a', marginTop: '2px', fontWeight: 600 }}>
+            <div className="invoices-kpi-sub cash">
               Physical cash collected
             </div>
           </div>
 
           {/* UPI / GPay in Account */}
-          <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #0284c7', background: '#f0f9ff' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 800, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div className="glass-panel invoices-kpi-card upi">
+            <div className="invoices-kpi-header">
+              <span className="invoices-kpi-label upi">
                 UPI / GPay in Account
               </span>
-              <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="invoices-kpi-icon-wrap upi">
                 <QrCode size={17} color="#0284c7" />
               </div>
             </div>
-            <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#0369a1', marginTop: '6px' }}>
+            <div className="mono invoices-kpi-value upi">
               {currency}{totalUpiCollected.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </div>
-            <div style={{ fontSize: '11px', color: '#0284c7', marginTop: '2px', fontWeight: 600 }}>
+            <div className="invoices-kpi-sub upi">
               Digital QR / VPA receipts
             </div>
           </div>
 
           {/* Total Invoiced Sales */}
-          <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #6366f1', background: '#eef2ff' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 800, color: '#4f46e5', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div className="glass-panel invoices-kpi-card sales">
+            <div className="invoices-kpi-header">
+              <span className="invoices-kpi-label sales">
                 Total Filtered Sales
               </span>
-              <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="invoices-kpi-icon-wrap sales">
                 <DollarSign size={17} color="#4f46e5" />
               </div>
             </div>
-            <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#3730a3', marginTop: '6px' }}>
+            <div className="mono invoices-kpi-value sales">
               {currency}{totalInvoiced.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </div>
-            <div style={{ fontSize: '11px', color: '#6366f1', marginTop: '2px', fontWeight: 600 }}>
+            <div className="invoices-kpi-sub sales">
               {activeInvoices.length} active bills
             </div>
           </div>
 
           {/* Unpaid / Credit Dues */}
           {totalDueAmount > 0 && (
-            <div className="glass-panel" style={{ padding: '14px 18px', borderLeft: '4px solid #e11d48', background: '#fff1f2' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#e11d48', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <div className="glass-panel invoices-kpi-card dues">
+              <div className="invoices-kpi-header">
+                <span className="invoices-kpi-label dues">
                   Credit Dues
                 </span>
-                <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div className="invoices-kpi-icon-wrap dues">
                   <Users size={17} color="#e11d48" />
                 </div>
               </div>
-              <div className="mono" style={{ fontSize: '22px', fontWeight: 900, color: '#9f1239', marginTop: '6px' }}>
+              <div className="mono invoices-kpi-value dues">
                 {currency}{totalDueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </div>
               <div style={{ fontSize: '11px', color: '#e11d48', marginTop: '2px', fontWeight: 600 }}>

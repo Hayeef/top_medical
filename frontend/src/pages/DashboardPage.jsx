@@ -45,6 +45,7 @@ import {
   Line
 } from 'recharts';
 import { analyticsAPI } from '../api';
+import '../utils/styles/DashboardPage.css';
 
 export default function DashboardPage({ 
   summary, 
@@ -264,16 +265,16 @@ export default function DashboardPage({
   const dfToday = summary?.daily_finance || {};
 
   return (
-    <div className="main-page-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+    <div className="main-page-wrapper dashboard-wrapper">
       
       {/* =========================================================================
           1. EXECUTIVE HEADER & INTERACTIVE TIMEFRAME CONTROLLER
          ========================================================================= */}
-      <div className="glass-panel" style={{ padding: '16px 20px', background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
+      <div className="glass-panel dashboard-header-panel">
+        <div className="dashboard-header-content">
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h2 style={{ fontSize: '19px', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
+            <div className="dashboard-header-title-wrap">
+              <h2 className="dashboard-header-title">
                 Financial & Revenue Command Center
               </h2>
               <span className="badge badge-cyan" style={{ fontSize: '10px', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 7px' }}>
@@ -281,9 +282,9 @@ export default function DashboardPage({
                 Real-Time Synchronized
               </span>
             </div>
-            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '3px' }}>
+            <p className="dashboard-header-subtitle">
               Complete breakdown of revenue, money received, gross profits, and counter intake
-            </div>
+            </p>
           </div>
 
           {/* Quick Execution Toolbar */}

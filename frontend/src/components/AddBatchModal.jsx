@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, PackagePlus, AlertCircle, Save, Calendar, DollarSign } from 'lucide-react';
 import { inventoryAPI } from '../api';
+import '../utils/styles/AddBatchModal.css';
 
 export default function AddBatchModal({ medicines, suppliers, defaultMedicineId, onClose, onCreated }) {
   const [formData, setFormData] = useState({

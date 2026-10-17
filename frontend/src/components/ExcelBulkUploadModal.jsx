@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   FileSpreadsheet,
   Upload,
@@ -22,24 +22,22 @@ import {
 import confetti from 'canvas-confetti';
 import * as XLSX from 'xlsx';
 import { inventoryAPI } from '../api';
+import '../utils/styles/ExcelBulkUploadModal.css';
 
 const DOSAGE_FORM_OPTIONS = [
-  'Tablet',
-  'Capsule',
-  'Syrup',
-  'Suspension',
-  'Ointment',
-  'Gel',
-  'Cream',
-  'Injection',
-  'Drops',
-  'Inhaler',
-  'Powder',
-  'Device',
-  'Other'
+  { value: 'Tablet', label: 'Tablet' },
+  { value: 'Capsule', label: 'Capsule' },
+  { value: 'Syrup', label: 'Syrup' },
+  { value: 'Injection', label: 'Injection' },
+  { value: 'Ointment', label: 'Ointment / Gel' },
+  { value: 'Drops', label: 'Drops' },
+  { value: 'Inhaler', label: 'Inhaler / Respules' },
+  { value: 'Powder', label: 'Powder / Sachet' },
+  { value: 'Device', label: 'Device / Consumable' },
+  { value: 'Other', label: 'Other' }
 ];
 
-export default function ExcelBulkUploadModal({ onClose, onStockInwarded, suppliers = [] }) {
+export default function ExcelBulkUploadModal({ onClose, onStockInwarded, suppliers = [], categories = [] }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
@@ -48,8 +46,30 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
   const [previewItems, setPreviewItems] = useState([]);
   const [defaultDistributor, setDefaultDistributor] = useState('');
   const [customDistributor, setCustomDistributor] = useState('');
+  const [defaultCategory, setDefaultCategory] = useState('');
+  const [categoryList, setCategoryList] = useState(categories);
 
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (Array.isArray(categories) && categories.length > 0) {
+      setCategoryList(categories);
+    } else {
+      inventoryAPI.getCategories()
+        .then(res => {
+          const list = res?.results || res || [];
+          if (Array.isArray(list) && list.length > 0) {
+            setCategoryList(list);
+          }
+        })
+        .catch(err => console.error("Error loading categories for excel upload:", err));
+    }
+  }, [categories]);
+
+  const handleApplyDefaultCategoryToAll = () => {
+    const targetCat = defaultCategory || 'General';
+    setPreviewItems(prev => prev.map(it => ({ ...it, category: targetCat })));
+  };
 
   const formatFlexibleDate = (raw) => {
     const defaultDate = new Date(Date.now() + 730 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -206,29 +226,25 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
           const rfUpper = rawForm.toUpperCase();
           if (rfUpper.includes('TAB')) form = 'Tablet';
           else if (rfUpper.includes('CAP')) form = 'Capsule';
-          else if (rfUpper.includes('SUSP')) form = 'Suspension';
-          else if (rfUpper.includes('SYP') || rfUpper.includes('SYRUP')) form = 'Syrup';
-          else if (rfUpper.includes('GEL')) form = 'Gel';
-          else if (rfUpper.includes('CREAM')) form = 'Cream';
-          else if (rfUpper.includes('OINT')) form = 'Ointment';
+          else if (rfUpper.includes('SYP') || rfUpper.includes('SYRUP') || rfUpper.includes('SUSP')) form = 'Syrup';
           else if (rfUpper.includes('INJ')) form = 'Injection';
+          else if (rfUpper.includes('OINT') || rfUpper.includes('GEL') || rfUpper.includes('CREAM')) form = 'Ointment';
           else if (rfUpper.includes('DROP')) form = 'Drops';
-          else if (rfUpper.includes('INHAL')) form = 'Inhaler';
-          else if (rfUpper.includes('POWD')) form = 'Powder';
+          else if (rfUpper.includes('INHAL') || rfUpper.includes('RESP')) form = 'Inhaler';
+          else if (rfUpper.includes('POWD') || rfUpper.includes('SACH')) form = 'Powder';
+          else if (rfUpper.includes('DEV') || rfUpper.includes('CONSUM')) form = 'Device';
           else form = rawForm.charAt(0).toUpperCase() + rawForm.slice(1);
         } else {
           const uName = name.toUpperCase();
           if (uName.includes('TAB')) form = 'Tablet';
           else if (uName.includes('CAP')) form = 'Capsule';
-          else if (uName.includes('SUSP')) form = 'Suspension';
-          else if (uName.includes('SYP') || uName.includes('SYRUP')) form = 'Syrup';
-          else if (uName.includes('GEL')) form = 'Gel';
-          else if (uName.includes('CREAM')) form = 'Cream';
-          else if (uName.includes('OINT')) form = 'Ointment';
+          else if (uName.includes('SYP') || uName.includes('SYRUP') || uName.includes('SUSP')) form = 'Syrup';
           else if (uName.includes('INJ')) form = 'Injection';
+          else if (uName.includes('OINT') || uName.includes('GEL') || uName.includes('CREAM')) form = 'Ointment';
           else if (uName.includes('DROP')) form = 'Drops';
-          else if (uName.includes('INHAL')) form = 'Inhaler';
-          else if (uName.includes('POWD')) form = 'Powder';
+          else if (uName.includes('INHAL') || uName.includes('RESP')) form = 'Inhaler';
+          else if (uName.includes('POWD') || uName.includes('SACH')) form = 'Powder';
+          else if (uName.includes('DEV') || uName.includes('CONSUM')) form = 'Device';
           else form = 'Tablet';
         }
 
@@ -460,6 +476,14 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
     });
   };
 
+  const handleUpdateItemCategory = (idx, catVal) => {
+    setPreviewItems(prev => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], category: catVal };
+      return copy;
+    });
+  };
+
   const handleRemoveItem = (idx) => {
     setPreviewItems(prev => prev.filter((_, i) => i !== idx));
   };
@@ -589,60 +613,108 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
             </div>
           </div>
 
-          {/* Optional Default Distributor Selector */}
+          {/* Optional Default Distributor & Default Category Bar */}
           <div style={{
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
-            borderRadius: '12px',
-            padding: '12px 16px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            flexWrap: 'wrap'
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+            gap: '10px'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>
-              <Building2 size={16} color="#0284c7" />
-              <span>Default Distributor:</span>
+            {/* Default Distributor Selector */}
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '10px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 700, color: '#1e293b' }}>
+                <Building2 size={16} color="#0284c7" />
+                <span>Default Distributor:</span>
+              </div>
+
+              <select
+                value={defaultDistributor}
+                onChange={(e) => {
+                  setDefaultDistributor(e.target.value);
+                  if (e.target.value) setCustomDistributor('');
+                }}
+                className="input-field"
+                style={{ flex: '1 1 140px', height: '34px', fontSize: '12px' }}
+              >
+                <option value="">-- Choose Existing Distributor --</option>
+                {suppliers.map(s => (
+                  <option key={s.id} value={s.name}>{s.name}</option>
+                ))}
+              </select>
+
+              <input
+                type="text"
+                placeholder="Or type new..."
+                value={customDistributor}
+                onChange={(e) => {
+                  setCustomDistributor(e.target.value);
+                  if (e.target.value) setDefaultDistributor('');
+                }}
+                className="input-field"
+                style={{ flex: '1 1 120px', height: '34px', fontSize: '12px' }}
+              />
+
+              {(customDistributor || defaultDistributor) && previewItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleApplyDefaultDistributorToAll}
+                  className="btn btn-secondary btn-sm"
+                  style={{ height: '34px', fontSize: '11.5px', background: '#ffffff', color: '#0284c7', borderColor: '#bae6fd' }}
+                  title="Apply this distributor to all rows in preview"
+                >
+                  Apply to All ({previewItems.length})
+                </button>
+              )}
             </div>
 
-            <select
-              value={defaultDistributor}
-              onChange={(e) => {
-                setDefaultDistributor(e.target.value);
-                if (e.target.value) setCustomDistributor('');
-              }}
-              className="input-field"
-              style={{ flex: '1 1 200px', height: '36px', fontSize: '12.5px' }}
-            >
-              <option value="">-- Choose Existing Distributor --</option>
-              {suppliers.map(s => (
-                <option key={s.id} value={s.name}>{s.name}</option>
-              ))}
-            </select>
+            {/* Default Category Selector */}
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '10px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 700, color: '#1e293b' }}>
+                <Layers size={16} color="#059669" />
+                <span>Default Category:</span>
+              </div>
 
-            <input
-              type="text"
-              placeholder="Or type new distributor name..."
-              value={customDistributor}
-              onChange={(e) => {
-                setCustomDistributor(e.target.value);
-                if (e.target.value) setDefaultDistributor('');
-              }}
-              className="input-field"
-              style={{ flex: '1 1 200px', height: '36px', fontSize: '12.5px' }}
-            />
-
-            {(customDistributor || defaultDistributor) && previewItems.length > 0 && (
-              <button
-                type="button"
-                onClick={handleApplyDefaultDistributorToAll}
-                className="btn btn-secondary btn-sm"
-                style={{ height: '36px', fontSize: '12px', background: '#ffffff', color: '#0284c7', borderColor: '#bae6fd' }}
-                title="Apply this distributor to all rows in preview"
+              <select
+                value={defaultCategory}
+                onChange={(e) => setDefaultCategory(e.target.value)}
+                className="input-field"
+                style={{ flex: '1 1 160px', height: '34px', fontSize: '12px' }}
               >
-                Apply to All ({previewItems.length})
-              </button>
-            )}
+                <option value="">General / Auto-Category</option>
+                {categoryList.map(c => (
+                  <option key={c.id || c.name} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+
+              {previewItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleApplyDefaultCategoryToAll}
+                  className="btn btn-secondary btn-sm"
+                  style={{ height: '34px', fontSize: '11.5px', background: '#ffffff', color: '#059669', borderColor: '#bbf7d0' }}
+                  title="Apply this category to all rows in preview"
+                >
+                  Apply Category ({previewItems.length})
+                </button>
+              )}
+            </div>
           </div>
 
           {error && (
@@ -831,7 +903,8 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
                           />
                         </td>
                         <td>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {/* Dosage Form Dropdown - Matching Quick Add Tablet */}
                             <select
                               value={it.dosage_form || 'Tablet'}
                               onChange={(e) => handleUpdateItemDosageForm(idx, e.target.value)}
@@ -847,15 +920,42 @@ export default function ExcelBulkUploadModal({ onClose, onStockInwarded, supplie
                                 cursor: 'pointer',
                                 outline: 'none'
                               }}
+                              title="Dosage Form"
                             >
                               {DOSAGE_FORM_OPTIONS.map(opt => (
-                                <option key={opt} value={opt}>{opt}</option>
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
                               ))}
-                              {it.dosage_form && !DOSAGE_FORM_OPTIONS.includes(it.dosage_form) && (
+                              {it.dosage_form && !DOSAGE_FORM_OPTIONS.some(o => o.value === it.dosage_form) && (
                                 <option value={it.dosage_form}>{it.dosage_form}</option>
                               )}
                             </select>
-                            <span className="badge badge-gray" style={{ fontSize: '9.5px', alignSelf: 'flex-start' }}>{it.category}</span>
+
+                            {/* Therapeutic Category Dropdown - Matching Quick Add Tablet */}
+                            <select
+                              value={it.category || 'General'}
+                              onChange={(e) => handleUpdateItemCategory(idx, e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '3px 4px',
+                                fontSize: '10.5px',
+                                fontWeight: 600,
+                                borderRadius: '6px',
+                                border: '1px solid #cbd5e1',
+                                background: '#f8fafc',
+                                color: '#334155',
+                                cursor: 'pointer',
+                                outline: 'none'
+                              }}
+                              title="Therapeutic Category"
+                            >
+                              <option value="General">General / Auto-Category</option>
+                              {categoryList.map(c => (
+                                <option key={c.id || c.name} value={c.name}>{c.name}</option>
+                              ))}
+                              {it.category && it.category !== 'General' && !categoryList.some(c => c.name.toLowerCase() === it.category.toLowerCase()) && (
+                                <option value={it.category}>{it.category}</option>
+                              )}
+                            </select>
                           </div>
                         </td>
                         <td className="mono" style={{ fontWeight: 700, fontSize: '11.5px' }}>

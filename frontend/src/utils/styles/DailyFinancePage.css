@@ -1,0 +1,385 @@
+/* =========================================================================
+   DailyFinancePage.css - External Stylesheet for DailyFinancePage
+   ========================================================================= */
+
+.df-page-wrapper {
+  padding: 16px 20px 60px 20px;
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+/* Glass Cards & Modern Elevation */
+.df-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.df-card:hover {
+  box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
+}
+
+/* Header & Tabs */
+.df-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1.5px solid #e2e8f0;
+}
+
+.df-tabs {
+  display: flex;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  gap: 4px;
+}
+
+.df-tab-btn {
+  padding: 9px 16px;
+  border-radius: 9px;
+  border: none;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.18s ease;
+  background: transparent;
+  color: #64748b;
+}
+
+.df-tab-btn:hover:not(.active) {
+  color: #1e293b;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.df-tab-btn.active {
+  background: #0284c7;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
+}
+
+.df-tab-btn.active-purple {
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+}
+
+/* KPI Cards Grid */
+.df-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.df-kpi-card {
+  padding: 14px 16px;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1.5px solid #e2e8f0;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.df-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+}
+
+/* Mobile Expense Card Voucher */
+.df-mobile-voucher {
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1.5px solid #e2e8f0;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.04);
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.df-mobile-voucher.vendor-theme {
+  border-left: 4.5px solid #9333ea;
+}
+.df-mobile-voucher.staff-theme {
+  border-left: 4.5px solid #0284c7;
+}
+.df-mobile-voucher.vehicle-theme {
+  border-left: 4.5px solid #d97706;
+}
+.df-mobile-voucher.shop-theme {
+  border-left: 4.5px solid #e11d48;
+}
+.df-mobile-voucher.other-theme {
+  border-left: 4.5px solid #64748b;
+}
+.df-mobile-voucher.credit-active {
+  border-color: #f59e0b;
+  border-left: 4.5px solid #d97706;
+  background: linear-gradient(180deg, #fffdfa 0%, #ffffff 100%);
+  box-shadow: 0 4px 14px rgba(217, 119, 6, 0.08);
+}
+
+/* Mode Selector Chips */
+.df-mode-pill-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  background: #f1f5f9;
+  padding: 3px;
+  border-radius: 9px;
+  border: 1px solid #e2e8f0;
+}
+
+.df-mode-pill {
+  padding: 6px 4px;
+  border-radius: 7px;
+  border: none;
+  font-size: 11.5px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  transition: all 0.15s ease;
+  background: transparent;
+  color: #64748b;
+}
+
+.df-mode-pill.selected-cash {
+  background: #059669;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(5, 150, 105, 0.3);
+}
+
+.df-mode-pill.selected-upi {
+  background: #0284c7;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3);
+}
+
+.df-mode-pill.selected-credit {
+  background: #d97706;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(217, 119, 6, 0.35);
+}
+
+/* Embedded Golden Credit Terms Drawer */
+.df-credit-drawer {
+  background: #fffbeb;
+  border: 1.5px solid #fde68a;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: dfFadeIn 0.2s ease-in-out;
+}
+
+@keyframes dfFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.df-active-row {
+  background: #f0f9ff !important;
+  border-left: 4px solid #0284c7 !important;
+}
+
+/* Floating Notification Toast */
+.df-notification-toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 9999;
+  padding: 14px 22px;
+  border-radius: 12px;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.22);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: slideInRight 0.3s ease;
+}
+
+/* =========================================================================
+   RESPONSIVE BREAKPOINTS (Mobile < 768px & Tablet < 1024px)
+   ========================================================================= */
+@media (max-width: 768px) {
+  .df-page-wrapper {
+    padding: 10px 10px 90px 10px !important;
+  }
+  .df-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .df-tabs {
+    width: 100% !important;
+    display: flex !important;
+  }
+  .df-tab-btn {
+    flex: 1 !important;
+    justify-content: center !important;
+    padding: 9px 4px !important;
+    font-size: 12px !important;
+    gap: 4px !important;
+  }
+  .df-status-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+  .df-status-closing {
+    grid-column: span 2 !important;
+  }
+  .df-top-bar {
+    padding: 12px !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .df-date-group {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+  .df-date-nav {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+  .df-date-input-wrap {
+    width: 100% !important;
+  }
+  .df-date-input-wrap input {
+    width: 100% !important;
+    font-size: 15px !important;
+    padding: 10px 12px !important;
+    text-align: center !important;
+    border-radius: 10px !important;
+    box-sizing: border-box !important;
+  }
+  .df-date-buttons-row {
+    display: flex !important;
+    gap: 6px !important;
+    width: 100% !important;
+  }
+  .df-date-buttons-row button {
+    flex: 1 !important;
+    padding: 9px 4px !important;
+    font-size: 11.5px !important;
+    justify-content: center !important;
+    border-radius: 8px !important;
+  }
+  .df-autofetch-wrap {
+    width: 100% !important;
+    align-items: stretch !important;
+  }
+  .df-autofetch-btn {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 12px !important;
+    font-size: 14px !important;
+  }
+  .df-inflows-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+  .df-section-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+  .df-total-badge {
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+  .df-quick-chips {
+    gap: 6px !important;
+    padding: 10px !important;
+  }
+  .df-quick-btn {
+    flex: 1 1 calc(50% - 6px) !important;
+    padding: 8px 6px !important;
+    font-size: 11px !important;
+    justify-content: center !important;
+  }
+  .df-quick-btn-blank {
+    flex: 1 1 100% !important;
+    margin-left: 0 !important;
+  }
+  .df-table-desktop {
+    display: none !important;
+  }
+  .df-cards-mobile {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+  .df-math-equalizer {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+  .df-save-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding: 14px !important;
+  }
+  .df-save-btn-group {
+    width: 100% !important;
+    flex-direction: column !important;
+  }
+  .df-save-btn {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 14px !important;
+    font-size: 15px !important;
+  }
+  .df-saved-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .df-saved-search {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .df-cards-mobile {
+    display: none !important;
+  }
+  .df-table-desktop {
+    display: block !important;
+  }
+  .df-date-nav {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+  }
+  .df-date-buttons-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+  }
+}

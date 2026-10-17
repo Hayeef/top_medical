@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { billingAPI } from '../api';
+import '../utils/styles/UpdateDiscountModal.css';
 
 export default function UpdateDiscountModal({ invoice, profile, isOpen, onClose, onUpdated }) {
   if (!isOpen || !invoice) return null;

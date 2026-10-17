@@ -10,6 +10,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { inventoryAPI } from '../api';
+import '../utils/styles/AlertsPage.css';
 
 export default function AlertsPage({ profile, onOpenAddBatch, onOpenStockAdjust }) {
   const [activeTab, setActiveTab] = useState('expiring'); // 'expiring', 'expired', 'low_stock'
@@ -50,25 +51,19 @@ export default function AlertsPage({ profile, onOpenAddBatch, onOpenStockAdjust 
     <div className="main-page-wrapper">
       
       {/* Overview Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+      <div className="alerts-overview-grid">
         
         <div
           onClick={() => setActiveTab('expiring')}
-          className="glass-panel glass-card-interactive"
-          style={{
-            padding: '16px',
-            cursor: 'pointer',
-            borderLeft: activeTab === 'expiring' ? '4px solid #f59e0b' : undefined,
-            background: activeTab === 'expiring' ? '#fffbeb' : '#ffffff'
-          }}
+          className={`glass-panel glass-card-interactive alerts-radar-card ${activeTab === 'expiring' ? 'active-expiring' : ''}`}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div className="alerts-radar-content">
             <div>
-              <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#d97706', textTransform: 'uppercase' }}>Near Expiry Radar</div>
-              <div className="mono" style={{ fontSize: '24px', fontWeight: 900, color: '#d97706', marginTop: '4px' }}>
+              <div className="alerts-radar-label expiring">Near Expiry Radar</div>
+              <div className="mono alerts-radar-count expiring">
                 {expiringBatches.length} Batches
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+              <div className="alerts-radar-subtext">
                 Value: <strong>{currency}{nearExpiryValue.toFixed(2)}</strong>
               </div>
             </div>
@@ -78,21 +73,15 @@ export default function AlertsPage({ profile, onOpenAddBatch, onOpenStockAdjust 
 
         <div
           onClick={() => setActiveTab('expired')}
-          className="glass-panel glass-card-interactive"
-          style={{
-            padding: '16px',
-            cursor: 'pointer',
-            borderLeft: activeTab === 'expired' ? '4px solid #ef4444' : undefined,
-            background: activeTab === 'expired' ? '#fef2f2' : '#ffffff'
-          }}
+          className={`glass-panel glass-card-interactive alerts-radar-card ${activeTab === 'expired' ? 'active-expired' : ''}`}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div className="alerts-radar-content">
             <div>
-              <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#e11d48', textTransform: 'uppercase' }}>Expired (Quarantine)</div>
-              <div className="mono" style={{ fontSize: '24px', fontWeight: 900, color: '#e11d48', marginTop: '4px' }}>
+              <div className="alerts-radar-label expired">Expired (Quarantine)</div>
+              <div className="mono alerts-radar-count expired">
                 {expiredBatches.length} Batches
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+              <div className="alerts-radar-subtext">
                 Cost Loss: <strong>{currency}{expiredValue.toFixed(2)}</strong>
               </div>
             </div>
@@ -102,21 +91,15 @@ export default function AlertsPage({ profile, onOpenAddBatch, onOpenStockAdjust 
 
         <div
           onClick={() => setActiveTab('low_stock')}
-          className="glass-panel glass-card-interactive"
-          style={{
-            padding: '16px',
-            cursor: 'pointer',
-            borderLeft: activeTab === 'low_stock' ? '4px solid #0284c7' : undefined,
-            background: activeTab === 'low_stock' ? '#f0f9ff' : '#ffffff'
-          }}
+          className={`glass-panel glass-card-interactive alerts-radar-card ${activeTab === 'low_stock' ? 'active-low-stock' : ''}`}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div className="alerts-radar-content">
             <div>
-              <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#0284c7', textTransform: 'uppercase' }}>Low Stock / Reorder</div>
-              <div className="mono" style={{ fontSize: '24px', fontWeight: 900, color: '#0284c7', marginTop: '4px' }}>
+              <div className="alerts-radar-label low-stock">Low Stock / Reorder</div>
+              <div className="mono alerts-radar-count low-stock">
                 {lowStockMeds.length} Drugs
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+              <div className="alerts-radar-subtext">
                 Below min reorder limit
               </div>
             </div>
@@ -126,19 +109,10 @@ export default function AlertsPage({ profile, onOpenAddBatch, onOpenStockAdjust 
       </div>
 
       {/* Main Alert Content Panel */}
-      <div className="glass-panel" style={{ overflow: 'hidden' }}>
+      <div className="glass-panel alerts-panel">
         
         {/* Header & Filter Controls */}
-        <div style={{
-          padding: '14px 16px',
-          borderBottom: '1px solid #e2e8f0',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '10px',
-          background: '#f8fafc'
-        }}>
+        <div className="alerts-panel-header">
           <div className="mobile-scroll-pills" style={{ display: 'flex', gap: '6px' }}>
             <button
               onClick={() => setActiveTab('expiring')}
@@ -160,13 +134,12 @@ export default function AlertsPage({ profile, onOpenAddBatch, onOpenStockAdjust 
             </button>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="alerts-filter-group">
             {activeTab === 'expiring' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#475569' }}>
+              <div className="alerts-days-wrap">
                 <span>Days:</span>
                 <select
-                  className="input-field"
-                  style={{ width: '120px', height: '32px', fontSize: '11.5px', padding: '2px 6px' }}
+                  className="input-field alerts-days-select"
                   value={expiryDays}
                   onChange={(e) => setExpiryDays(parseInt(e.target.value))}
                 >
@@ -178,7 +151,7 @@ export default function AlertsPage({ profile, onOpenAddBatch, onOpenStockAdjust 
               </div>
             )}
             <button onClick={loadAlerts} className="btn btn-secondary btn-sm" title="Refresh">
-              <RefreshCw size={13} className={loading ? 'spin' : ''} />
+              <RefreshCw size={13} className={loading ? 'alerts-spin' : ''} />
             </button>
           </div>
         </div>

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { billingAPI } from '../api';
+import '../utils/styles/QuickBillDiscountLookupModal.css';
 
 export default function QuickBillDiscountLookupModal({ 
   isOpen, 

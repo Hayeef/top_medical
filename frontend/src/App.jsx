@@ -407,6 +407,7 @@ export default function App() {
             onClose={() => setIsExcelUploadOpen(false)}
             onStockInwarded={loadInitialData}
             suppliers={suppliers}
+            categories={categories}
           />
         )}
 

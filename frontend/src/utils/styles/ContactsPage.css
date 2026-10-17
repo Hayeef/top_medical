@@ -1,0 +1,194 @@
+/* =========================================================================
+   ContactsPage.css - External Stylesheet for ContactsPage
+   ========================================================================= */
+
+.contacts-header {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.contacts-tab-bar {
+  display: flex;
+  gap: 6px;
+}
+
+.contacts-search-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.contacts-search-wrapper {
+  position: relative;
+  flex: 1 1 200px;
+}
+
+.contacts-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+}
+
+.contacts-search-input {
+  padding-left: 32px !important;
+  height: 36px;
+  font-size: 13px;
+}
+
+.contacts-action-btn {
+  height: 36px;
+}
+
+.contacts-table-panel {
+  overflow: hidden;
+}
+
+.contacts-table-container {
+  border: none !important;
+  border-radius: 0 !important;
+}
+
+.contacts-table-col-center {
+  text-align: center;
+}
+
+.contacts-table-col-right {
+  text-align: right;
+}
+
+.contacts-cell-bold {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.contacts-cell-link {
+  color: #0284c7;
+}
+
+.contacts-cell-link a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.contacts-cell-muted {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.contacts-cell-muted-sm {
+  font-size: 11.5px;
+  color: #64748b;
+}
+
+.contacts-empty-cell {
+  text-align: center;
+  padding: 30px;
+  color: #94a3b8;
+}
+
+.contacts-mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.contacts-mobile-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.contacts-mobile-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.contacts-mobile-card-title {
+  font-weight: 800;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.contacts-mobile-card-subtitle {
+  font-size: 11.5px;
+  color: #64748b;
+}
+
+.contacts-mobile-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #f8fafc;
+  padding-top: 6px;
+}
+
+.contacts-mobile-phone-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #0284c7;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* Modal Add Supplier */
+.contacts-modal-box {
+  max-width: 500px;
+}
+
+.contacts-modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.contacts-modal-title {
+  font-size: 16px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.contacts-modal-close-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
+.contacts-modal-form {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.contacts-modal-label {
+  font-size: 12px;
+  font-weight: 700;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.contacts-modal-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.contacts-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+}

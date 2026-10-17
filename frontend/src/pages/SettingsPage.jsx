@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { billingAPI } from '../api';
 import StaffManagementCard from '../components/StaffManagementCard';
+import '../utils/styles/SettingsPage.css';
 
 export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated }) {
   const [formData, setFormData] = useState({
@@ -67,35 +68,35 @@ export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated
   };
 
   return (
-    <div className="main-page-wrapper" style={{ maxWidth: '900px', margin: '0 auto' }}>
+    <div className="main-page-wrapper settings-page-wrapper">
       
       {/* Header */}
-      <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+      <div className="glass-panel settings-header">
         <div>
-          <h2 style={{ fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Pharmacy Settings & Compliance</h2>
-          <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+          <h2 className="settings-title">Pharmacy Settings & Compliance</h2>
+          <p className="settings-subtitle">
             Store details, Drug License (DL-20B/21B), GSTIN, and POS receipt config.
           </p>
         </div>
         {success && (
-          <span className="badge badge-emerald" style={{ padding: '6px 12px', fontSize: '12px' }}>
+          <span className="badge badge-emerald settings-saved-badge">
             <CheckCircle size={14} /> Settings Saved!
           </span>
         )}
       </div>
 
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <form onSubmit={handleSubmit} className="settings-form">
         
         {/* Basic Business Details */}
-        <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+        <div className="glass-panel settings-card">
+          <div className="settings-card-header">
             <Building2 size={18} color="#0284c7" />
-            <h3 style={{ fontSize: '14.5px', fontWeight: 800 }}>Business & Contact Profile</h3>
+            <h3 className="settings-card-title">Business & Contact Profile</h3>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+          <div className="settings-grid-2">
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+              <label className="settings-label">
                 Pharmacy Name *
               </label>
               <input
@@ -108,7 +109,7 @@ export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+              <label className="settings-label">
                 Tagline / Slogan
               </label>
               <input
@@ -122,7 +123,7 @@ export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated
           </div>
 
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+            <label className="settings-label">
               Full Store Address (Printed on Receipts)
             </label>
             <textarea
@@ -133,9 +134,9 @@ export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+          <div className="settings-grid-3">
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+              <label className="settings-label">
                 Phone Number(s)
               </label>
               <input
@@ -147,7 +148,7 @@ export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+              <label className="settings-label">
                 Contact Email
               </label>
               <input
@@ -159,7 +160,7 @@ export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+              <label className="settings-label">
                 Currency Symbol
               </label>
               <input
@@ -173,15 +174,15 @@ export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated
         </div>
 
         {/* Legal & Drug Compliance */}
-        <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+        <div className="glass-panel settings-card">
+          <div className="settings-card-header">
             <ShieldCheck size={18} color="#10b981" />
-            <h3 style={{ fontSize: '14.5px', fontWeight: 800 }}>Drug Licensing & GST Compliance</h3>
+            <h3 className="settings-card-title">Drug Licensing & GST Compliance</h3>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+          <div className="settings-grid-compliance">
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+              <label className="settings-label">
                 Drug License No. (DL 20B) *
               </label>
               <input
@@ -195,7 +196,7 @@ export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+              <label className="settings-label">
                 Drug License No. (DL 21B)
               </label>
               <input
@@ -208,9 +209,9 @@ export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+          <div className="settings-grid-compliance">
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+              <label className="settings-label">
                 GSTIN / Tax ID
               </label>
               <input
@@ -223,7 +224,7 @@ export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+              <label className="settings-label">
                 FSSAI License (Optional)
               </label>
               <input
@@ -238,15 +239,15 @@ export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated
         </div>
 
         {/* UPI & POS Receipt Settings */}
-        <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+        <div className="glass-panel settings-card">
+          <div className="settings-card-header">
             <QrCode size={18} color="#8b5cf6" />
-            <h3 style={{ fontSize: '14.5px', fontWeight: 800 }}>UPI Payments & Receipt Customization</h3>
+            <h3 className="settings-card-title">UPI Payments & Receipt Customization</h3>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+          <div className="settings-grid-2">
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+              <label className="settings-label">
                 Pharmacy UPI ID (VPA) for Counter Dynamic QR
               </label>
               <input
@@ -259,7 +260,7 @@ export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>
+              <label className="settings-label">
                 Thermal Receipt Footer Note
               </label>
               <input
@@ -274,12 +275,11 @@ export default function SettingsPage({ profile, onProfileUpdated, onStaffUpdated
         </div>
 
         {/* Submit Button */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+        <div className="settings-submit-wrap">
           <button
             type="submit"
             disabled={saving}
-            className="btn btn-primary btn-lg"
-            style={{ minWidth: '180px', width: '100%', maxWidth: '280px' }}
+            className="btn btn-primary btn-lg settings-submit-btn"
           >
             <Save size={16} />
             <span>{saving ? 'Saving Changes...' : 'Save Configuration'}</span>

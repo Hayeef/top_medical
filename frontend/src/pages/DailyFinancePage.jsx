@@ -58,7 +58,7 @@ import {
 } from 'recharts';
 import { dailyFinanceAPI, vendorBillsAPI, inventoryAPI } from '../api';
 import MonthlyFinanceReportModal from '../components/MonthlyFinanceReportModal';
-import CapitalInvestmentModal from '../components/CapitalInvestmentModal';
+import '../utils/styles/DailyFinancePage.css';
 
 export default function DailyFinancePage({ profile, user, suppliers = [], staffList = [] }) {
   const currency = profile?.currency_symbol || '₹';
@@ -136,6 +136,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  // Daily Accounts Register Pagination states
+  const [registerPage, setRegisterPage] = useState(1);
+  const [registerPageSize, setRegisterPageSize] = useState(15);
+
   // Modal / Detail states
   const [editingRecord, setEditingRecord] = useState(null);
   const [viewingRecord, setViewingRecord] = useState(null);
@@ -144,7 +148,6 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [isMonthlyReportModalOpen, setIsMonthlyReportModalOpen] = useState(false);
-  const [isCapitalModalOpen, setIsCapitalModalOpen] = useState(false);
   const [notification, setNotification] = useState(null);
 
   // =========================================================================
@@ -1379,6 +1382,26 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
     return list;
   }, [records, registerSearchQuery]);
 
+  // Reset register page when search query or records count changes
+  useEffect(() => {
+    setRegisterPage(1);
+  }, [registerSearchQuery, records.length]);
+
+  // Register Table Pagination Calculations
+  const totalRegisterRecords = filteredRegisterRecords.length;
+  const effectiveRegisterPageSize = registerPageSize === 'ALL' ? totalRegisterRecords : parseInt(registerPageSize, 10);
+  const totalRegisterPages = effectiveRegisterPageSize > 0 ? Math.max(1, Math.ceil(totalRegisterRecords / effectiveRegisterPageSize)) : 1;
+  const validRegisterPage = Math.min(Math.max(1, registerPage), totalRegisterPages);
+
+  const paginatedRegisterRecords = useMemo(() => {
+    if (registerPageSize === 'ALL' || totalRegisterRecords === 0) return filteredRegisterRecords;
+    const start = (validRegisterPage - 1) * effectiveRegisterPageSize;
+    return filteredRegisterRecords.slice(start, start + effectiveRegisterPageSize);
+  }, [filteredRegisterRecords, validRegisterPage, effectiveRegisterPageSize, registerPageSize, totalRegisterRecords]);
+
+  const registerStartItem = totalRegisterRecords === 0 ? 0 : (validRegisterPage - 1) * effectiveRegisterPageSize + 1;
+  const registerEndItem = registerPageSize === 'ALL' ? totalRegisterRecords : Math.min(validRegisterPage * effectiveRegisterPageSize, totalRegisterRecords);
+
   // Dynamic Metric stats derived live from active selected date / current form / records / summaryStats
   const activeRecordForDate = records.find(r => r.date === formData.date);
   const latestRecordedDay = records.length > 0 ? [...records].sort((a, b) => new Date(b.date) - new Date(a.date))[0] : null;
@@ -1410,372 +1433,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
   return (
     <div className="main-page-wrapper df-page-wrapper" style={{ maxWidth: '1280px', margin: '0 auto', paddingBottom: '60px' }}>
 
-      {/* Scoped Responsive & Professional Styles */}
-      <style>{`
-        .df-page-wrapper {
-          padding: 16px 20px 60px 20px;
-          max-width: 1320px;
-          margin: 0 auto;
-        }
 
-        /* Glass Cards & Modern Elevation */
-        .df-card {
-          background: #ffffff;
-          border: 1px solid #e2e8f0;
-          border-radius: 16px;
-          box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
-          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-
-        .df-card:hover {
-          box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
-        }
-
-        /* Header & Tabs */
-        .df-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          flex-wrap: wrap;
-          gap: 16px;
-          padding-bottom: 16px;
-          border-bottom: 1.5px solid #e2e8f0;
-        }
-
-        .df-tabs {
-          display: flex;
-          background: #f1f5f9;
-          padding: 4px;
-          border-radius: 12px;
-          border: 1px solid #e2e8f0;
-          gap: 4px;
-        }
-
-        .df-tab-btn {
-          padding: 9px 16px;
-          border-radius: 9px;
-          border: none;
-          font-weight: 800;
-          font-size: 13px;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          transition: all 0.18s ease;
-          background: transparent;
-          color: #64748b;
-        }
-
-        .df-tab-btn:hover:not(.active) {
-          color: #1e293b;
-          background: rgba(255, 255, 255, 0.6);
-        }
-
-        .df-tab-btn.active {
-          background: #0284c7;
-          color: #ffffff;
-          box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
-        }
-
-        .df-tab-btn.active-purple {
-          background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
-          color: #ffffff;
-          box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
-        }
-
-        /* KPI Cards Grid */
-        .df-status-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 12px;
-          margin-top: 16px;
-        }
-
-        .df-kpi-card {
-          padding: 14px 16px;
-          border-radius: 14px;
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-          border: 1.5px solid #e2e8f0;
-          background: #ffffff;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.03);
-          transition: transform 0.18s ease, box-shadow 0.18s ease;
-        }
-
-        .df-kpi-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(0,0,0,0.06);
-        }
-
-        /* Mobile Expense Card Voucher */
-        .df-mobile-voucher {
-          background: #ffffff;
-          border-radius: 14px;
-          border: 1.5px solid #e2e8f0;
-          padding: 14px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          box-shadow: 0 3px 12px rgba(15, 23, 42, 0.04);
-          position: relative;
-          transition: all 0.2s ease;
-        }
-
-        .df-mobile-voucher.vendor-theme {
-          border-left: 4.5px solid #9333ea;
-        }
-        .df-mobile-voucher.staff-theme {
-          border-left: 4.5px solid #0284c7;
-        }
-        .df-mobile-voucher.vehicle-theme {
-          border-left: 4.5px solid #d97706;
-        }
-        .df-mobile-voucher.shop-theme {
-          border-left: 4.5px solid #e11d48;
-        }
-        .df-mobile-voucher.other-theme {
-          border-left: 4.5px solid #64748b;
-        }
-        .df-mobile-voucher.credit-active {
-          border-color: #f59e0b;
-          border-left: 4.5px solid #d97706;
-          background: linear-gradient(180deg, #fffdfa 0%, #ffffff 100%);
-          box-shadow: 0 4px 14px rgba(217, 119, 6, 0.08);
-        }
-
-        /* Mode Selector Chips */
-        .df-mode-pill-group {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 4px;
-          background: #f1f5f9;
-          padding: 3px;
-          border-radius: 9px;
-          border: 1px solid #e2e8f0;
-        }
-
-        .df-mode-pill {
-          padding: 6px 4px;
-          border-radius: 7px;
-          border: none;
-          font-size: 11.5px;
-          font-weight: 800;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 3px;
-          transition: all 0.15s ease;
-          background: transparent;
-          color: #64748b;
-        }
-
-        .df-mode-pill.selected-cash {
-          background: #059669;
-          color: #ffffff;
-          box-shadow: 0 2px 6px rgba(5, 150, 105, 0.3);
-        }
-
-        .df-mode-pill.selected-upi {
-          background: #0284c7;
-          color: #ffffff;
-          box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3);
-        }
-
-        .df-mode-pill.selected-credit {
-          background: #d97706;
-          color: #ffffff;
-          box-shadow: 0 2px 6px rgba(217, 119, 6, 0.35);
-        }
-
-        /* Embedded Golden Credit Terms Drawer */
-        .df-credit-drawer {
-          background: #fffbeb;
-          border: 1.5px solid #fde68a;
-          border-radius: 10px;
-          padding: 10px 12px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          animation: dfFadeIn 0.2s ease-in-out;
-        }
-
-        @keyframes dfFadeIn {
-          from { opacity: 0; transform: translateY(-4px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
-        .df-active-row {
-          background: #f0f9ff !important;
-          border-left: 4px solid #0284c7 !important;
-        }
-
-        /* =========================================================================
-           RESPONSIVE BREAKPOINTS (Mobile < 768px & Tablet < 1024px)
-           ========================================================================= */
-        @media (max-width: 768px) {
-          .df-page-wrapper {
-            padding: 10px 10px 90px 10px !important;
-          }
-          .df-header {
-            flex-direction: column !important;
-            align-items: stretch !important;
-            gap: 12px !important;
-          }
-          .df-tabs {
-            width: 100% !important;
-            display: flex !important;
-          }
-          .df-tab-btn {
-            flex: 1 !important;
-            justify-content: center !important;
-            padding: 9px 4px !important;
-            font-size: 12px !important;
-            gap: 4px !important;
-          }
-          .df-status-grid {
-            grid-template-columns: repeat(2, 1fr) !important;
-            gap: 8px !important;
-          }
-          .df-status-closing {
-            grid-column: span 2 !important;
-          }
-          .df-top-bar {
-            padding: 12px !important;
-            flex-direction: column !important;
-            align-items: stretch !important;
-            gap: 12px !important;
-          }
-          .df-date-group {
-            flex-direction: column !important;
-            align-items: stretch !important;
-            width: 100% !important;
-            gap: 8px !important;
-          }
-          .df-date-nav {
-            width: 100% !important;
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 8px !important;
-          }
-          .df-date-input-wrap {
-            width: 100% !important;
-          }
-          .df-date-input-wrap input {
-            width: 100% !important;
-            font-size: 15px !important;
-            padding: 10px 12px !important;
-            text-align: center !important;
-            border-radius: 10px !important;
-            box-sizing: border-box !important;
-          }
-          .df-date-buttons-row {
-            display: flex !important;
-            gap: 6px !important;
-            width: 100% !important;
-          }
-          .df-date-buttons-row button {
-            flex: 1 !important;
-            padding: 9px 4px !important;
-            font-size: 11.5px !important;
-            justify-content: center !important;
-            border-radius: 8px !important;
-          }
-          .df-autofetch-wrap {
-            width: 100% !important;
-            align-items: stretch !important;
-          }
-          .df-autofetch-btn {
-            width: 100% !important;
-            justify-content: center !important;
-            padding: 12px !important;
-            font-size: 14px !important;
-          }
-          .df-inflows-grid {
-            grid-template-columns: 1fr !important;
-            gap: 10px !important;
-          }
-          .df-section-header {
-            flex-direction: column !important;
-            align-items: flex-start !important;
-            gap: 8px !important;
-          }
-          .df-total-badge {
-            width: 100% !important;
-            justify-content: space-between !important;
-          }
-          .df-quick-chips {
-            gap: 6px !important;
-            padding: 10px !important;
-          }
-          .df-quick-btn {
-            flex: 1 1 calc(50% - 6px) !important;
-            padding: 8px 6px !important;
-            font-size: 11px !important;
-            justify-content: center !important;
-          }
-          .df-quick-btn-blank {
-            flex: 1 1 100% !important;
-            margin-left: 0 !important;
-          }
-          .df-table-desktop {
-            display: none !important;
-          }
-          .df-cards-mobile {
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 12px !important;
-          }
-          .df-math-equalizer {
-            grid-template-columns: 1fr !important;
-            gap: 10px !important;
-          }
-          .df-save-bar {
-            flex-direction: column !important;
-            align-items: stretch !important;
-            padding: 14px !important;
-          }
-          .df-save-btn-group {
-            width: 100% !important;
-            flex-direction: column !important;
-          }
-          .df-save-btn {
-            width: 100% !important;
-            justify-content: center !important;
-            padding: 14px !important;
-            font-size: 15px !important;
-          }
-          .df-saved-header {
-            flex-direction: column !important;
-            align-items: stretch !important;
-            gap: 10px !important;
-          }
-          .df-saved-search {
-            width: 100% !important;
-            max-width: 100% !important;
-          }
-        }
-
-        @media (min-width: 769px) {
-          .df-cards-mobile {
-            display: none !important;
-          }
-          .df-table-desktop {
-            display: block !important;
-          }
-          .df-date-nav {
-            display: flex !important;
-            align-items: center !important;
-            gap: 6px !important;
-          }
-          .df-date-buttons-row {
-            display: flex !important;
-            align-items: center !important;
-            gap: 6px !important;
-          }
-        }
-      `}</style>
 
       {/* Floating Notification Toast */}
       {notification && (
@@ -1937,32 +1595,8 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
           </button>
         </div>
 
-        {/* Top Header Action Buttons: Add Capital Investment & Monthly PDF Report */}
+        {/* Top Header Action Buttons: Monthly PDF Report */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => setIsCapitalModalOpen(true)}
-            className="btn"
-            style={{
-              padding: '10px 18px',
-              borderRadius: '10px',
-              fontWeight: 800,
-              fontSize: '13px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-              color: '#ffffff',
-              boxShadow: '0 4px 14px rgba(5, 150, 105, 0.35)',
-              border: 'none',
-              cursor: 'pointer'
-            }}
-            title="Add Capital Investment / Owner Fund Infusion (Cash / UPI / Bank Inflow)"
-          >
-            <PlusCircle size={16} />
-            <span>💼 + Add Capital Investment</span>
-          </button>
-
           <button
             type="button"
             onClick={() => setIsMonthlyReportModalOpen(true)}
@@ -2310,27 +1944,6 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
                 {/* Section Header Controls */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => setIsCapitalModalOpen(true)}
-                    className="btn btn-secondary btn-sm"
-                    style={{
-                      background: '#ffffff',
-                      border: '1.5px solid #059669',
-                      color: '#059669',
-                      fontWeight: 800,
-                      borderRadius: '10px',
-                      padding: '8px 14px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      boxShadow: '0 2px 6px rgba(5, 150, 105, 0.15)'
-                    }}
-                  >
-                    <PlusCircle size={15} color="#059669" />
-                    <span>💼 + Add Capital Investment</span>
-                  </button>
-
                   {/* Total Inflow Live Badge */}
                   <div className="df-total-badge" style={{
                     padding: '8px 16px',
@@ -2446,59 +2059,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   </div>
                 </div>
 
-                {/* 3. Capital Inflow (Owner Fund Infusion) */}
-                <div style={{
-                  padding: '16px',
-                  background: 'linear-gradient(135deg, #ecfdf5 0%, #ffffff 100%)',
-                  borderRadius: '14px',
-                  border: '2px solid #10b981'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <label style={{ fontSize: '13px', fontWeight: 900, color: '#047857', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Landmark size={18} color="#059669" />
-                      <span>💼 Capital Inflow ({currency})</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setIsCapitalModalOpen(true)}
-                      className="badge badge-emerald"
-                      style={{ fontSize: '10.5px', fontWeight: 800, cursor: 'pointer', border: '1px solid #6ee7b7' }}
-                    >
-                      + Quick Add
-                    </button>
-                  </div>
-
-                  <div style={{ position: 'relative' }}>
-                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '18px', fontWeight: 900, color: '#059669' }}>
-                      {currency}
-                    </span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
-                      value={formData.capital_investment}
-                      onChange={(e) => setFormData({ ...formData, capital_investment: e.target.value })}
-                      className="mono"
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px 10px 32px',
-                        fontSize: '22px',
-                        fontWeight: 900,
-                        borderRadius: '10px',
-                        border: '1.5px solid #10b981',
-                        background: '#ffffff',
-                        color: '#047857',
-                        outline: 'none'
-                      }}
-                    />
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#059669', marginTop: '6px', fontWeight: 700 }}>
-                    Owner / investor funds infused into business
-                  </div>
-                </div>
-
-                {/* 4. Gross Daily Sales (POS Bills) */}
+                {/* 3. Gross Daily Sales (POS Bills) */}
                 <div style={{
                   padding: '16px',
                   background: '#f8fafc',
@@ -4202,7 +3763,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             <div className="df-table-desktop" style={{
               overflowX: 'auto',
               border: '1.5px solid #cbd5e1',
-              borderRadius: '12px',
+              borderRadius: totalRegisterRecords > 0 ? '12px 12px 0 0' : '12px',
               background: '#ffffff'
             }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
@@ -4229,7 +3790,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                       </td>
                     </tr>
                   ) : (
-                    filteredRegisterRecords.map((r, idx) => {
+                    paginatedRegisterRecords.map((r, idx) => {
                       const isSelectedDate = r.date === formData.date;
                       const netVal = parseFloat(r.net_day_change) || 0;
                       const isPositive = netVal >= 0;
@@ -4414,7 +3975,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-main)' }}>No saved records found</div>
                 </div>
               ) : (
-                filteredRegisterRecords.map((r, idx) => {
+                paginatedRegisterRecords.map((r, idx) => {
                   const isSelectedDate = r.date === formData.date;
                   const netVal = parseFloat(r.net_day_change) || 0;
                   const isPositive = netVal >= 0;
@@ -4547,6 +4108,171 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                 })
               )}
             </div>
+
+            {/* REGISTER SPREADSHEET PAGINATION FOOTER */}
+            {totalRegisterRecords > 0 && (
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '12px 14px',
+                background: '#f8fafc',
+                border: '1.5px solid #cbd5e1',
+                borderTop: 'none',
+                borderRadius: '0 0 12px 12px',
+                marginTop: '-1px',
+                flexWrap: 'wrap',
+                gap: '12px'
+              }}>
+                {/* Left: Summary & Page Size selector */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12.5px', color: '#64748b', flexWrap: 'wrap' }}>
+                  <div>
+                    Showing <strong style={{ color: '#0f172a' }}>{registerStartItem}</strong> to <strong style={{ color: '#0f172a' }}>{registerEndItem}</strong> of <strong style={{ color: '#0284c7' }}>{totalRegisterRecords}</strong> days recorded
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '12px' }}>Rows per page:</span>
+                    <select
+                      value={registerPageSize}
+                      onChange={(e) => {
+                        const val = e.target.value === 'ALL' ? 'ALL' : Number(e.target.value);
+                        setRegisterPageSize(val);
+                        setRegisterPage(1);
+                      }}
+                      className="input-field"
+                      style={{
+                        height: '28px',
+                        fontSize: '12px',
+                        padding: '2px 8px',
+                        width: 'auto',
+                        background: '#ffffff',
+                        fontWeight: 700
+                      }}
+                    >
+                      <option value={10}>10</option>
+                      <option value={15}>15</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value="ALL">All ({totalRegisterRecords})</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Right: Pagination Navigation Controls */}
+                {registerPageSize !== 'ALL' && totalRegisterPages > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <button
+                      type="button"
+                      disabled={validRegisterPage === 1}
+                      onClick={() => setRegisterPage(1)}
+                      className="btn btn-secondary btn-sm"
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        opacity: validRegisterPage === 1 ? 0.4 : 1,
+                        cursor: validRegisterPage === 1 ? 'not-allowed' : 'pointer'
+                      }}
+                      title="First Page"
+                    >
+                      First
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={validRegisterPage === 1}
+                      onClick={() => setRegisterPage(p => Math.max(1, p - 1))}
+                      className="btn btn-secondary btn-sm"
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        opacity: validRegisterPage === 1 ? 0.4 : 1,
+                        cursor: validRegisterPage === 1 ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '2px'
+                      }}
+                    >
+                      <ChevronLeft size={13} /> Prev
+                    </button>
+
+                    {/* Page Numbers */}
+                    {Array.from({ length: totalRegisterPages }, (_, i) => i + 1)
+                      .filter(p => p === 1 || p === totalRegisterPages || Math.abs(p - validRegisterPage) <= 1)
+                      .reduce((acc, p, idx, arr) => {
+                        if (idx > 0 && p - arr[idx - 1] > 1) {
+                          acc.push('...');
+                        }
+                        acc.push(p);
+                        return acc;
+                      }, [])
+                      .map((item, i) => {
+                        if (item === '...') {
+                          return <span key={`ellipsis-${i}`} style={{ padding: '0 4px', color: '#94a3b8', fontSize: '12px' }}>...</span>;
+                        }
+                        const isCur = item === validRegisterPage;
+                        return (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => setRegisterPage(item)}
+                            style={{
+                              minWidth: '28px',
+                              height: '28px',
+                              padding: '0 6px',
+                              borderRadius: '6px',
+                              border: isCur ? '1.5px solid #0284c7' : '1px solid #cbd5e1',
+                              background: isCur ? '#0284c7' : '#ffffff',
+                              color: isCur ? '#ffffff' : '#334155',
+                              fontWeight: isCur ? 900 : 700,
+                              fontSize: '12px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {item}
+                          </button>
+                        );
+                      })}
+
+                    <button
+                      type="button"
+                      disabled={validRegisterPage === totalRegisterPages}
+                      onClick={() => setRegisterPage(p => Math.min(totalRegisterPages, p + 1))}
+                      className="btn btn-secondary btn-sm"
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        opacity: validRegisterPage === totalRegisterPages ? 0.4 : 1,
+                        cursor: validRegisterPage === totalRegisterPages ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '2px'
+                      }}
+                    >
+                      Next <ChevronRight size={13} />
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={validRegisterPage === totalRegisterPages}
+                      onClick={() => setRegisterPage(totalRegisterPages)}
+                      className="btn btn-secondary btn-sm"
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        opacity: validRegisterPage === totalRegisterPages ? 0.4 : 1,
+                        cursor: validRegisterPage === totalRegisterPages ? 'not-allowed' : 'pointer'
+                      }}
+                      title="Last Page"
+                    >
+                      Last
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
         </div>
@@ -6721,20 +6447,6 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
         initialYear={selectedYear ? parseInt(selectedYear) : undefined}
       />
 
-      {/* Capital Investment Modal */}
-      <CapitalInvestmentModal
-        isOpen={isCapitalModalOpen}
-        onClose={() => setIsCapitalModalOpen(false)}
-        currentDate={formData.date}
-        currency={currency}
-        onSuccess={async (res) => {
-          showToast(res.message || '✅ Capital Investment Saved!');
-          await Promise.allSettled([
-            loadFinanceData(),
-            triggerAutoFetch(formData.date, false, false)
-          ]);
-        }}
-      />
 
     </div>
   );

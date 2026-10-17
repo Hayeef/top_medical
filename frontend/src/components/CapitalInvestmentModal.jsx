@@ -15,6 +15,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { dailyFinanceAPI } from '../api';
+import '../utils/styles/CapitalInvestmentModal.css';
 
 export default function CapitalInvestmentModal({
   isOpen,

@@ -15,6 +15,7 @@ import {
   Menu
 } from 'lucide-react';
 import PharmacyLogo from './PharmacyLogo';
+import '../utils/styles/Header.css';
 
 export default function Header({ 
   activeTab, 

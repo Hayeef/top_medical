@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import PharmacyLogo from './PharmacyLogo';
 import UpdateDiscountModal from './UpdateDiscountModal';
+import '../utils/styles/ReceiptModal.css';
 
 // Helper to determine if an item is a multi-unit tablet/capsule strip
 function isStripOrTabletItem(item) {
@@ -52,7 +53,9 @@ function isStripOrTabletItem(item) {
     'DROPS', 'EYE DROP', 'EAR DROP', 'NASAL DROP', 'INJ', 'INJECTION',
     'LOTION', 'POWDER', 'SOAP', 'OIL', 'SPRAY', 'WASH', 'BALM',
     'RESPULES', 'SOLUTION', 'DEVICE', 'SHAMPOO', 'MASK', 'BANDAGE',
-    'SANITIZER', 'SYRINGE', 'COTTON', 'DISPOSABLE', 'VAPORIZER', 'SACHET'
+    'SANITIZER', 'SYRINGE', 'COTTON', 'DISPOSABLE', 'VAPORIZER', 'SACHET',
+    'TISSUE', 'WIPES', 'BRUSH', 'TOOTHBRUSH', 'PASTE', 'TOOTHPASTE',
+    'FACEWASH', 'CLEANSER', 'DIAPER', 'PAD', 'NAPKIN', 'PANTS'
   ];
   for (const kw of nonStripKeywords) {
     if (name.includes(kw)) {
@@ -133,6 +136,9 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
       tax5Amt += taxAmt;
     }
   });
+
+  const invoiceRates = Array.from(new Set((invoice.items || []).map(i => parseFloat(i.gst_rate ?? 5)).filter(r => r > 0)));
+  const invoiceGstLabel = invoiceRates.length === 1 ? `GST (${invoiceRates[0]}%):` : invoiceRates.length > 1 ? `GST (${invoiceRates.join('%, ')}%):` : 'GST:';
 
   // Direct Isolated Iframe Print Engine (Eliminates ALL top whitespace & browser margins)
   const handlePrint = () => {
@@ -505,22 +511,18 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', color: '#000000', marginBottom: '8px' }}>
                 <thead>
                   <tr style={{ borderBottom: '1.5px solid #000000', textAlign: 'left', fontWeight: 900 }}>
-                    <th style={{ padding: '4px 0', width: '50%' }}>ITEM / BATCH</th>
+                    <th style={{ padding: '4px 0', width: '48%' }}>ITEM / BATCH</th>
                     <th style={{ padding: '4px 0', textAlign: 'center', width: '18%' }}>EXP</th>
-                    <th style={{ padding: '4px 0', textAlign: 'center', width: '14%' }}>QTY</th>
+                    <th style={{ padding: '4px 0', textAlign: 'center', width: '16%' }}>QTY</th>
                     <th style={{ padding: '4px 0', textAlign: 'right', width: '18%' }}>AMT</th>
                   </tr>
                 </thead>
                 <tbody>
                   {invoice.items?.map((item, idx) => {
-                    const isStrip = isStripOrTabletItem(item);
                     const expFormatted = item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('en-GB', { month: '2-digit', year: '2-digit' }) : '-';
                     const unitMrp = parseFloat(item.unit_mrp || 0);
                     const totalAmt = parseFloat(item.total_amount || 0);
-                    const packSize = item.pack_size || 10;
                     const isCapsule = (item.dosage_form || '').toLowerCase() === 'capsule' || /\b(CAP|CAPSULE|CAPSULES)\b/i.test(item.medicine_name || '');
-                    const rate = parseFloat(item.gst_rate || 5);
-                    const itemTax = item.tax_amount != null ? parseFloat(item.tax_amount) : (rate > 0 ? (totalAmt - (totalAmt / (1 + rate / 100))) : 0);
 
                     return (
                       <tr key={idx} style={{ borderBottom: '1px dotted #000000' }}>
@@ -530,11 +532,8 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                           </div>
                           <div style={{ fontSize: '11px', fontWeight: 700, color: '#000000' }}>
                             {item.batch_number ? `B:${item.batch_number}` : ''}
-                            {` | GST:${rate}% (Tax:${currency}${itemTax.toFixed(2)})`}
                             {item.is_loose
                               ? ` (Loose ${item.quantity} ${isCapsule ? 'caps' : 'tabs'} @ ${currency}${unitMrp.toFixed(2)}/${isCapsule ? 'cap' : 'tab'})`
-                              : isStrip
-                              ? ` (${packSize}s/strip)`
                               : ''}
                           </div>
                         </td>
@@ -583,6 +582,13 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
                     <span>• GST 18% (Cosmetics):</span>
                     <span>{currency}{tax18Amt.toFixed(2)} (on {currency}{tax18Base.toFixed(2)})</span>
+                  </div>
+                )}
+
+                {tax0Base > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                    <span>• GST 0% (Candies):</span>
+                    <span>{currency}0.00 (on {currency}{tax0Base.toFixed(2)})</span>
                   </div>
                 )}
 
@@ -864,7 +870,7 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
 
                 <div style={{ fontSize: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
-                    <span>Items Gross Total (MRP):</span>
+                    <span>Gross Subtotal (MRP):</span>
                     <span style={{ fontWeight: 700 }}>{currency}{parseFloat(invoice.subtotal || invoice.grand_total || 0).toFixed(2)}</span>
                   </div>
                   {parseFloat(invoice.discount_amount || 0) > 0 && (
@@ -875,11 +881,11 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                   )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#475569' }}>
                     <span>Taxable Base Value:</span>
-                    <span>{currency}{totalTaxable.toFixed(2)}</span>
+                    <span style={{ fontWeight: 700 }}>{currency}{totalTaxable.toFixed(2)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#0284c7', fontWeight: 700 }}>
                     <span>Total GST Included in MRP:</span>
-                    <span>{currency}{parseFloat(invoice.tax_amount || 0).toFixed(2)}</span>
+                    <span style={{ fontWeight: 800 }}>{currency}{parseFloat(invoice.tax_amount || 0).toFixed(2)}</span>
                   </div>
                   {parseFloat(invoice.round_off || 0) !== 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#64748b' }}>
@@ -898,7 +904,7 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                     fontWeight: 900,
                     color: '#0369a1'
                   }}>
-                    <span>GRAND TOTAL:</span>
+                    <span>NET TOTAL:</span>
                     <span>{currency}{parseFloat(invoice.grand_total || 0).toFixed(2)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '11.5px', fontWeight: 700 }}>

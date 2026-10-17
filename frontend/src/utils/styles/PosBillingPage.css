@@ -1,0 +1,237 @@
+/* =========================================================================
+   PosBillingPage.css - External Stylesheet for PosBillingPage
+   ========================================================================= */
+
+.pos-billing-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 20px;
+  padding: 20px 20px 80px;
+  min-height: calc(100vh - 70px);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1100px) {
+  .pos-billing-grid {
+    grid-template-columns: 1fr;
+    padding: 14px 14px 80px;
+  }
+  .pos-billing-right {
+    max-width: 100% !important;
+  }
+}
+
+.pos-billing-left {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  width: 100%;
+}
+
+.pos-billing-right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+}
+
+.pos-staff-bar {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: #ffffff;
+}
+
+.pos-staff-label-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pos-staff-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #0f172a;
+  text-transform: uppercase;
+}
+
+.pos-staff-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.pos-staff-btn.active {
+  border: 2px solid #0284c7;
+  background: #f0f9ff;
+  color: #0284c7;
+  font-weight: 800;
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.15);
+}
+
+.pos-staff-code-tag {
+  background: #e2e8f0;
+  color: #475569;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.pos-staff-btn.active .pos-staff-code-tag {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.pos-search-panel {
+  padding: 14px;
+  position: relative;
+}
+
+.pos-search-icon {
+  position: absolute;
+  left: 14px;
+  top: 13px;
+}
+
+.pos-search-input {
+  padding-left: 44px !important;
+  height: 44px;
+  font-size: 15px;
+}
+
+.pos-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  max-height: 420px;
+  overflow-y: auto;
+  margin-top: 6px;
+}
+
+.pos-search-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.12s ease;
+}
+
+.pos-search-item:hover {
+  background: #f8fafc;
+}
+
+.pos-search-item.highlighted {
+  background: #f0f9ff;
+}
+
+.pos-cart-panel {
+  overflow: hidden;
+}
+
+.pos-cart-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pos-qty-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #0f172a;
+}
+
+.pos-qty-input {
+  width: 44px;
+  height: 26px;
+  text-align: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pos-checkout-card {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+}
+
+.pos-payment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.pos-payment-btn {
+  padding: 10px;
+  border-radius: 10px;
+  border: 1.5px solid #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: #334155;
+}
+
+.pos-payment-btn.active {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
+}
+
+.pos-total-display {
+  padding: 16px;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border-radius: 14px;
+  color: #ffffff;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.pos-total-amount {
+  font-size: 28px;
+  font-weight: 900;
+  color: #38bdf8;
+}

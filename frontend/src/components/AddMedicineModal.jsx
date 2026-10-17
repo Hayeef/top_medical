@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Plus, Pill, AlertCircle, Save } from 'lucide-react';
 import { inventoryAPI } from '../api';
+import '../utils/styles/AddMedicineModal.css';
 
 export default function AddMedicineModal({ categories, onClose, onCreated }) {
   const [formData, setFormData] = useState({

@@ -199,7 +199,6 @@ export const dailyFinanceAPI = {
   deleteRecord: (id) => request(`/billing/daily-finance/${id}/`, { method: 'DELETE' }),
   autoFetchDay: (date = '') => request(`/billing/daily-finance/auto_fetch_pos_day/${date ? `?date=${encodeURIComponent(date)}` : ''}`),
   recalculateBalances: () => request('/billing/daily-finance/recalculate_balances/', { method: 'POST' }),
-  addCapitalInvestment: (data) => request('/billing/daily-finance/add_capital_investment/', { method: 'POST', body: JSON.stringify(data) }),
   getSummaryStats: () => request('/billing/daily-finance/summary_stats/'),
   getMonthlyReportSummary: (params = '') => request(`/billing/daily-finance/monthly_report_summary/${params ? `?${params}` : ''}`),
   exportExcel: async (params = '') => {

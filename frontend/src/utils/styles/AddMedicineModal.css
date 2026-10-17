@@ -1,0 +1,27 @@
+/* =========================================================================
+   AddMedicineModal.css - External Stylesheet
+   ========================================================================= */
+
+.add-medicine-modal-content {
+  max-width: 620px;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.add-medicine-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #ffffff;
+}
+
+.add-medicine-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}

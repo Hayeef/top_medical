@@ -728,4 +728,26 @@ button, a, input, select, textarea, [role="button"] {
   }
 }
 
+/* Quick Add Inline Panel Responsive Grids */
+.quick-add-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
 
+.quick-add-grid-5 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+@media (min-width: 900px) {
+  .quick-add-grid-4 {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+  .quick-add-grid-5 {
+    grid-template-columns: repeat(5, 1fr) !important;
+  }
+}

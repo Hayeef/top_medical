@@ -39,6 +39,7 @@ import confetti from 'canvas-confetti';
 import Tesseract from 'tesseract.js';
 import { inventoryAPI } from '../api';
 import { parseOCRTextToInvoice, preprocessBillImage, inferDosageAndCategory, parsePackSize, suggestRackLocation } from '../utils/billParser';
+import '../utils/styles/ScanSupplierBillModal.css';
 
 export default function ScanSupplierBillModal({ onClose, onStockInwarded }) {
   // Modes: 'upload' | 'camera' | 'samples'

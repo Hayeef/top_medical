@@ -68,42 +68,62 @@ def find_existing_medicine(name, dosage_form=None, barcode=None):
                 return med_by_barcode
 
     # 2. Exact Match (case-insensitive)
-    med_exact = Medicine.objects.filter(name__iexact=clean_name).first()
-    if med_exact:
-        return med_exact
+    exact_matches = Medicine.objects.filter(name__iexact=clean_name, is_active=True)
+    if exact_matches.exists():
+        if dosage_form and str(dosage_form).strip():
+            form_match = exact_matches.filter(dosage_form__iexact=str(dosage_form).strip()).first()
+            if form_match:
+                return form_match
+        return exact_matches.first()
 
     # 3. Compact Alphanumeric Match (checks if names match ignoring all spaces & punctuation)
     if compact_query and len(compact_query) >= 3:
-        all_meds = Medicine.objects.filter(is_active=True)
-        if dosage_form:
-            form_meds = all_meds.filter(dosage_form__iexact=dosage_form.strip())
-            if form_meds.exists():
-                all_meds = form_meds
+        all_meds = list(Medicine.objects.filter(is_active=True))
 
-        for cand in all_meds:
-            cand_compact = get_compact_key(cand.name)
-            if cand_compact == compact_query:
-                return cand
+        def pick_best(candidates):
+            if not candidates:
+                return None
+            if dosage_form and str(dosage_form).strip():
+                df_lower = str(dosage_form).strip().lower()
+                for c in candidates:
+                    if (c.dosage_form or '').strip().lower() == df_lower:
+                        return c
+            return candidates[0]
+
+        # 3a. Exact compact key matches
+        compact_matches = [cand for cand in all_meds if get_compact_key(cand.name) == compact_query]
+        best = pick_best(compact_matches)
+        if best:
+            return best
 
         # 4. Canonical Token Match
-        for cand in all_meds:
-            cand_canon = extract_canonical_tokens(cand.name)
-            if cand_canon and cand_canon == canonical_query:
-                return cand
+        canon_matches = [cand for cand in all_meds if extract_canonical_tokens(cand.name) == canonical_query]
+        best = pick_best(canon_matches)
+        if best:
+            return best
 
         # 5. Token-set containment (if all non-trivial tokens in query are present in candidate or vice versa)
         query_words = set(w for w in canonical_query.split() if len(w) >= 2)
         if len(query_words) >= 2:
+            token_matches = []
             for cand in all_meds:
                 cand_words = set(w for w in extract_canonical_tokens(cand.name).split() if len(w) >= 2)
                 if cand_words and (query_words == cand_words or query_words.issubset(cand_words) or cand_words.issubset(query_words)):
-                    return cand
+                    token_matches.append(cand)
+            best = pick_best(token_matches)
+            if best:
+                return best
 
         # 6. Prefix / starts-with matching for longer names
-        for cand in all_meds:
-            cand_compact = get_compact_key(cand.name)
-            if cand_compact and len(compact_query) > 5 and len(cand_compact) > 5:
-                if cand_compact.startswith(compact_query) or compact_query.startswith(cand_compact):
-                    return cand
+        if len(compact_query) > 5:
+            prefix_matches = []
+            for cand in all_meds:
+                cand_compact = get_compact_key(cand.name)
+                if cand_compact and len(cand_compact) > 5:
+                    if cand_compact.startswith(compact_query) or compact_query.startswith(cand_compact):
+                        prefix_matches.append(cand)
+            best = pick_best(prefix_matches)
+            if best:
+                return best
 
     return None

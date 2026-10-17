@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { inventoryAPI } from '../api';
 import StaffManagementCard from '../components/StaffManagementCard';
+import '../utils/styles/ContactsPage.css';
 
 export default function ContactsPage({ 
   customers, 
@@ -71,10 +72,10 @@ export default function ContactsPage({
     <div className="main-page-wrapper">
       
       {/* Top Header & Tab Controls */}
-      <div className="glass-panel" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div className="glass-panel contacts-header">
         
         {/* Scrollable Tabs */}
-        <div className="mobile-scroll-pills" style={{ display: 'flex', gap: '6px' }}>
+        <div className="mobile-scroll-pills contacts-tab-bar">
           <button
             onClick={() => setTab('customers')}
             className={`btn btn-sm ${tab === 'customers' ? 'btn-primary' : 'btn-secondary'}`}
@@ -102,13 +103,12 @@ export default function ContactsPage({
         </div>
 
         {/* Search & Add Action */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', flex: '1 1 200px' }}>
-            <Search size={15} color="#0284c7" style={{ position: 'absolute', left: '10px', top: '10px' }} />
+        <div className="contacts-search-actions">
+          <div className="contacts-search-wrapper">
+            <Search size={15} color="#0284c7" className="contacts-search-icon" />
             <input
               type="text"
-              className="input-field"
-              style={{ paddingLeft: '32px', height: '36px', fontSize: '13px' }}
+              className="input-field contacts-search-input"
               placeholder={`Search ${tab}...`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -116,19 +116,19 @@ export default function ContactsPage({
           </div>
 
           {tab === 'customers' && (
-            <button onClick={onOpenAddCustomer} className="btn btn-primary btn-sm" style={{ height: '36px' }}>
+            <button onClick={onOpenAddCustomer} className="btn btn-primary btn-sm contacts-action-btn">
               <UserPlus size={14} /> <span>+ Add Patient</span>
             </button>
           )}
 
           {tab === 'suppliers' && (
-            <button onClick={() => setIsAddSupplierOpen(true)} className="btn btn-primary btn-sm" style={{ height: '36px' }}>
+            <button onClick={() => setIsAddSupplierOpen(true)} className="btn btn-primary btn-sm contacts-action-btn">
               <Building2 size={14} /> <span>+ Add Supplier</span>
             </button>
           )}
 
           {tab === 'doctors' && (
-            <button onClick={onOpenAddDoctor} className="btn btn-primary btn-sm" style={{ height: '36px' }}>
+            <button onClick={onOpenAddDoctor} className="btn btn-primary btn-sm contacts-action-btn">
               <Stethoscope size={14} /> <span>+ Add Doctor</span>
             </button>
           )}

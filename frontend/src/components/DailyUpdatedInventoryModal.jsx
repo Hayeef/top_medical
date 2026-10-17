@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { inventoryAPI } from '../api';
+import '../utils/styles/DailyUpdatedInventoryModal.css';
 
 export default function DailyUpdatedInventoryModal({ 
   isOpen, 

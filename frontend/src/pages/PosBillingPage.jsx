@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { inventoryAPI, billingAPI } from '../api';
+import '../utils/styles/PosBillingPage.css';
 
 /**
  * Strict Statutory GST Tax Slab Resolver for Pharmacy POS:
@@ -638,6 +639,9 @@ export default function PosBillingPage({
   const effectiveTaxableTotal = Math.max(0, Math.round((totalBeforeRound - effectiveTaxRounded) * 100) / 100);
   const subtotal = grossSubtotal;
 
+  const cartRates = Array.from(new Set(cart.map(i => parseFloat(i.gst_rate ?? 5)).filter(r => r > 0)));
+  const cartGstLabel = cartRates.length === 1 ? `GST (${cartRates[0]}%):` : cartRates.length > 1 ? `GST (${cartRates.join('%, ')}%):` : 'GST:';
+
   // Smart Change & Round-Off Suggestions (e.g. if Total is ₹21, suggest +₹1 to make ₹22, +₹4 to make ₹25, +₹9 to make ₹30)
   const quickRoundSuggestions = useMemo(() => {
     if (cart.length === 0 || grandTotal <= 0) return [];
@@ -1245,7 +1249,7 @@ export default function PosBillingPage({
 
                               {/* 6. Tax (GST) */}
                               <td style={{ textAlign: 'center' }}>
-                                <span className="badge badge-slate" style={{ fontSize: '9px', padding: '1px 5px', fontWeight: 700 }}>0% OTC</span>
+                                <span className="badge badge-slate" style={{ fontSize: '9px', padding: '1px 5px', fontWeight: 700 }}>GST 0%</span>
                                 <div className="mono" style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', fontWeight: 700 }}>
                                   Tax: {currency}0.00
                                 </div>
@@ -1430,11 +1434,11 @@ export default function PosBillingPage({
                             <td style={{ textAlign: 'center' }}>
                               <div>
                                 {item.gst_rate === 18 ? (
-                                  <span className="badge badge-purple" style={{ fontSize: '9px', padding: '1px 6px', fontWeight: 800 }}>18% Cosmetics</span>
+                                  <span className="badge badge-purple" style={{ fontSize: '9px', padding: '1px 6px', fontWeight: 800 }}>GST 18%</span>
                                 ) : item.gst_rate === 0 ? (
-                                  <span className="badge badge-slate" style={{ fontSize: '9px', padding: '1px 6px', fontWeight: 700 }}>0% OTC</span>
+                                  <span className="badge badge-slate" style={{ fontSize: '9px', padding: '1px 6px', fontWeight: 700 }}>GST 0%</span>
                                 ) : (
-                                  <span className="badge badge-sky" style={{ fontSize: '9px', padding: '1px 6px', fontWeight: 800 }}>5% Tablets/Meds</span>
+                                  <span className="badge badge-sky" style={{ fontSize: '9px', padding: '1px 6px', fontWeight: 800 }}>GST 5%</span>
                                 )}
                               </div>
                               <div className="mono" style={{ fontSize: '11px', fontWeight: 800, color: '#0f172a', marginTop: '3px' }}>
@@ -1951,101 +1955,25 @@ export default function PosBillingPage({
               </div>
             </div>
 
-            {/* Bill Tax Structure Box */}
+            {/* Base Amount & GST Summary */}
             <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+              padding: '8px 12px',
               background: '#f8fafc',
               border: '1px solid #e2e8f0',
               borderRadius: '8px',
-              padding: '10px 12px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px'
+              fontSize: '12px'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.3px', borderBottom: '1px solid #e2e8f0', paddingBottom: '4px' }}>
-                <span>Bill Tax Structure</span>
-                <span style={{ color: '#059669', textTransform: 'none', fontWeight: 700 }}>MRP = Base + GST</span>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569', fontSize: '11.5px' }}>
-                <span>Taxable Base Value:</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569' }}>
+                <span>Base Amount:</span>
                 <span className="mono" style={{ fontWeight: 700, color: '#0f172a' }}>{currency}{effectiveTaxableTotal.toFixed(2)}</span>
               </div>
-
-              {/* 5% Tablets & Medicines Slab */}
-              {(effectiveTax5Amt > 0 || tax5Base > 0) && (
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  background: '#f0f9ff',
-                  border: '1px solid #bae6fd',
-                  borderRadius: '6px',
-                  padding: '4px 8px',
-                  fontSize: '11px'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span className="badge badge-sky" style={{ fontSize: '9px', padding: '1px 5px', fontWeight: 800 }}>5% GST</span>
-                    <span style={{ color: '#0369a1', fontWeight: 700 }}>Tablets & Meds:</span>
-                  </div>
-                  <div className="mono" style={{ textAlign: 'right' }}>
-                    <strong style={{ color: '#0284c7' }}>{currency}{effectiveTax5Amt.toFixed(2)}</strong>
-                    <span style={{ fontSize: '9.5px', color: '#64748b', display: 'block' }}>Base: {currency}{effectiveTax5Base.toFixed(2)}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* 18% Cosmetics Slab */}
-              {(effectiveTax18Amt > 0 || tax18Base > 0) && (
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  background: '#faf5ff',
-                  border: '1px solid #e9d5ff',
-                  borderRadius: '6px',
-                  padding: '4px 8px',
-                  fontSize: '11px'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span className="badge badge-purple" style={{ fontSize: '9px', padding: '1px 5px', fontWeight: 800 }}>18% GST</span>
-                    <span style={{ color: '#7c3aed', fontWeight: 700 }}>Cosmetics:</span>
-                  </div>
-                  <div className="mono" style={{ textAlign: 'right' }}>
-                    <strong style={{ color: '#9333ea' }}>{currency}{effectiveTax18Amt.toFixed(2)}</strong>
-                    <span style={{ fontSize: '9.5px', color: '#64748b', display: 'block' }}>Base: {currency}{effectiveTax18Base.toFixed(2)}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* 0% Candies Slab */}
-              {tax0Base > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: '#64748b', padding: '2px 4px' }}>
-                  <span>0% GST (OTC Candies):</span>
-                  <span className="mono">Exempt ({currency}{(tax0Base * discountRatio).toFixed(2)})</span>
-                </div>
-              )}
-
-              {/* Total GST Included in MRP */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                borderTop: '1px dashed #cbd5e1',
-                paddingTop: '4px',
-                marginTop: '2px',
-                fontSize: '11.5px',
-                fontWeight: 800,
-                color: '#0f172a'
-              }}>
-                <span>Total GST Included in MRP:</span>
-                <span className="mono" style={{ color: '#0284c7' }}>{currency}{effectiveTaxRounded.toFixed(2)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#0284c7' }}>
+                <span>{cartGstLabel}</span>
+                <span className="mono" style={{ fontWeight: 800 }}>{currency}{effectiveTaxRounded.toFixed(2)}</span>
               </div>
-
-              {effectiveTaxRounded > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: '#64748b', paddingLeft: '6px' }}>
-                  <span>• CGST: <strong>{currency}{cgst}</strong></span>
-                  <span>• SGST: <strong>{currency}{sgst}</strong></span>
-                </div>
-              )}
             </div>
 
             {parseFloat(roundOff) !== 0 && (
@@ -2055,7 +1983,7 @@ export default function PosBillingPage({
               </div>
             )}
 
-            {/* Grand Total Highlight */}
+            {/* Payable Amount Highlight */}
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -2067,9 +1995,9 @@ export default function PosBillingPage({
               margin: '4px 0'
             }}>
               <div>
-                <div style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Grand Total (MRP)</div>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase' }}>Payable Amount</div>
                 <div style={{ fontSize: '10.5px', color: '#059669', fontWeight: 700 }}>
-                  Tax Inclusive ({currency}{effectiveTaxableTotal.toFixed(2)} + GST {currency}{effectiveTaxRounded.toFixed(2)})
+                  MRP (Incl. GST)
                 </div>
               </div>
               <div className="mono" style={{ fontSize: '24px', fontWeight: 900, color: '#0284c7' }}>

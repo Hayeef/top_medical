@@ -30,12 +30,15 @@ import {
   X,
   PlusCircle,
   Tag,
-  Calendar
+  Calendar,
+  ArrowLeft,
+  ArrowRight
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { inventoryAPI } from '../api';
 import QuickBillDiscountLookupModal from '../components/QuickBillDiscountLookupModal';
 import DailyUpdatedInventoryModal from '../components/DailyUpdatedInventoryModal';
+import '../utils/styles/InventoryPage.css';
 
 export default function InventoryPage({ 
   medicines = [], 
@@ -64,7 +67,7 @@ export default function InventoryPage({
   const [filterRx, setFilterRx] = useState('');
   const [expandedMedId, setExpandedMedId] = useState(null);
 
-  // Quick Add Tablet Inline Form State
+  // Quick Add Tablet Modal State
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isQuickBillDiscountOpen, setIsQuickBillDiscountOpen] = useState(false);
   const [isDailyUpdatedOpen, setIsDailyUpdatedOpen] = useState(false);
@@ -478,6 +481,25 @@ export default function InventoryPage({
 
       showToast(`Added "${payload.name}" (${payload.pack_quantity} pk) to inventory stock!`);
 
+      // Optimistically prepend newly created batch to stock table so zero data reload lag occurs
+      const createdBatch = res.batch || res.data?.batch;
+      const createdMed = res.medicine || res.data?.medicine;
+      if (createdBatch) {
+        const optimisticRow = {
+          ...createdBatch,
+          medicine_name: createdMed?.name || payload.name,
+          medicine_generic: createdMed?.generic_name || payload.generic_name,
+          dosage_form: createdMed?.dosage_form || payload.dosage_form,
+          category_name: (typeof createdMed?.category === 'object' ? createdMed?.category?.name : '') || 'General',
+          rack_location: createdMed?.rack_location || payload.rack_location,
+          requires_prescription: createdMed?.requires_prescription ?? payload.requires_prescription,
+          supplier_name: payload.supplier_name || 'Direct Wholesale',
+          gst_rate: payload.gst_rate
+        };
+        setServerBatches(prev => prev ? [optimisticRow, ...prev] : [optimisticRow]);
+        setCurrentPage(1);
+      }
+
       // Reset Form & close drawer
       setQuickAddForm({
         name: '',
@@ -501,9 +523,8 @@ export default function InventoryPage({
       });
       setIsQuickAddOpen(false);
 
-      // Refresh table and global data
+      // Silently refresh server table metrics in background without full screen reload
       fetchStockTable();
-      onReloadInventory?.();
     } catch (err) {
       console.error('Quick add tablet error:', err);
       showToast(err.message || 'Failed to add tablet to inventory.', 'error');
@@ -927,18 +948,19 @@ export default function InventoryPage({
       </div>
 
       {/* =========================================================================
-          INLINE QUICK-ADD NEW TABLET & STOCK ACCORDION / FORM
+          INLINE QUICK-ADD NEW TABLET & STOCK ACCORDION / FORM (MATCHING USER SCREENSHOT)
           ========================================================================= */}
       {isQuickAddOpen && (
         <div style={{
           background: '#ffffff',
           border: '2px solid #0284c7',
-          borderRadius: '14px',
-          padding: '18px 22px',
-          boxShadow: '0 8px 25px rgba(2, 132, 199, 0.12)',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          boxShadow: '0 4px 16px rgba(2, 132, 199, 0.08)',
           animation: 'fadeInDown 0.25s ease'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+          {/* Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <PlusCircle size={18} color="#0284c7" />
               <div>
@@ -950,21 +972,23 @@ export default function InventoryPage({
                 </div>
               </div>
             </div>
+
             <button 
               type="button" 
               onClick={() => setIsQuickAddOpen(false)}
-              style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}
+              style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
+              title="Close"
             >
               <X size={18} />
             </button>
           </div>
 
           <form onSubmit={handleQuickAddSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-              
-              {/* Medicine Name */}
-              <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+            {/* ROW 1 (4 COLUMNS) */}
+            <div className="quick-add-grid-4">
+              {/* Tablet / Medicine Brand Name */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
                   Tablet / Medicine Brand Name <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <input
@@ -974,14 +998,14 @@ export default function InventoryPage({
                   placeholder="e.g. DOLO 650MG, PAN 40 TAB, AUGMENTIN 625"
                   value={quickAddForm.name}
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, name: e.target.value })}
-                  style={{ height: '36px', fontWeight: 700 }}
+                  style={{ height: '38px', fontSize: '13px' }}
                   autoFocus
                 />
               </div>
 
-              {/* Generic Name */}
+              {/* Generic / Salt Formulation */}
               <div>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
                   Generic / Salt Formulation
                 </label>
                 <input
@@ -990,18 +1014,18 @@ export default function InventoryPage({
                   placeholder="e.g. Paracetamol IP, Pantoprazole"
                   value={quickAddForm.generic_name}
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, generic_name: e.target.value })}
-                  style={{ height: '36px' }}
+                  style={{ height: '38px', fontSize: '13px' }}
                 />
               </div>
 
               {/* Dosage Form */}
               <div>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
                   Dosage Form
                 </label>
                 <select
                   className="input-field"
-                  style={{ height: '36px' }}
+                  style={{ height: '38px', fontSize: '13px' }}
                   value={quickAddForm.dosage_form}
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, dosage_form: e.target.value })}
                 >
@@ -1009,22 +1033,23 @@ export default function InventoryPage({
                   <option value="Capsule">Capsule</option>
                   <option value="Syrup">Syrup</option>
                   <option value="Injection">Injection</option>
-                  <option value="Ointment">Ointment / Gel</option>
+                  <option value="Ointment">Ointment</option>
                   <option value="Drops">Drops</option>
-                  <option value="Inhaler">Inhaler / Respules</option>
-                  <option value="Device">Device / Consumable</option>
+                  <option value="Inhaler">Inhaler</option>
+                  <option value="Powder">Powder</option>
+                  <option value="Device">Device</option>
                   <option value="Other">Other</option>
                 </select>
               </div>
 
-              {/* Category */}
+              {/* Therapeutic Category */}
               <div>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
                   Therapeutic Category
                 </label>
                 <select
                   className="input-field"
-                  style={{ height: '36px' }}
+                  style={{ height: '38px', fontSize: '13px' }}
                   value={quickAddForm.category}
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, category: e.target.value })}
                 >
@@ -1034,10 +1059,13 @@ export default function InventoryPage({
                   ))}
                 </select>
               </div>
+            </div>
 
+            {/* ROW 2 (5 COLUMNS) */}
+            <div className="quick-add-grid-5">
               {/* Batch Number */}
               <div>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
                   Batch Number
                 </label>
                 <input
@@ -1046,13 +1074,13 @@ export default function InventoryPage({
                   placeholder="e.g. BT-2026A"
                   value={quickAddForm.batch_number}
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, batch_number: e.target.value })}
-                  style={{ height: '36px' }}
+                  style={{ height: '38px', fontSize: '13px' }}
                 />
               </div>
 
               {/* Expiry Date */}
               <div>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
                   Expiry Date
                 </label>
                 <input
@@ -1060,33 +1088,33 @@ export default function InventoryPage({
                   className="input-field mono"
                   value={quickAddForm.expiry_date}
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, expiry_date: e.target.value })}
-                  style={{ height: '36px' }}
+                  style={{ height: '38px', fontSize: '13px' }}
                 />
               </div>
 
-              {/* Rack Location */}
+              {/* Rack / Shelf Location */}
               <div>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
                   Rack / Shelf Location
                 </label>
                 <input
                   type="text"
                   className="input-field"
-                  placeholder="e.g. Rack A-1, Shelf 3"
+                  placeholder="Rack A-1"
                   value={quickAddForm.rack_location}
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, rack_location: e.target.value })}
-                  style={{ height: '36px' }}
+                  style={{ height: '38px', fontSize: '13px' }}
                 />
               </div>
 
-              {/* Wholesale Supplier */}
+              {/* Supplier / Distributor */}
               <div>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
                   Supplier / Distributor
                 </label>
                 <select
                   className="input-field"
-                  style={{ height: '36px' }}
+                  style={{ height: '38px', fontSize: '13px' }}
                   value={quickAddForm.supplier}
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, supplier: e.target.value })}
                 >
@@ -1097,29 +1125,30 @@ export default function InventoryPage({
                 </select>
               </div>
 
-              {/* Cost Price (Admin Only) */}
-              {isAdmin && (
-                <div>
-                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                    Cost Rate / Pack (₹)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="input-field mono"
-                    placeholder="0.00"
-                    value={quickAddForm.purchase_price}
-                    onChange={(e) => setQuickAddForm({ ...quickAddForm, purchase_price: e.target.value })}
-                    style={{ height: '36px' }}
-                  />
-                </div>
-              )}
-
-              {/* MRP */}
+              {/* Cost Rate / Pack (₹) */}
               <div>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                  MRP / Pack (₹)
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
+                  Cost Rate / Pack ({currency})
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="input-field mono"
+                  placeholder="0.00"
+                  value={quickAddForm.purchase_price}
+                  onChange={(e) => setQuickAddForm({ ...quickAddForm, purchase_price: e.target.value })}
+                  style={{ height: '38px', fontSize: '13px' }}
+                />
+              </div>
+            </div>
+
+            {/* ROW 3 (5 COLUMNS) */}
+            <div className="quick-add-grid-5">
+              {/* MRP / Pack (₹) */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
+                  MRP / Pack ({currency})
                 </label>
                 <input
                   type="number"
@@ -1136,14 +1165,14 @@ export default function InventoryPage({
                       selling_price: val
                     });
                   }}
-                  style={{ height: '36px' }}
+                  style={{ height: '38px', fontSize: '13px' }}
                 />
               </div>
 
-              {/* Selling Price */}
+              {/* Selling Price / Pack (₹) */}
               <div>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#059669', display: 'block', marginBottom: '4px' }}>
-                  Selling Price / Pack (₹)
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
+                  Selling Price / Pack ({currency})
                 </label>
                 <input
                   type="number"
@@ -1153,13 +1182,13 @@ export default function InventoryPage({
                   placeholder="0.00"
                   value={quickAddForm.selling_price}
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, selling_price: e.target.value })}
-                  style={{ height: '36px', fontWeight: 800, color: '#059669' }}
+                  style={{ height: '38px', fontSize: '13px' }}
                 />
               </div>
 
-              {/* Initial Inward Stock (Packs) */}
+              {/* Initial Stock (Packs) * */}
               <div>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#0284c7', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#0284c7', display: 'block', marginBottom: '5px' }}>
                   Initial Stock (Packs) <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <input
@@ -1170,13 +1199,13 @@ export default function InventoryPage({
                   placeholder="10"
                   value={quickAddForm.pack_quantity}
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, pack_quantity: e.target.value })}
-                  style={{ height: '36px', fontWeight: 800 }}
+                  style={{ height: '38px', fontWeight: 700, fontSize: '13px' }}
                 />
               </div>
 
-              {/* Pack Size */}
+              {/* Units per Pack (Strip size) */}
               <div>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
                   Units per Pack (Strip size)
                 </label>
                 <input
@@ -1186,47 +1215,47 @@ export default function InventoryPage({
                   placeholder="10"
                   value={quickAddForm.pack_size}
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, pack_size: e.target.value })}
-                  style={{ height: '36px' }}
+                  style={{ height: '38px', fontSize: '13px' }}
                 />
               </div>
 
-              {/* GST Tax Slab */}
+              {/* GST Tax Slab % */}
               <div>
-                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
                   GST Tax Slab %
                 </label>
                 <select
                   className="input-field"
-                  style={{ height: '36px', fontWeight: 700 }}
+                  style={{ height: '38px', fontSize: '13px' }}
                   value={quickAddForm.gst_rate}
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, gst_rate: e.target.value })}
                 >
                   <option value="5.0">5% - Tablets & General Medicines</option>
+                  <option value="12.0">12% - Other Medical Formulations</option>
                   <option value="18.0">18% - Cosmetics & Personal Care</option>
                   <option value="0.0">0% - Exempt / OTC Candies</option>
-                  <option value="12.0">12% - Other Medical Formulations</option>
                 </select>
               </div>
-
             </div>
 
-            {/* Bottom Row: Checkbox & Submit */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', borderTop: '1px solid #f1f5f9', paddingTop: '12px', flexWrap: 'wrap', gap: '10px' }}>
+            {/* ROW 4: BOTTOM BAR (CHECKBOX + CANCEL + SUBMIT) */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', paddingTop: '10px', flexWrap: 'wrap', gap: '10px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12.5px', color: '#475569' }}>
                 <input
                   type="checkbox"
                   checked={quickAddForm.requires_prescription}
                   onChange={(e) => setQuickAddForm({ ...quickAddForm, requires_prescription: e.target.checked })}
+                  style={{ width: '15px', height: '15px', cursor: 'pointer' }}
                 />
                 <span>Requires Doctor Prescription (Schedule H / Rx)</span>
               </label>
 
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <button
                   type="button"
                   onClick={() => setIsQuickAddOpen(false)}
                   className="btn btn-secondary"
-                  style={{ padding: '8px 16px', fontSize: '13px' }}
+                  style={{ padding: '7px 20px', borderRadius: '8px', fontSize: '13px', background: '#ffffff', border: '1px solid #cbd5e1', color: '#334155', fontWeight: 600, cursor: 'pointer' }}
                 >
                   Cancel
                 </button>
@@ -1234,10 +1263,22 @@ export default function InventoryPage({
                   type="submit"
                   disabled={quickAddSubmitting}
                   className="btn btn-emerald"
-                  style={{ padding: '8px 22px', fontSize: '13px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}
+                  style={{
+                    padding: '7px 20px',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#059669',
+                    color: '#ffffff',
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
                 >
-                  <Save size={15} />
-                  <span>{quickAddSubmitting ? 'Inwarding...' : '💾 Add & Inward to Inventory Stock'}</span>
+                  <Save size={16} />
+                  <span>{quickAddSubmitting ? 'Inwarding...' : 'Add & Inward to Inventory Stock'}</span>
                 </button>
               </div>
             </div>

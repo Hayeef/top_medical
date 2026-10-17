@@ -1,0 +1,27 @@
+/* =========================================================================
+   UpdateDiscountModal.css - External Stylesheet
+   ========================================================================= */
+
+.update-discount-modal-content {
+  max-width: 520px;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.update-discount-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #ffffff;
+}
+
+.update-discount-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}

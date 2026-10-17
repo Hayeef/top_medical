@@ -1,0 +1,211 @@
+/* =========================================================================
+   AlertsPage.css - External Stylesheet for AlertsPage
+   ========================================================================= */
+
+.alerts-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.alerts-radar-card {
+  padding: 16px;
+  cursor: pointer;
+  background: #ffffff;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.alerts-radar-card.active-expiring {
+  border-left: 4px solid #f59e0b !important;
+  background: #fffbeb !important;
+}
+
+.alerts-radar-card.active-expired {
+  border-left: 4px solid #ef4444 !important;
+  background: #fef2f2 !important;
+}
+
+.alerts-radar-card.active-low-stock {
+  border-left: 4px solid #0284c7 !important;
+  background: #f0f9ff !important;
+}
+
+.alerts-radar-content {
+  display: flex;
+  justify-content: space-between;
+}
+
+.alerts-radar-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.alerts-radar-label.expiring {
+  color: #d97706;
+}
+.alerts-radar-label.expired {
+  color: #e11d48;
+}
+.alerts-radar-label.low-stock {
+  color: #0284c7;
+}
+
+.alerts-radar-count {
+  font-size: 24px;
+  font-weight: 900;
+  margin-top: 4px;
+}
+
+.alerts-radar-count.expiring {
+  color: #d97706;
+}
+.alerts-radar-count.expired {
+  color: #e11d48;
+}
+.alerts-radar-count.low-stock {
+  color: #0284c7;
+}
+
+.alerts-radar-subtext {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+/* Main Panel */
+.alerts-panel {
+  overflow: hidden;
+}
+
+.alerts-panel-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: #f8fafc;
+}
+
+.alerts-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alerts-days-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.alerts-days-select {
+  width: 120px;
+  height: 32px;
+  font-size: 11.5px;
+  padding: 2px 6px;
+}
+
+.alerts-table-container {
+  border: none !important;
+  border-radius: 0 !important;
+}
+
+.alerts-row-expired {
+  background: #fff1f2 !important;
+}
+
+.alerts-drug-name {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.alerts-drug-generic {
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* Mobile Cards View */
+.alerts-mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.alerts-mobile-card {
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alerts-mobile-card-expiring {
+  background: #ffffff;
+  border: 1px solid #fed7aa;
+}
+
+.alerts-mobile-card-expired {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+}
+
+.alerts-mobile-card-low-stock {
+  background: #ffffff;
+  border: 1px solid #bae6fd;
+}
+
+.alerts-mobile-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.alerts-mobile-card-title {
+  font-weight: 800;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.alerts-mobile-card-title.expired {
+  color: #e11d48;
+}
+
+.alerts-mobile-card-subtext {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.alerts-mobile-card-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11.5px;
+  color: #475569;
+}
+
+.alerts-mobile-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #f8fafc;
+  padding-top: 6px;
+}
+
+.alerts-mobile-card-footer.expired {
+  border-top: 1px solid #fecdd3;
+}
+
+.alerts-spin {
+  animation: alertsSpin 1s linear infinite;
+}
+
+@keyframes alertsSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

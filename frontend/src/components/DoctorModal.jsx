@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Stethoscope, Save, AlertCircle } from 'lucide-react';
 import { billingAPI } from '../api';
+import '../utils/styles/DoctorModal.css';
 
 export default function DoctorModal({ onClose, onCreated }) {
   const [formData, setFormData] = useState({

@@ -17,6 +17,7 @@ import {
   Landmark
 } from 'lucide-react';
 import PharmacyLogo from './PharmacyLogo';
+import '../utils/styles/Sidebar.css';
 
 export default function Sidebar({ 
   activeTab, 

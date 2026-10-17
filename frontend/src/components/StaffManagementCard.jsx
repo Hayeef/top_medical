@@ -14,6 +14,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { billingAPI } from '../api';
+import '../utils/styles/StaffManagementCard.css';
 
 export default function StaffManagementCard({ onStaffUpdated }) {
   const [staffList, setStaffList] = useState([]);

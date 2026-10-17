@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   FileText, 
   Printer, 
@@ -15,10 +15,13 @@ import {
   Building2, 
   Layers,
   MapPin,
-  ClipboardList
+  ClipboardList,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import PharmacyLogo from './PharmacyLogo';
 import { analyticsAPI } from '../api';
+import '../utils/styles/DailySoldReportModal.css';
 
 export default function DailySoldReportModal({ 
   isOpen, 
@@ -179,9 +182,33 @@ export default function DailySoldReportModal({
     document.body.removeChild(link);
   };
 
-  // Trigger Native Print / PDF Save
+  // Pagination State for zero-lag rendering
+  const [reportPage, setReportPage] = useState(1);
+  const [reportPageSize, setReportPageSize] = useState(15);
+  const [isPrinting, setIsPrinting] = useState(false);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setReportPage(1);
+  }, [selectedDate, selectedSupplier, selectedCategory, stockFilter, searchTerm]);
+
+  const totalPages = Math.ceil(items.length / (reportPageSize === 'ALL' ? items.length || 1 : reportPageSize)) || 1;
+
+  const paginatedItems = useMemo(() => {
+    if (reportPageSize === 'ALL') return items;
+    const start = (reportPage - 1) * reportPageSize;
+    return items.slice(start, start + reportPageSize);
+  }, [items, reportPage, reportPageSize]);
+
+  const displayedItems = isPrinting || reportPageSize === 'ALL' ? items : paginatedItems;
+
+  // Trigger Native Print / PDF Save (ensures all items are printed)
   const handlePrintPDF = () => {
-    window.print();
+    setIsPrinting(true);
+    setTimeout(() => {
+      window.print();
+      setIsPrinting(false);
+    }, 250);
   };
 
   const pharmacyName = profile?.name || 'TOP MEDICAL PHARMACY';
@@ -552,9 +579,10 @@ export default function DailySoldReportModal({
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((item, idx) => {
+                      {displayedItems.map((item, idx) => {
                         const isOutOfStock = item.stock_status === 'OUT_OF_STOCK';
                         const isLowStock = item.stock_status === 'LOW_STOCK';
+                        const displayIdx = (isPrinting || reportPageSize === 'ALL') ? idx + 1 : (reportPage - 1) * reportPageSize + idx + 1;
 
                         return (
                           <tr 
@@ -566,7 +594,7 @@ export default function DailySoldReportModal({
                             }}
                           >
                             <td style={{ padding: '8px 6px', textAlign: 'center', color: '#64748b', fontWeight: 600 }}>
-                              {idx + 1}
+                              {displayIdx}
                             </td>
 
                             <td style={{ padding: '8px 10px' }}>
@@ -607,7 +635,7 @@ export default function DailySoldReportModal({
                               <span 
                                 className="mono" 
                                 style={{ 
-                                  fontWeight: 800, 
+                                   fontWeight: 800, 
                                   fontSize: '12.5px',
                                   color: isOutOfStock ? '#e11d48' : (isLowStock ? '#d97706' : '#059669') 
                                 }}
@@ -681,6 +709,80 @@ export default function DailySoldReportModal({
                       </tr>
                     </tfoot>
                   </table>
+
+                  {/* Pagination Bar (Hidden during print) */}
+                  {items.length > 0 && !isPrinting && (
+                    <div className="no-print" style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '10px 14px',
+                      background: '#f8fafc',
+                      borderTop: '1px solid #e2e8f0',
+                      flexWrap: 'wrap',
+                      gap: '10px',
+                      borderRadius: '0 0 8px 8px'
+                    }}>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>
+                        Showing <strong>{reportPageSize === 'ALL' ? 1 : (reportPage - 1) * reportPageSize + 1}</strong> to <strong>{reportPageSize === 'ALL' ? items.length : Math.min(reportPage * reportPageSize, items.length)}</strong> of <strong>{items.length}</strong> dispensed medicines
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '11.5px', color: '#64748b' }}>Rows:</span>
+                          <select
+                            value={reportPageSize}
+                            onChange={(e) => {
+                              const val = e.target.value === 'ALL' ? 'ALL' : Number(e.target.value);
+                              setReportPageSize(val);
+                              setReportPage(1);
+                            }}
+                            style={{
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              background: '#ffffff'
+                            }}
+                          >
+                            <option value={15}>15</option>
+                            <option value={25}>25</option>
+                            <option value={50}>50</option>
+                            <option value="ALL">All ({items.length})</option>
+                          </select>
+                        </div>
+
+                        {reportPageSize !== 'ALL' && totalPages > 1 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <button
+                              type="button"
+                              disabled={reportPage <= 1}
+                              onClick={() => setReportPage(p => Math.max(1, p - 1))}
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: '3px 8px', fontSize: '11.5px', opacity: reportPage <= 1 ? 0.4 : 1, display: 'flex', alignItems: 'center', gap: '2px' }}
+                            >
+                              <ChevronLeft size={13} /> Prev
+                            </button>
+
+                            <span style={{ fontSize: '12px', fontWeight: 800, padding: '0 6px', color: '#0f172a' }}>
+                              {reportPage} / {totalPages}
+                            </span>
+
+                            <button
+                              type="button"
+                              disabled={reportPage >= totalPages}
+                              onClick={() => setReportPage(p => Math.min(totalPages, p + 1))}
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: '3px 8px', fontSize: '11.5px', opacity: reportPage >= totalPages ? 0.4 : 1, display: 'flex', alignItems: 'center', gap: '2px' }}
+                            >
+                              Next <ChevronRight size={13} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

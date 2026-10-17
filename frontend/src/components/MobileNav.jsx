@@ -7,6 +7,7 @@ import {
   FileText, 
   Menu
 } from 'lucide-react';
+import '../utils/styles/MobileNav.css';
 
 export default function MobileNav({ 
   activeTab, 

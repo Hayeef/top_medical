@@ -1,0 +1,22 @@
+/* =========================================================================
+   Sidebar.css - External Stylesheet
+   ========================================================================= */
+
+.sidebar-container {
+  width: 260px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  z-index: 150;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1024px) {
+  .sidebar-container.desktop-sidebar {
+    display: none;
+  }
+}

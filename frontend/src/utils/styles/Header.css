@@ -1,0 +1,22 @@
+/* =========================================================================
+   Header.css - External Stylesheet
+   ========================================================================= */
+
+.header-container {
+  height: 64px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+@media (max-width: 768px) {
+  .header-container {
+    padding: 0 14px;
+  }
+}

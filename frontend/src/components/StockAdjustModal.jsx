@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Sliders, AlertCircle, Save } from 'lucide-react';
 import { inventoryAPI } from '../api';
+import '../utils/styles/StockAdjustModal.css';
 
 export default function StockAdjustModal({ batch, onClose, onAdjusted }) {
   const [packDelta, setPackDelta] = useState(0);

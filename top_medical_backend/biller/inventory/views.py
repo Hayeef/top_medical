@@ -203,6 +203,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
 
         if medicine:
             created_med = False
+            medicine.dosage_form = dosage_form
             medicine.requires_prescription = requires_prescription
             if generic_name:
                 medicine.generic_name = generic_name
@@ -578,8 +579,8 @@ class MedicineViewSet(viewsets.ModelViewSet):
             if raw_gst is not None and str(raw_gst).strip():
                 gst_val = float(str(raw_gst).replace('%', '').strip())
             else:
-                name_upper = med_name.upper()
-                hsn_upper = str(hsn_cd).strip()
+                name_upper = name.upper()
+                hsn_upper = str(hsn).strip()
                 is_cosm = hsn_upper.startswith(('33', '34', '9619', '8212')) or any(k in name_upper for k in ['FACE WASH', 'SOAP', 'SHAMPOO', 'SUNSCREEN', 'HAIR OIL', 'TOOTHPASTE', 'DEODORANT', 'BODY WASH', 'LIP BALM', 'COLGATE', 'GILLETTE', 'CETAPHIL'])
                 gst_val = 18.0 if is_cosm else 5.0
         except Exception:
@@ -653,6 +654,16 @@ class MedicineViewSet(viewsets.ModelViewSet):
 
             if medicine:
                 existing_updated_count += 1
+                # Update dosage_form and category to reflect user edits in preview / import
+                if dosage_form and str(dosage_form).strip():
+                    medicine.dosage_form = str(dosage_form).strip()
+                cat_val = item.get('category')
+                if cat_val is not None:
+                    cat_name = str(cat_val).strip()
+                    if cat_name in ['General / Auto-Category', 'Auto-Category', '', 'None']:
+                        cat_name = 'General'
+                    cat_obj, _ = Category.objects.get_or_create(name=cat_name)
+                    medicine.category = cat_obj
                 # Update auxiliary fields if currently blank or generic placeholder
                 if item.get('generic_name') and not medicine.generic_name:
                     medicine.generic_name = item.get('generic_name')
@@ -660,10 +671,19 @@ class MedicineViewSet(viewsets.ModelViewSet):
                     medicine.rack_location = item.get('rack_location')
                 if item.get('manufacturer') and (not medicine.manufacturer or medicine.manufacturer in ['Pharma Co', 'Standard Pharma']):
                     medicine.manufacturer = item.get('manufacturer')
+                if item.get('gst_rate') is not None:
+                    try:
+                        medicine.gst_rate = Decimal(str(item.get('gst_rate')))
+                    except Exception:
+                        pass
+                if item.get('hsn_code') and not medicine.hsn_code:
+                    medicine.hsn_code = str(item.get('hsn_code'))
                 medicine.is_active = True
                 medicine.save()
             else:
-                category_name = item.get('category', 'General')
+                category_name = str(item.get('category') or 'General').strip()
+                if category_name in ['General / Auto-Category', 'Auto-Category', '', 'None']:
+                    category_name = 'General'
                 category, _ = Category.objects.get_or_create(name=category_name)
                 medicine = Medicine.objects.create(
                     name=med_name,
@@ -714,6 +734,8 @@ class MedicineViewSet(viewsets.ModelViewSet):
                     batch.batch_number = raw_batch_num
                 if supplier:
                     batch.supplier = supplier
+                if pack_sz > 0:
+                    batch.pack_size = pack_sz
                 batch.save()
             else:
                 # Create initial batch record for brand new medicine
@@ -874,10 +896,29 @@ class BatchViewSet(viewsets.ModelViewSet):
         batch.save()
         batch.refresh_from_db()
 
-        # Update rack location if provided on medicine
-        if 'rack_location' in data and batch.medicine:
-            batch.medicine.rack_location = str(data['rack_location']).strip()
-            batch.medicine.save(update_fields=['rack_location'])
+        # Update medicine fields if provided
+        if batch.medicine:
+            med_updated = False
+            if 'dosage_form' in data and data['dosage_form']:
+                batch.medicine.dosage_form = str(data['dosage_form']).strip()
+                med_updated = True
+            if 'category' in data and data['category']:
+                cat_val = data['category']
+                if str(cat_val).isdigit():
+                    cat_obj = Category.objects.filter(id=int(cat_val)).first()
+                else:
+                    cat_name = str(cat_val).strip()
+                    if cat_name in ['General / Auto-Category', 'Auto-Category', '', 'None']:
+                        cat_name = 'General'
+                    cat_obj, _ = Category.objects.get_or_create(name=cat_name)
+                if cat_obj:
+                    batch.medicine.category = cat_obj
+                    med_updated = True
+            if 'rack_location' in data and data['rack_location'] is not None:
+                batch.medicine.rack_location = str(data['rack_location']).strip()
+                med_updated = True
+            if med_updated:
+                batch.medicine.save()
 
         # If stock quantity changed, log StockMovement
         if pack_delta != 0 or loose_delta != 0:
@@ -1288,9 +1329,19 @@ class BatchViewSet(viewsets.ModelViewSet):
 
             if medicine:
                 existing_medicines_count += 1
+                if dosage_form and str(dosage_form).strip():
+                    medicine.dosage_form = str(dosage_form).strip()
+                cat_val = item.get('category')
+                if cat_val and str(cat_val).strip():
+                    cat_name = str(cat_val).strip()
+                    cat_obj, _ = Category.objects.get_or_create(name=cat_name)
+                    medicine.category = cat_obj
                 if item.get('rack_location') and not medicine.rack_location:
                     medicine.rack_location = item.get('rack_location')
-                    medicine.save()
+                if item.get('manufacturer') and (not medicine.manufacturer or medicine.manufacturer in ['Pharma Co', 'Pharma Standard']):
+                    medicine.manufacturer = item.get('manufacturer')
+                medicine.is_active = True
+                medicine.save()
             else:
                 category_name = item.get('category', 'General Pharmaceuticals')
                 category, _ = Category.objects.get_or_create(name=category_name)

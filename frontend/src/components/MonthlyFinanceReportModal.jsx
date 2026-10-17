@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { dailyFinanceAPI } from '../api';
 import PharmacyLogo from './PharmacyLogo';
+import '../utils/styles/MonthlyFinanceReportModal.css';
 
 export default function MonthlyFinanceReportModal({
   isOpen,

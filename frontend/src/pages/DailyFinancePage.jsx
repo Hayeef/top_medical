@@ -370,19 +370,19 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
   useEffect(() => {
     loadFinanceData();
-    fetchSuppliers();
   }, [selectedMonth, selectedYear, startDate, endDate]);
 
   useEffect(() => {
     loadVendorBills();
   }, [vendorBillsFilter, selectedSupplierFilter]);
 
-  // Initial auto-fetch for today and live supplier refresh when entering
+  // Initial auto-fetch for today when entering
   useEffect(() => {
     const today = getTodayStr();
     triggerAutoFetch(today, false, false);
-    loadVendorBills();
-    fetchSuppliers();
+    if (!suppliers || suppliers.length === 0) {
+      fetchSuppliers();
+    }
   }, []);
 
   // Vendor Bill Credit Days & Due Date Calculation Helper

@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import Category, Supplier, Medicine, Batch, StockMovement
 
 class CategorySerializer(serializers.ModelSerializer):
-    medicines_count = serializers.IntegerField(source='medicines.count', read_only=True)
+    medicines_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Category
@@ -10,7 +10,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 class SupplierSerializer(serializers.ModelSerializer):
-    batches_count = serializers.IntegerField(source='batches.count', read_only=True)
+    batches_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Supplier
@@ -66,6 +66,24 @@ class MedicineSerializer(serializers.ModelSerializer):
             'requires_prescription', 'gst_rate', 'is_active', 
             'total_stock_packs', 'total_loose_units', 'has_low_stock', 
             'batches', 'created_at', 'updated_at'
+        ]
+
+
+class MedicineListSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    total_stock_packs = serializers.ReadOnlyField()
+    total_loose_units = serializers.ReadOnlyField()
+    has_low_stock = serializers.ReadOnlyField()
+
+    class Meta:
+        model = Medicine
+        fields = [
+            'id', 'name', 'generic_name', 'category', 'category_name', 
+            'dosage_form', 'strength', 'manufacturer', 'hsn_code', 
+            'barcode', 'rack_location', 'min_stock_alert', 
+            'requires_prescription', 'gst_rate', 'is_active', 
+            'total_stock_packs', 'total_loose_units', 'has_low_stock', 
+            'created_at', 'updated_at'
         ]
 
 

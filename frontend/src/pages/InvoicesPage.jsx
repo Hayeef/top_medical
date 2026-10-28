@@ -18,9 +18,11 @@ import {
   Tag,
   Percent,
   FileSpreadsheet,
-  Download
+  Download,
+  Trash2,
+  RefreshCw
 } from 'lucide-react';
-import { billingAPI } from '../api';
+import { billingAPI, clearApiCache } from '../api';
 import UpdateDiscountModal from '../components/UpdateDiscountModal';
 import BillsExcelExportModal from '../components/BillsExcelExportModal';
 import '../utils/styles/InvoicesPage.css';
@@ -111,28 +113,23 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
 
   const currency = profile?.currency_symbol || '₹';
 
-  const loadInvoicesAndStaff = async () => {
+  const loadInvoicesAndStaff = async (bypassCache = false) => {
     setLoading(true);
     try {
-      const [invData, staffData] = await Promise.allSettled([
-        (async () => {
-          const params = new URLSearchParams();
-          if (search) params.append('search', search);
-          if (staffFilter) params.append('staff_code', staffFilter);
-          if (statusFilter) params.append('status', statusFilter);
-          if (paymentFilter) params.append('payment_method', paymentFilter);
-          if (startDate) params.append('start_date', startDate);
-          if (endDate) params.append('end_date', endDate);
-          return await billingAPI.getInvoices(params.toString());
-        })(),
-        billingAPI.getStaff()
-      ]);
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (staffFilter) params.append('staff_code', staffFilter);
+      if (statusFilter) params.append('status', statusFilter);
+      if (paymentFilter) params.append('payment_method', paymentFilter);
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
 
-      if (invData.status === 'fulfilled') {
-        setInvoices(invData.value?.results || invData.value || []);
-      }
-      if (staffData.status === 'fulfilled') {
-        setStaffList(staffData.value?.results || staffData.value || []);
+      const invData = await billingAPI.getInvoices(params.toString(), { bypassCache });
+      setInvoices(invData?.results || invData || []);
+
+      if ((!staffList || staffList.length === 0) && (!propStaffList || propStaffList.length === 0)) {
+        const staffData = await billingAPI.getStaff();
+        setStaffList(staffData?.results || staffData || []);
       }
     } catch (err) {
       console.error('Failed to load invoices:', err);
@@ -163,6 +160,24 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
       loadInvoicesAndStaff();
     } catch (err) {
       alert(`Failed to cancel invoice: ${err.message}`);
+    }
+  };
+
+  const handleDeleteInvoice = async (invoiceId, invNum, isCancelled) => {
+    const confirmText = isCancelled
+      ? `Are you sure you want to permanently DELETE Bill #${invNum} from the database? This cannot be undone.`
+      : `Are you sure you want to permanently DELETE Bill #${invNum}? Stock will be restored to inventory and the bill will be permanently removed from the database.`;
+
+    if (!window.confirm(confirmText)) {
+      return;
+    }
+    try {
+      await billingAPI.deleteInvoice(invoiceId);
+      setInvoices(prev => prev.filter(inv => inv.id !== invoiceId));
+      alert(`Bill #${invNum} successfully deleted from the database.`);
+      loadInvoicesAndStaff();
+    } catch (err) {
+      alert(`Failed to delete invoice: ${err.message}`);
     }
   };
 
@@ -490,8 +505,22 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
             <option value="CREDIT">Credit / Due</option>
           </select>
 
-          <button onClick={loadInvoicesAndStaff} className="btn btn-primary btn-sm" style={{ height: '38px', padding: '0 14px' }}>
+          <button onClick={() => loadInvoicesAndStaff(false)} className="btn btn-primary btn-sm" style={{ height: '38px', padding: '0 14px' }}>
             Search
+          </button>
+
+          <button 
+            type="button" 
+            onClick={() => {
+              clearApiCache('invoices');
+              loadInvoicesAndStaff(true);
+            }} 
+            className="btn btn-secondary btn-sm" 
+            style={{ height: '38px', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+            title="Reload bills from server"
+          >
+            <RefreshCw size={14} className={loading ? 'spin' : ''} />
+            <span>Refresh</span>
           </button>
         </div>
 
@@ -769,13 +798,22 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
                             {!isCancelled && (
                               <button
                                 onClick={() => handleCancelInvoice(inv.id, inv.invoice_number)}
-                                className="btn btn-danger btn-sm"
+                                className="btn btn-secondary btn-sm"
                                 title="Cancel Invoice & Restore Stock"
-                                style={{ padding: '4px 6px' }}
+                                style={{ padding: '4px 6px', color: '#e11d48', borderColor: '#fecdd3' }}
                               >
                                 <XCircle size={13} />
                               </button>
                             )}
+
+                            <button
+                              onClick={() => handleDeleteInvoice(inv.id, inv.invoice_number, isCancelled)}
+                              className="btn btn-danger btn-sm"
+                              title={isCancelled ? "Permanently Delete Cancelled Bill" : "Permanently Delete Bill from Database"}
+                              style={{ padding: '4px 6px' }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
                           </div>
                         </td>
                       </tr>

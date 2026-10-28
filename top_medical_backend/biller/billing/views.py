@@ -81,21 +81,21 @@ class PharmacyProfileViewSet(viewsets.ViewSet):
 
 
 class StaffMemberViewSet(viewsets.ModelViewSet):
-    queryset = StaffMember.objects.all()
+    queryset = StaffMember.objects.all().annotate(invoices_count=Count('invoices'))
     serializer_class = StaffMemberSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'charge_code', 'role', 'phone']
 
 
 class DoctorViewSet(viewsets.ModelViewSet):
-    queryset = Doctor.objects.all()
+    queryset = Doctor.objects.all().annotate(invoices_count=Count('invoices'))
     serializer_class = DoctorSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'specialization', 'registration_number', 'hospital_name', 'phone']
 
 
 class CustomerViewSet(viewsets.ModelViewSet):
-    queryset = Customer.objects.all().select_related('preferred_doctor')
+    queryset = Customer.objects.all().select_related('preferred_doctor').annotate(invoices_count=Count('invoices'))
     serializer_class = CustomerSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'phone', 'email', 'address']
@@ -170,11 +170,11 @@ def apply_invoice_search(qs, search_text):
 
 
 class InvoiceViewSet(viewsets.ModelViewSet):
-    queryset = Invoice.objects.all().select_related('customer', 'doctor', 'staff').prefetch_related('items')
+    queryset = Invoice.objects.all().select_related('customer', 'doctor', 'staff').prefetch_related('items__medicine__category', 'items__batch')
     serializer_class = InvoiceSerializer
 
     def get_queryset(self):
-        qs = Invoice.objects.all().select_related('customer', 'doctor', 'staff').prefetch_related('items')
+        qs = Invoice.objects.all().select_related('customer', 'doctor', 'staff').prefetch_related('items__medicine__category', 'items__batch')
         start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
         status_param = self.request.query_params.get('status')
@@ -430,6 +430,44 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         invoice.save()
 
         return Response({"message": f"Invoice {invoice.invoice_number} cancelled and stock successfully restored."})
+
+    @transaction.atomic
+    def destroy(self, request, *args, **kwargs):
+        """
+        Permanently delete an invoice and its line items from the database.
+        If the bill was active (not CANCELLED), restores stock to respective batches first.
+        Cleans up associated StockMovement records.
+        """
+        invoice = self.get_object()
+        inv_number = invoice.invoice_number
+
+        # If not already cancelled, restore items back to inventory batches
+        if invoice.payment_status not in ['CANCELLED', 'REFUNDED']:
+            for item in invoice.items.all():
+                batch = item.batch
+                if not item.is_loose:
+                    batch.pack_quantity += item.quantity
+                else:
+                    total_units = (batch.pack_quantity * batch.pack_size) + batch.loose_quantity + item.quantity
+                    batch.pack_quantity = total_units // batch.pack_size
+                    batch.loose_quantity = total_units % batch.pack_size
+                batch.save()
+
+            if invoice.customer and (invoice.payment_method == 'CREDIT' or invoice.payment_status == 'DUE'):
+                due_amount = invoice.grand_total - invoice.amount_paid
+                invoice.customer.credit_balance = max(Decimal('0.00'), invoice.customer.credit_balance - due_amount)
+                invoice.customer.save()
+
+        # Delete any associated StockMovements for this invoice
+        StockMovement.objects.filter(reference_id=inv_number).delete()
+
+        # Delete the invoice (cascade deletes InvoiceItem)
+        invoice.delete()
+
+        return Response(
+            {"message": f"Bill #{inv_number} permanently deleted from database."},
+            status=status.HTTP_200_OK
+        )
 
     @action(detail=True, methods=['post', 'patch'], url_path='update_discount')
     @transaction.atomic
@@ -1161,7 +1199,7 @@ class DailyFinanceRecordViewSet(viewsets.ModelViewSet):
 
 
 class VendorBillViewSet(viewsets.ModelViewSet):
-    queryset = VendorBill.objects.all()
+    queryset = VendorBill.objects.all().select_related('created_by', 'supplier')
     serializer_class = VendorBillSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['supplier_name', 'bill_number', 'supplier_phone', 'supplier_gstin', 'notes']
@@ -1169,7 +1207,7 @@ class VendorBillViewSet(viewsets.ModelViewSet):
     ordering = ['due_date', '-bill_date']
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().select_related('created_by', 'supplier')
         supplier_id = self.request.query_params.get('supplier')
         supplier_name = self.request.query_params.get('supplier_name')
         status_filter = self.request.query_params.get('status')

@@ -553,63 +553,26 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
               </table>
 
               {/* Totals & Net Amount */}
-              <div style={{ borderTop: '1.5px solid #000000', paddingTop: '6px', fontSize: '12px', fontWeight: 700, display: 'flex', flexDirection: 'column', gap: '2px', color: '#000000' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Gross Subtotal (MRP):</span>
-                  <span style={{ fontWeight: 800 }}>{currency}{parseFloat(invoice.subtotal || invoice.grand_total || 0).toFixed(2)}</span>
-                </div>
-
-                {parseFloat(invoice.discount_amount || 0) > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800 }}>
-                    <span>Discount ({invoice.discount_type === 'PERCENT' ? `${invoice.discount_value}%` : 'Flat'}):</span>
-                    <span>-{currency}{parseFloat(invoice.discount_amount || 0).toFixed(2)}</span>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+              <div style={{ borderTop: '1.5px solid #000000', paddingTop: '6px', fontSize: '12px', fontWeight: 700, display: 'flex', flexDirection: 'column', gap: '3px', color: '#000000' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                   <span>Taxable Base Value:</span>
-                  <span>{currency}{totalTaxable.toFixed(2)}</span>
+                  <span>{currency}{(totalTaxable > 0 ? totalTaxable : Math.max(0, parseFloat(invoice.grand_total || 0) - parseFloat(invoice.tax_amount || 0))).toFixed(2)}</span>
                 </div>
 
-                {tax5Amt > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
-                    <span>• GST 5% (Tablets):</span>
-                    <span>{currency}{tax5Amt.toFixed(2)} (on {currency}{tax5Base.toFixed(2)})</span>
-                  </div>
-                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px' }}>
+                  <span>CGST Amount:</span>
+                  <span>{currency}{parseFloat(invoice.cgst_amount || (invoice.tax_amount / 2) || 0).toFixed(2)}</span>
+                </div>
 
-                {tax18Amt > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
-                    <span>• GST 18% (Cosmetics):</span>
-                    <span>{currency}{tax18Amt.toFixed(2)} (on {currency}{tax18Base.toFixed(2)})</span>
-                  </div>
-                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px' }}>
+                  <span>SGST Amount:</span>
+                  <span>{currency}{parseFloat(invoice.sgst_amount || (invoice.tax_amount / 2) || 0).toFixed(2)}</span>
+                </div>
 
-                {tax0Base > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
-                    <span>• GST 0% (Candies):</span>
-                    <span>{currency}0.00 (on {currency}{tax0Base.toFixed(2)})</span>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', fontWeight: 800 }}>
-                  <span>Total GST in MRP:</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 800 }}>
+                  <span>Total GST Amount:</span>
                   <span>{currency}{parseFloat(invoice.tax_amount || 0).toFixed(2)}</span>
                 </div>
-
-                {parseFloat(invoice.tax_amount || 0) > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: '#000000', fontWeight: 700, paddingLeft: '8px' }}>
-                    <span>- CGST: {currency}{parseFloat(invoice.cgst_amount || (invoice.tax_amount / 2)).toFixed(2)}</span>
-                    <span>- SGST: {currency}{parseFloat(invoice.sgst_amount || (invoice.tax_amount / 2)).toFixed(2)}</span>
-                  </div>
-                )}
-
-                {parseFloat(invoice.round_off || 0) !== 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
-                    <span>Round Off:</span>
-                    <span>{parseFloat(invoice.round_off || 0) > 0 ? `+${invoice.round_off}` : invoice.round_off}</span>
-                  </div>
-                )}
 
                 {/* Heavy High-Contrast Net Total Box */}
                 <div style={{
@@ -869,30 +832,22 @@ export default function ReceiptModal({ invoice: initialInvoice, profile, onClose
                 </div>
 
                 <div style={{ fontSize: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
-                    <span>Gross Subtotal (MRP):</span>
-                    <span style={{ fontWeight: 700 }}>{currency}{parseFloat(invoice.subtotal || invoice.grand_total || 0).toFixed(2)}</span>
-                  </div>
-                  {parseFloat(invoice.discount_amount || 0) > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#dc2626', fontWeight: 700 }}>
-                      <span>Discount ({invoice.discount_type === 'PERCENT' ? `${invoice.discount_value}%` : 'Flat'}):</span>
-                      <span>-{currency}{parseFloat(invoice.discount_amount || 0).toFixed(2)}</span>
-                    </div>
-                  )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#475569' }}>
                     <span>Taxable Base Value:</span>
-                    <span style={{ fontWeight: 700 }}>{currency}{totalTaxable.toFixed(2)}</span>
+                    <span style={{ fontWeight: 700 }}>{currency}{(totalTaxable > 0 ? totalTaxable : Math.max(0, parseFloat(invoice.grand_total || 0) - parseFloat(invoice.tax_amount || 0))).toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#475569' }}>
+                    <span>CGST Amount:</span>
+                    <span style={{ fontWeight: 700 }}>{currency}{parseFloat(invoice.cgst_amount || (invoice.tax_amount / 2) || 0).toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#475569' }}>
+                    <span>SGST Amount:</span>
+                    <span style={{ fontWeight: 700 }}>{currency}{parseFloat(invoice.sgst_amount || (invoice.tax_amount / 2) || 0).toFixed(2)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#0284c7', fontWeight: 700 }}>
-                    <span>Total GST Included in MRP:</span>
+                    <span>Total GST Amount:</span>
                     <span style={{ fontWeight: 800 }}>{currency}{parseFloat(invoice.tax_amount || 0).toFixed(2)}</span>
                   </div>
-                  {parseFloat(invoice.round_off || 0) !== 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', color: '#64748b' }}>
-                      <span>Round Off:</span>
-                      <span>{invoice.round_off}</span>
-                    </div>
-                  )}
                   <div style={{
                     display: 'flex',
                     justifyContent: 'space-between',

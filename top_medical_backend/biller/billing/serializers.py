@@ -10,16 +10,28 @@ class PharmacyProfileSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class StaffMemberSimpleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StaffMember
+        fields = ['id', 'name', 'charge_code', 'role', 'phone']
+
+
 class StaffMemberSerializer(serializers.ModelSerializer):
-    invoices_count = serializers.IntegerField(source='invoices.count', read_only=True)
+    invoices_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = StaffMember
         fields = ['id', 'name', 'charge_code', 'role', 'phone', 'is_active', 'invoices_count', 'created_at']
 
 
+class DoctorSimpleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Doctor
+        fields = ['id', 'name', 'specialization', 'registration_number', 'phone']
+
+
 class DoctorSerializer(serializers.ModelSerializer):
-    invoices_count = serializers.IntegerField(source='invoices.count', read_only=True)
+    invoices_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Doctor
@@ -29,9 +41,15 @@ class DoctorSerializer(serializers.ModelSerializer):
         ]
 
 
+class CustomerSimpleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Customer
+        fields = ['id', 'name', 'phone', 'email', 'address', 'credit_balance']
+
+
 class CustomerSerializer(serializers.ModelSerializer):
-    invoices_count = serializers.IntegerField(source='invoices.count', read_only=True)
-    preferred_doctor_name = serializers.CharField(source='preferred_doctor.name', read_only=True)
+    invoices_count = serializers.IntegerField(read_only=True, default=0)
+    preferred_doctor_name = serializers.CharField(source='preferred_doctor.name', read_only=True, default='')
 
     class Meta:
         model = Customer
@@ -57,13 +75,19 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
         ]
 
     def get_dosage_form(self, obj):
-        if obj.medicine and obj.medicine.dosage_form:
-            return obj.medicine.dosage_form
+        try:
+            if obj.medicine_id and obj.medicine:
+                return obj.medicine.dosage_form or ''
+        except Exception:
+            pass
         return ''
 
     def get_category_name(self, obj):
-        if obj.medicine and obj.medicine.category:
-            return obj.medicine.category.name
+        try:
+            if obj.medicine_id and obj.medicine and obj.medicine.category_id:
+                return obj.medicine.category.name or ''
+        except Exception:
+            pass
         return ''
 
 
@@ -176,9 +200,9 @@ def resolve_canonical_gst_rate(medicine, raw_gst=None):
 class InvoiceSerializer(serializers.ModelSerializer):
     items = InvoiceItemSerializer(many=True, read_only=True)
     items_data = InvoiceItemCreateSerializer(many=True, write_only=True, required=False)
-    customer_details = CustomerSerializer(source='customer', read_only=True)
-    doctor_details = DoctorSerializer(source='doctor', read_only=True)
-    staff_details = StaffMemberSerializer(source='staff', read_only=True)
+    customer_details = CustomerSimpleSerializer(source='customer', read_only=True)
+    doctor_details = DoctorSimpleSerializer(source='doctor', read_only=True)
+    staff_details = StaffMemberSimpleSerializer(source='staff', read_only=True)
 
     class Meta:
         model = Invoice

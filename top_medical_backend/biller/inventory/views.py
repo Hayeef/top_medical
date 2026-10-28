@@ -2,40 +2,63 @@ import re
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 from django.db import transaction
-from django.db.models import Q, F, Sum
+from django.db.models import Q, F, Sum, Count
 from datetime import date, timedelta, datetime
 from decimal import Decimal
 from .models import Category, Supplier, Medicine, Batch, StockMovement
 from .serializers import (
     CategorySerializer, SupplierSerializer, MedicineSerializer, 
-    BatchSerializer, StockMovementSerializer
+    MedicineListSerializer, BatchSerializer, StockMovementSerializer
 )
 from .bill_parser import extract_supplier_invoice
 from .medicine_matcher import find_existing_medicine
 
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 50
+    page_size_query_param = 'limit'
+    max_page_size = 500
+
+    def paginate_queryset(self, queryset, request, view=None):
+        # Support fetching all without pagination if explicitly requested via ?all=true or ?limit=all
+        if request.query_params.get('all') == 'true' or request.query_params.get('limit') == 'all':
+            return None
+        return super().paginate_queryset(queryset, request, view=view)
+
+
 class CategoryViewSet(viewsets.ModelViewSet):
-    queryset = Category.objects.all()
+    queryset = Category.objects.all().annotate(medicines_count=Count('medicines'))
     serializer_class = CategorySerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'description']
 
 
 class SupplierViewSet(viewsets.ModelViewSet):
-    queryset = Supplier.objects.all()
+    queryset = Supplier.objects.all().annotate(batches_count=Count('batches'))
     serializer_class = SupplierSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'contact_person', 'phone', 'email', 'gstin']
 
 
 class MedicineViewSet(viewsets.ModelViewSet):
-    queryset = Medicine.objects.all().select_related('category').prefetch_related('batches__supplier')
+    queryset = Medicine.objects.all().select_related('category').prefetch_related('batches')
     serializer_class = MedicineSerializer
+    pagination_class = StandardResultsSetPagination
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'generic_name', 'manufacturer', 'barcode', 'rack_location', 'hsn_code']
 
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return MedicineListSerializer
+        return MedicineSerializer
+
     def get_queryset(self):
-        qs = Medicine.objects.all().select_related('category').prefetch_related('batches__supplier')
+        if self.action == 'list':
+            qs = Medicine.objects.all().select_related('category').prefetch_related('batches')
+        else:
+            qs = Medicine.objects.all().select_related('category').prefetch_related('batches__supplier')
         category = self.request.query_params.get('category')
         prescription = self.request.query_params.get('prescription')
         low_stock = self.request.query_params.get('low_stock')

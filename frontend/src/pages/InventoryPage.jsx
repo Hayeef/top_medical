@@ -121,6 +121,29 @@ export default function InventoryPage({
   const safeCategories = useMemo(() => (Array.isArray(categories) ? categories : []), [categories]);
   const safeSuppliers = useMemo(() => (Array.isArray(suppliers) ? suppliers : []), [suppliers]);
 
+  // On-demand lazy loaded drug catalog state
+  const [catalogMedicines, setCatalogMedicines] = useState(safeMedicines);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
+
+  useEffect(() => {
+    if (safeMedicines && safeMedicines.length > 0) {
+      setCatalogMedicines(safeMedicines);
+    }
+  }, [safeMedicines]);
+
+  useEffect(() => {
+    if (viewMode === 'catalog' && (!catalogMedicines || catalogMedicines.length === 0)) {
+      setLoadingCatalog(true);
+      inventoryAPI.getMedicines({ all: 'true' })
+        .then(res => {
+          const list = res?.results || res || [];
+          setCatalogMedicines(list);
+        })
+        .catch(err => console.error('Failed to load catalog medicines:', err))
+        .finally(() => setLoadingCatalog(false));
+    }
+  }, [viewMode, catalogMedicines]);
+
   // Trigger search on button click or Enter key
   const handleSearchSubmit = (e) => {
     if (e) e.preventDefault();
@@ -568,8 +591,9 @@ export default function InventoryPage({
 
   // Grouped Drug Catalog Filtered List
   const filteredCatalogMedicines = useMemo(() => {
+    const activeList = (catalogMedicines && catalogMedicines.length > 0) ? catalogMedicines : safeMedicines;
     const q = (activeSearch || searchInput).toLowerCase().trim();
-    return safeMedicines.filter(med => {
+    return activeList.filter(med => {
       const matchesSearch = !q || 
         med.name?.toLowerCase().includes(q) ||
         med.generic_name?.toLowerCase().includes(q) ||
@@ -582,7 +606,7 @@ export default function InventoryPage({
 
       return matchesSearch && matchesCategory && matchesRx;
     });
-  }, [safeMedicines, activeSearch, searchInput, selectedCategory, filterRx]);
+  }, [catalogMedicines, safeMedicines, activeSearch, searchInput, selectedCategory, filterRx]);
 
   // Auto-reset pagination to page 1 whenever search, categories, suppliers, or filters change
   useEffect(() => {
@@ -2283,77 +2307,87 @@ export default function InventoryPage({
                                   Active Batches for {med.name}
                                 </div>
 
-                                {(!med.batches || med.batches.length === 0) ? (
-                                  <div style={{ fontSize: '12px', color: '#64748b', padding: '8px 0' }}>
-                                    No batches recorded yet.
-                                  </div>
-                                ) : (
-                                  <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                                    <thead>
-                                      <tr style={{ color: '#64748b', borderBottom: '1px solid #e2e8f0', textAlign: 'left', fontSize: '11px' }}>
-                                        <th style={{ padding: '6px' }}>Batch No</th>
-                                        <th style={{ padding: '6px' }}>Expiry Date</th>
-                                        <th style={{ padding: '6px' }}>Supplier</th>
-                                        {isAdmin && <th style={{ padding: '6px', textAlign: 'right' }}>Cost Price</th>}
-                                        <th style={{ padding: '6px', textAlign: 'right' }}>MRP</th>
-                                        <th style={{ padding: '6px', textAlign: 'right' }}>Selling Price</th>
-                                        <th style={{ padding: '6px', textAlign: 'center' }}>In Stock</th>
-                                        {isAdmin && <th style={{ padding: '6px', textAlign: 'right' }}>Audit</th>}
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {med.batches.map((batch) => (
-                                        <tr key={batch.id} style={{ borderBottom: '1px dotted #e2e8f0' }}>
-                                          <td style={{ padding: '8px 6px', fontWeight: 700 }} className="mono">
-                                            {batch.batch_number}
-                                          </td>
-                                          <td style={{ padding: '8px 6px' }}>
-                                            <span style={{
-                                              color: batch.is_expired ? '#e11d48' : (batch.is_near_expiry ? '#d97706' : '#059669'),
-                                              fontWeight: 700
-                                            }}>
-                                              {batch.expiry_date} {batch.is_expired && '(Expired)'}
-                                            </span>
-                                          </td>
-                                          <td style={{ padding: '8px 6px', color: '#475569' }}>
-                                            {batch.supplier_name || 'Direct Wholesale'}
-                                          </td>
-                                          {isAdmin && (
-                                            <td style={{ padding: '8px 6px', textAlign: 'right' }} className="mono">
-                                              {currency}{parseFloat(batch.purchase_price).toFixed(2)}
-                                            </td>
-                                          )}
-                                          <td style={{ padding: '8px 6px', textAlign: 'right' }} className="mono">
-                                            {currency}{parseFloat(batch.mrp).toFixed(2)}
-                                          </td>
-                                          <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, color: '#059669' }} className="mono">
-                                            {currency}{parseFloat(batch.selling_price).toFixed(2)}
-                                          </td>
-                                          <td style={{ padding: '8px 6px', textAlign: 'center' }}>
-                                            <span className="mono" style={{ fontWeight: 800, color: batch.pack_quantity === 0 ? '#e11d48' : '#0f172a' }}>
-                                              {batch.pack_quantity}p ({batch.loose_quantity}u)
-                                            </span>
-                                          </td>
-                                          {isAdmin && (
-                                            <td style={{ padding: '8px 6px', textAlign: 'right' }}>
-                                              <button
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  onOpenStockAdjust(batch);
-                                                }}
-                                                className="btn btn-secondary btn-sm"
-                                                style={{ fontSize: '11px', padding: '2px 8px' }}
-                                                title="Adjust stock quantity"
-                                              >
-                                                <Sliders size={12} /> Adjust
-                                              </button>
-                                            </td>
-                                          )}
+                                {(() => {
+                                  const medBatches = (med.batches && med.batches.length > 0)
+                                    ? med.batches
+                                    : (allBatches || []).filter(b => b.medicine === med.id || b.medicine_id === med.id);
+
+                                  if (medBatches.length === 0) {
+                                    return (
+                                      <div style={{ fontSize: '12px', color: '#64748b', padding: '8px 0' }}>
+                                        No batches recorded yet.
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                                      <thead>
+                                        <tr style={{ color: '#64748b', borderBottom: '1px solid #e2e8f0', textAlign: 'left', fontSize: '11px' }}>
+                                          <th style={{ padding: '6px' }}>Batch No</th>
+                                          <th style={{ padding: '6px' }}>Expiry Date</th>
+                                          <th style={{ padding: '6px' }}>Supplier</th>
+                                          {isAdmin && <th style={{ padding: '6px', textAlign: 'right' }}>Cost Price</th>}
+                                          <th style={{ padding: '6px', textAlign: 'right' }}>MRP</th>
+                                          <th style={{ padding: '6px', textAlign: 'right' }}>Selling Price</th>
+                                          <th style={{ padding: '6px', textAlign: 'center' }}>In Stock</th>
+                                          {isAdmin && <th style={{ padding: '6px', textAlign: 'right' }}>Audit</th>}
                                         </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                )}
+                                      </thead>
+                                      <tbody>
+                                        {medBatches.map((batch) => (
+                                          <tr key={batch.id} style={{ borderBottom: '1px dotted #e2e8f0' }}>
+                                            <td style={{ padding: '8px 6px', fontWeight: 700 }} className="mono">
+                                              {batch.batch_number}
+                                            </td>
+                                            <td style={{ padding: '8px 6px' }}>
+                                              <span style={{
+                                                color: batch.is_expired ? '#e11d48' : (batch.is_near_expiry ? '#d97706' : '#059669'),
+                                                fontWeight: 700
+                                              }}>
+                                                {batch.expiry_date} {batch.is_expired && '(Expired)'}
+                                              </span>
+                                            </td>
+                                            <td style={{ padding: '8px 6px', color: '#475569' }}>
+                                              {batch.supplier_name || 'Direct Wholesale'}
+                                            </td>
+                                            {isAdmin && (
+                                              <td style={{ padding: '8px 6px', textAlign: 'right' }} className="mono">
+                                                {currency}{parseFloat(batch.purchase_price || 0).toFixed(2)}
+                                              </td>
+                                            )}
+                                            <td style={{ padding: '8px 6px', textAlign: 'right' }} className="mono">
+                                              {currency}{parseFloat(batch.mrp || 0).toFixed(2)}
+                                            </td>
+                                            <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, color: '#059669' }} className="mono">
+                                              {currency}{parseFloat(batch.selling_price || 0).toFixed(2)}
+                                            </td>
+                                            <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                                              <span className="mono" style={{ fontWeight: 800, color: batch.pack_quantity === 0 ? '#e11d48' : '#0f172a' }}>
+                                                {batch.pack_quantity}p ({batch.loose_quantity}u)
+                                              </span>
+                                            </td>
+                                            {isAdmin && (
+                                              <td style={{ padding: '8px 6px', textAlign: 'right' }}>
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onOpenStockAdjust(batch);
+                                                  }}
+                                                  className="btn btn-secondary btn-sm"
+                                                  style={{ fontSize: '11px', padding: '2px 8px' }}
+                                                  title="Adjust stock quantity"
+                                                >
+                                                  <Sliders size={12} /> Adjust
+                                                </button>
+                                              </td>
+                                            )}
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  );
+                                })()}
                               </div>
                             </td>
                           </tr>

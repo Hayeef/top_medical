@@ -1,9 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, PackagePlus, AlertCircle, Save, Calendar, DollarSign } from 'lucide-react';
 import { inventoryAPI } from '../api';
 import '../utils/styles/AddBatchModal.css';
 
-export default function AddBatchModal({ medicines, suppliers, defaultMedicineId, onClose, onCreated }) {
+export default function AddBatchModal({ medicines = [], suppliers = [], defaultMedicineId, onClose, onCreated }) {
+  const [medList, setMedList] = useState(medicines);
+  const [loadingMeds, setLoadingMeds] = useState(false);
+  const [medFilter, setMedFilter] = useState('');
+
   const [formData, setFormData] = useState({
     medicine: defaultMedicineId || (medicines[0]?.id || ''),
     supplier: suppliers[0]?.id || '',
@@ -17,6 +21,37 @@ export default function AddBatchModal({ medicines, suppliers, defaultMedicineId,
     pack_quantity: 10,
     loose_quantity: 0,
   });
+
+  useEffect(() => {
+    if (Array.isArray(medicines) && medicines.length > 0) {
+      setMedList(medicines);
+      if (!formData.medicine && !defaultMedicineId) {
+        setFormData(prev => ({ ...prev, medicine: medicines[0]?.id || '' }));
+      }
+    } else {
+      setLoadingMeds(true);
+      inventoryAPI.getMedicines({ all: 'true' })
+        .then(res => {
+          const list = res?.results || res || [];
+          setMedList(list);
+          if (!formData.medicine && !defaultMedicineId && list.length > 0) {
+            setFormData(prev => ({ ...prev, medicine: list[0]?.id || '' }));
+          }
+        })
+        .catch(err => console.error('Failed to load medicines on demand in AddBatchModal:', err))
+        .finally(() => setLoadingMeds(false));
+    }
+  }, [medicines, defaultMedicineId]);
+
+  const filteredMeds = useMemo(() => {
+    if (!medFilter.trim()) return medList;
+    const q = medFilter.toLowerCase();
+    return medList.filter(m => 
+      m.name?.toLowerCase().includes(q) ||
+      m.generic_name?.toLowerCase().includes(q) ||
+      m.rack_location?.toLowerCase().includes(q)
+    );
+  }, [medList, medFilter]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -100,9 +135,28 @@ export default function AddBatchModal({ medicines, suppliers, defaultMedicineId,
 
         <form onSubmit={handleSubmit} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>
-              Select Medicine *
-            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>
+                Select Medicine * {loadingMeds && <span style={{ color: 'var(--primary)', fontSize: '11px' }}>(Loading medicines...)</span>}
+              </label>
+              {medList.length > 5 && (
+                <span style={{ fontSize: '11px', color: '#64748b' }}>
+                  {filteredMeds.length} of {medList.length} drugs
+                </span>
+              )}
+            </div>
+
+            {medList.length > 5 && (
+              <input
+                type="text"
+                placeholder="Type to filter drugs (e.g. Paracetamol, Rack A-1)..."
+                value={medFilter}
+                onChange={(e) => setMedFilter(e.target.value)}
+                className="input-field"
+                style={{ marginBottom: '8px', padding: '6px 12px', fontSize: '12px' }}
+              />
+            )}
+
             <select
               className="input-field"
               required
@@ -110,7 +164,7 @@ export default function AddBatchModal({ medicines, suppliers, defaultMedicineId,
               onChange={(e) => setFormData({ ...formData, medicine: e.target.value })}
             >
               <option value="">-- Choose Medicine --</option>
-              {medicines.map((m) => (
+              {filteredMeds.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name} ({m.dosage_form} - {m.strength || 'Standard'}) {m.rack_location ? `[${m.rack_location}]` : ''}
                 </option>

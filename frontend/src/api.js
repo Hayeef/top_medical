@@ -4,8 +4,51 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (
     : 'https://top-medical-backend.onrender.com/api'
 );
 
+// In-memory cache & in-flight request deduplication for ultra-fast tab switching and 0 duplicate network calls
+const cacheMap = new Map();
+const inFlightRequests = new Map();
+
+export function clearApiCache(urlPrefix = null) {
+  if (!urlPrefix) {
+    cacheMap.clear();
+  } else {
+    for (const key of cacheMap.keys()) {
+      if (key.includes(urlPrefix)) {
+        cacheMap.delete(key);
+      }
+    }
+  }
+}
+
 async function request(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
+  const method = (options.method || 'GET').toUpperCase();
+  const isGet = method === 'GET';
+
+  // Invalidate cache on mutations (POST, PUT, PATCH, DELETE)
+  if (!isGet) {
+    // Invalidate related cache domain
+    const domain = endpoint.split('/')[1] || ''; // e.g. 'billing', 'inventory', 'analytics'
+    if (domain) {
+      clearApiCache(domain);
+    } else {
+      clearApiCache();
+    }
+  }
+
+  // 1. Check TTL Cache for GET requests
+  if (isGet && !options.bypassCache) {
+    const cached = cacheMap.get(url);
+    if (cached && Date.now() < cached.expiresAt) {
+      return JSON.parse(JSON.stringify(cached.data));
+    }
+  }
+
+  // 2. In-flight Request Deduplication for GET requests
+  if (isGet && inFlightRequests.has(url)) {
+    return inFlightRequests.get(url);
+  }
+
   const config = {
     headers: {
       'Content-Type': 'application/json',
@@ -14,28 +57,61 @@ async function request(endpoint, options = {}) {
     ...options,
   };
 
-  try {
-    const response = await fetch(url, config);
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-      throw new Error(
-        typeof errorData === 'object'
-          ? Object.entries(errorData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ')
-          : errorData || 'Request failed'
-      );
+  const fetchPromise = (async () => {
+    try {
+      const response = await fetch(url, config);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+        throw new Error(
+          typeof errorData === 'object'
+            ? Object.entries(errorData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ')
+            : errorData || 'Request failed'
+        );
+      }
+      // Handle 204 No Content
+      if (response.status === 204) return null;
+      const data = await response.json();
+
+      // Store in Cache (15s for dynamic data, 90s for static catalogs/profile/staff/categories/suppliers)
+      if (isGet) {
+        const isStatic = url.includes('/profile/') || url.includes('/staff/') || url.includes('/categories/') || url.includes('/suppliers/') || url.includes('/quick_chocolate_item/');
+        const ttl = isStatic ? 90000 : 25000;
+        cacheMap.set(url, {
+          data,
+          expiresAt: Date.now() + ttl,
+        });
+      }
+
+      return data;
+    } catch (error) {
+      console.error(`API Error on [${method}] ${endpoint}:`, error);
+      throw error;
+    } finally {
+      if (isGet) {
+        inFlightRequests.delete(url);
+      }
     }
-    // Handle 204 No Content
-    if (response.status === 204) return null;
-    return await response.json();
-  } catch (error) {
-    console.error(`API Error on [${options.method || 'GET'}] ${endpoint}:`, error);
-    throw error;
+  })();
+
+  if (isGet) {
+    inFlightRequests.set(url, fetchPromise);
   }
+
+  return fetchPromise;
 }
 
 export const inventoryAPI = {
   // Medicines
-  getMedicines: (params = '') => request(`/inventory/medicines/${params ? `?${params}` : ''}`),
+  getMedicines: (params = '') => {
+    let query = '';
+    if (typeof params === 'string') {
+      query = params ? (params.startsWith('?') ? params : `?${params}`) : '';
+    } else if (typeof params === 'object' && params !== null) {
+      const q = new URLSearchParams(params).toString();
+      query = q ? `?${q}` : '';
+    }
+    return request(`/inventory/medicines/${query}`);
+  },
   searchPOS: (q = '') => request(`/inventory/medicines/pos_search/?q=${encodeURIComponent(q)}`),
   getLowStock: () => request('/inventory/medicines/low_stock/'),
   getMedicine: (id) => request(`/inventory/medicines/${id}/`),
@@ -121,7 +197,7 @@ export const inventoryAPI = {
 
 export const billingAPI = {
   // Invoices
-  getInvoices: (params = '') => request(`/billing/invoices/${params ? `?${params}` : ''}`),
+  getInvoices: (params = '', options = {}) => request(`/billing/invoices/${params ? `?${params}` : ''}`, options),
   getInvoice: (id) => request(`/billing/invoices/${id}/`),
   createInvoice: (data) => request('/billing/invoices/', { method: 'POST', body: JSON.stringify(data) }),
   updateInvoiceDiscount: (id, data) => request(`/billing/invoices/${id}/update_discount/`, {
@@ -129,6 +205,7 @@ export const billingAPI = {
     body: JSON.stringify(data)
   }),
   cancelInvoice: (id) => request(`/billing/invoices/${id}/cancel_invoice/`, { method: 'POST' }),
+  deleteInvoice: (id) => request(`/billing/invoices/${id}/`, { method: 'DELETE' }),
   getNextInvoiceNumber: () => request('/billing/invoices/next_number/'),
   getPaymentSummary: (params = '') => request(`/billing/invoices/payment_summary/${params ? `?${params}` : ''}`),
   exportBillsExcel: async (params = '') => {
@@ -191,7 +268,7 @@ export const analyticsAPI = {
 };
 
 export const dailyFinanceAPI = {
-  getRecords: (params = '') => request(`/billing/daily-finance/${params ? `?${params}` : ''}`),
+  getRecords: (params = '', options = {}) => request(`/billing/daily-finance/${params ? `?${params}` : ''}`, options),
   getRecord: (id) => request(`/billing/daily-finance/${id}/`),
   createRecord: (data) => request('/billing/daily-finance/', { method: 'POST', body: JSON.stringify(data) }),
   updateRecord: (id, data) => request(`/billing/daily-finance/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -199,7 +276,7 @@ export const dailyFinanceAPI = {
   deleteRecord: (id) => request(`/billing/daily-finance/${id}/`, { method: 'DELETE' }),
   autoFetchDay: (date = '') => request(`/billing/daily-finance/auto_fetch_pos_day/${date ? `?date=${encodeURIComponent(date)}` : ''}`),
   recalculateBalances: () => request('/billing/daily-finance/recalculate_balances/', { method: 'POST' }),
-  getSummaryStats: () => request('/billing/daily-finance/summary_stats/'),
+  getSummaryStats: (options = {}) => request('/billing/daily-finance/summary_stats/', options),
   getMonthlyReportSummary: (params = '') => request(`/billing/daily-finance/monthly_report_summary/${params ? `?${params}` : ''}`),
   exportExcel: async (params = '') => {
     const url = `${API_BASE_URL}/billing/daily-finance/export_excel/${params ? `?${params}` : ''}`;
@@ -253,14 +330,14 @@ export const dailyFinanceAPI = {
 };
 
 export const vendorBillsAPI = {
-  getBills: (params = '') => request(`/billing/vendor-bills/${params ? `?${params}` : ''}`),
+  getBills: (params = '', options = {}) => request(`/billing/vendor-bills/${params ? `?${params}` : ''}`, options),
   getBill: (id) => request(`/billing/vendor-bills/${id}/`),
   createBill: (data) => request('/billing/vendor-bills/', { method: 'POST', body: JSON.stringify(data) }),
   updateBill: (id, data) => request(`/billing/vendor-bills/${id}/`, { method: 'PUT', body: JSON.stringify(data) }),
   patchBill: (id, data) => request(`/billing/vendor-bills/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteBill: (id) => request(`/billing/vendor-bills/${id}/`, { method: 'DELETE' }),
   recordPayment: (id, data) => request(`/billing/vendor-bills/${id}/record_payment/`, { method: 'POST', body: JSON.stringify(data) }),
-  getSummary: () => request('/billing/vendor-bills/summary/'),
+  getSummary: (options = {}) => request('/billing/vendor-bills/summary/', options),
 };
 
 

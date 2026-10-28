@@ -23,7 +23,7 @@ import ContactsPage from './pages/ContactsPage';
 import SettingsPage from './pages/SettingsPage';
 
 import ErrorBoundary from './components/ErrorBoundary';
-import { inventoryAPI, billingAPI, analyticsAPI } from './api';
+import { inventoryAPI, billingAPI, analyticsAPI, clearApiCache } from './api';
 
 export default function App() {
   const [authUser, setAuthUser] = useState(() => {
@@ -36,6 +36,17 @@ export default function App() {
   });
 
   const [activeTab, setActiveTab] = useState('pos'); // Default to POS for ultra-fast counter billing
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set(['pos']));
+
+  useEffect(() => {
+    setVisitedTabs(prev => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
+
   const [loading, setLoading] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -101,7 +112,7 @@ export default function App() {
   const [isDailyReportOpen, setIsDailyReportOpen] = useState(false);
   const [receiptInvoice, setReceiptInvoice] = useState(null);
 
-  // Load all pharmacy datasets
+  // Load core pharmacy datasets (Medicines catalog is loaded on-demand to optimize startup speed)
   const loadInitialData = async () => {
     try {
       const [
@@ -109,7 +120,6 @@ export default function App() {
         trendData,
         distData,
         topData,
-        medsData,
         catsData,
         suppsData,
         custsData,
@@ -121,7 +131,6 @@ export default function App() {
         analyticsAPI.getSalesTrend(7),
         analyticsAPI.getCategoryDistribution(),
         analyticsAPI.getTopSelling(),
-        inventoryAPI.getMedicines(),
         inventoryAPI.getCategories(),
         inventoryAPI.getSuppliers(),
         billingAPI.getCustomers(),
@@ -135,7 +144,6 @@ export default function App() {
       if (distData.status === 'fulfilled') setCategoriesDist(distData.value || []);
       if (topData.status === 'fulfilled') setTopSelling(topData.value || []);
       
-      if (medsData.status === 'fulfilled') setMedicines(medsData.value?.results || medsData.value || []);
       if (catsData.status === 'fulfilled') setCategories(catsData.value?.results || catsData.value || []);
       if (suppsData.status === 'fulfilled') setSuppliers(suppsData.value?.results || suppsData.value || []);
       if (custsData.status === 'fulfilled') setCustomers(custsData.value?.results || custsData.value || []);
@@ -218,7 +226,8 @@ export default function App() {
   };
 
   const handleInvoiceCreated = () => {
-    loadInitialData();
+    clearApiCache();
+    analyticsAPI.getSummary().then(res => res && setSummary(res)).catch(() => {});
   };
 
   const handleLogout = () => {
@@ -295,98 +304,114 @@ export default function App() {
 
         <main style={{ flex: 1, overflowY: 'auto' }}>
           <ErrorBoundary onReset={loadInitialData}>
-            {activeTab === 'pos' && (
-              <PosBillingPage
-                profile={profile}
-                customers={customers}
-                doctors={doctors}
-                staffList={staffList}
-                onOpenAddCustomer={() => setIsAddCustomerOpen(true)}
-                onOpenAddDoctor={() => setIsAddDoctorOpen(true)}
-                onInvoiceCreated={handleInvoiceCreated}
-                onOpenReceipt={(inv) => setReceiptInvoice(inv)}
-              />
+            {visitedTabs.has('pos') && (
+              <div style={{ display: activeTab === 'pos' ? 'block' : 'none', minHeight: '100%' }}>
+                <PosBillingPage
+                  profile={profile}
+                  customers={customers}
+                  doctors={doctors}
+                  staffList={staffList}
+                  onOpenAddCustomer={() => setIsAddCustomerOpen(true)}
+                  onOpenAddDoctor={() => setIsAddDoctorOpen(true)}
+                  onInvoiceCreated={handleInvoiceCreated}
+                  onOpenReceipt={(inv) => setReceiptInvoice(inv)}
+                />
+              </div>
             )}
 
-            {activeTab === 'dashboard' && (
-              <DashboardPage
-                summary={summary}
-                salesTrend={salesTrend}
-                categoriesDist={categoriesDist}
-                topSelling={topSelling}
-                profile={profile}
-                user={authUser}
-                setActiveTab={setActiveTab}
-                onOpenAddMedicine={() => setIsAddMedicineOpen(true)}
-                onOpenAddBatch={() => handleOpenAddBatch(null)}
-                onOpenScanBill={() => setIsScanBillOpen(true)}
-                onOpenDailyReport={() => setIsDailyReportOpen(true)}
-              />
+            {visitedTabs.has('dashboard') && (
+              <div style={{ display: activeTab === 'dashboard' ? 'block' : 'none', minHeight: '100%' }}>
+                <DashboardPage
+                  summary={summary}
+                  salesTrend={salesTrend}
+                  categoriesDist={categoriesDist}
+                  topSelling={topSelling}
+                  profile={profile}
+                  user={authUser}
+                  setActiveTab={setActiveTab}
+                  onOpenAddMedicine={() => setIsAddMedicineOpen(true)}
+                  onOpenAddBatch={() => handleOpenAddBatch(null)}
+                  onOpenScanBill={() => setIsScanBillOpen(true)}
+                  onOpenDailyReport={() => setIsDailyReportOpen(true)}
+                />
+              </div>
             )}
 
-            {activeTab === 'finance' && (
-              <DailyFinancePage
-                profile={profile}
-                user={authUser}
-                suppliers={suppliers}
-                staffList={staffList}
-              />
+            {visitedTabs.has('finance') && (
+              <div style={{ display: activeTab === 'finance' ? 'block' : 'none', minHeight: '100%' }}>
+                <DailyFinancePage
+                  profile={profile}
+                  user={authUser}
+                  suppliers={suppliers}
+                  staffList={staffList}
+                />
+              </div>
             )}
 
-            {activeTab === 'inventory' && (
-              <InventoryPage
-                medicines={medicines}
-                categories={categories}
-                suppliers={suppliers}
-                profile={profile}
-                user={authUser}
-                onOpenAddMedicine={() => setIsAddMedicineOpen(true)}
-                onOpenAddBatch={handleOpenAddBatch}
-                onOpenStockAdjust={handleOpenStockAdjust}
-                onOpenScanBill={() => setIsScanBillOpen(true)}
-                onOpenExcelUpload={() => setIsExcelUploadOpen(true)}
-                onOpenDailyReport={() => setIsDailyReportOpen(true)}
-                onReloadInventory={loadInitialData}
-                setActiveTab={setActiveTab}
-              />
+            {visitedTabs.has('inventory') && (
+              <div style={{ display: activeTab === 'inventory' ? 'block' : 'none', minHeight: '100%' }}>
+                <InventoryPage
+                  medicines={medicines}
+                  categories={categories}
+                  suppliers={suppliers}
+                  profile={profile}
+                  user={authUser}
+                  onOpenAddMedicine={() => setIsAddMedicineOpen(true)}
+                  onOpenAddBatch={handleOpenAddBatch}
+                  onOpenStockAdjust={handleOpenStockAdjust}
+                  onOpenScanBill={() => setIsScanBillOpen(true)}
+                  onOpenExcelUpload={() => setIsExcelUploadOpen(true)}
+                  onOpenDailyReport={() => setIsDailyReportOpen(true)}
+                  onReloadInventory={loadInitialData}
+                  setActiveTab={setActiveTab}
+                />
+              </div>
             )}
 
-            {activeTab === 'alerts' && (
-              <AlertsPage
-                profile={profile}
-                onOpenAddBatch={handleOpenAddBatch}
-                onOpenStockAdjust={handleOpenStockAdjust}
-              />
+            {visitedTabs.has('alerts') && (
+              <div style={{ display: activeTab === 'alerts' ? 'block' : 'none', minHeight: '100%' }}>
+                <AlertsPage
+                  profile={profile}
+                  onOpenAddBatch={handleOpenAddBatch}
+                  onOpenStockAdjust={handleOpenStockAdjust}
+                />
+              </div>
             )}
 
-            {activeTab === 'invoices' && (
-              <InvoicesPage
-                profile={profile}
-                user={authUser}
-                staffList={staffList}
-                onOpenReceipt={(inv) => setReceiptInvoice(inv)}
-                onOpenDailyReport={() => setIsDailyReportOpen(true)}
-              />
+            {visitedTabs.has('invoices') && (
+              <div style={{ display: activeTab === 'invoices' ? 'block' : 'none', minHeight: '100%' }}>
+                <InvoicesPage
+                  profile={profile}
+                  user={authUser}
+                  staffList={staffList}
+                  onOpenReceipt={(inv) => setReceiptInvoice(inv)}
+                  onOpenDailyReport={() => setIsDailyReportOpen(true)}
+                />
+              </div>
             )}
 
-            {activeTab === 'contacts' && (
-              <ContactsPage
-                customers={customers}
-                suppliers={suppliers}
-                doctors={doctors}
-                profile={profile}
-                onOpenAddCustomer={() => setIsAddCustomerOpen(true)}
-                onOpenAddDoctor={() => setIsAddDoctorOpen(true)}
-                onRefresh={loadInitialData}
-              />
+            {visitedTabs.has('contacts') && (
+              <div style={{ display: activeTab === 'contacts' ? 'block' : 'none', minHeight: '100%' }}>
+                <ContactsPage
+                  customers={customers}
+                  suppliers={suppliers}
+                  doctors={doctors}
+                  profile={profile}
+                  onOpenAddCustomer={() => setIsAddCustomerOpen(true)}
+                  onOpenAddDoctor={() => setIsAddDoctorOpen(true)}
+                  onRefresh={loadInitialData}
+                />
+              </div>
             )}
 
-            {activeTab === 'settings' && (
-              <SettingsPage
-                profile={profile}
-                onProfileUpdated={handleProfileUpdated}
-                onStaffUpdated={handleStaffUpdated}
-              />
+            {visitedTabs.has('settings') && (
+              <div style={{ display: activeTab === 'settings' ? 'block' : 'none', minHeight: '100%' }}>
+                <SettingsPage
+                  profile={profile}
+                  onProfileUpdated={handleProfileUpdated}
+                  onStaffUpdated={handleStaffUpdated}
+                />
+              </div>
             )}
           </ErrorBoundary>
         </main>

@@ -192,68 +192,50 @@ def get_reconciled_finance_ledger(month=None, year=None, start_date=None, end_da
         inv = inv_by_date.get(d)
         df = df_by_date.get(d)
         
-        # Inflow: Use saved DailyFinanceRecord if present, or live POS invoices if no DF record exists
-        if df:
+        # Inflow: Live POS Invoices are the authoritative ground truth for trading revenue
+        if inv and inv.get('count', 0) > 0:
+            sales = Decimal(str(inv['sales'] or '0.00'))
+            cash = Decimal(str(inv['cash'] or '0.00'))
+            upi = Decimal(str(inv['upi'] or '0.00'))
+            invoices_count = inv['count']
+        elif df:
             sales = Decimal(str(df.daily_sales or '0.00'))
             cash = Decimal(str(df.cash_earned or '0.00'))
             upi = Decimal(str(df.upi_earned or '0.00'))
-            capital = Decimal(str(getattr(df, 'capital_investment', 0) or '0.00'))
-            if sales == Decimal('0.00') and inv:
-                sales = Decimal(str(inv['sales'] or '0.00'))
-            if cash == Decimal('0.00') and upi == Decimal('0.00') and inv:
-                cash = Decimal(str(inv['cash'] or '0.00'))
-                upi = Decimal(str(inv['upi'] or '0.00'))
-            invoices_count = inv['count'] if inv else 0
-            
-            earned = Decimal(str(df.total_earned or (cash + upi + capital)))
+            invoices_count = 0
+        else:
+            sales = Decimal('0.00')
+            cash = Decimal('0.00')
+            upi = Decimal('0.00')
+            invoices_count = 0
+
+        capital = Decimal(str(getattr(df, 'capital_investment', 0) or '0.00')) if df else Decimal('0.00')
+        earned = cash + upi + capital
+
+        # Outflow / Expenses are tracked on DailyFinanceRecord
+        if df:
             supp = Decimal(str(df.supplier_payments or '0.00'))
             staff = Decimal(str(getattr(df, 'staff_expenses', 0) or '0.00'))
             veh = Decimal(str(getattr(df, 'vehicle_expenses', 0) or '0.00'))
             exp = Decimal(str(df.expenses or '0.00'))
             oth = Decimal(str(df.other_outflow or '0.00'))
             paid = Decimal(str(df.total_paid or (supp + staff + veh + exp + oth)))
-            
-            open_bal = Decimal(str(df.opening_balance or running_balance))
-            net_change = Decimal(str(df.net_day_change or (earned - paid)))
-            closing_bal = Decimal(str(df.closing_balance or (open_bal + net_change)))
-            running_balance = closing_bal
-        elif inv:
-            sales = Decimal(str(inv['sales'] or '0.00'))
-            cash = Decimal(str(inv['cash'] or '0.00'))
-            upi = Decimal(str(inv['upi'] or '0.00'))
-            capital = Decimal('0.00')
-            invoices_count = inv['count']
-            earned = cash + upi
-            supp = Decimal('0.00')
-            staff = Decimal('0.00')
-            veh = Decimal('0.00')
-            exp = Decimal('0.00')
-            oth = Decimal('0.00')
-            paid = Decimal('0.00')
-            open_bal = running_balance
-            net_change = earned - paid
-            closing_bal = open_bal + net_change
-            running_balance = closing_bal
+            details = df.payment_details if (isinstance(df.payment_details, list)) else []
+            notes = (df.notes or '')
         else:
-            sales = Decimal('0.00')
-            cash = Decimal('0.00')
-            upi = Decimal('0.00')
-            capital = Decimal('0.00')
-            invoices_count = 0
-            earned = Decimal('0.00')
             supp = Decimal('0.00')
             staff = Decimal('0.00')
             veh = Decimal('0.00')
             exp = Decimal('0.00')
             oth = Decimal('0.00')
             paid = Decimal('0.00')
-            open_bal = running_balance
-            net_change = Decimal('0.00')
-            closing_bal = open_bal
-            running_balance = closing_bal
-        
-        details = df.payment_details if (df and isinstance(df.payment_details, list)) else []
-        notes = (df.notes or '') if df else ''
+            details = []
+            notes = ''
+
+        open_bal = running_balance
+        net_change = earned - paid
+        closing_bal = open_bal + net_change
+        running_balance = closing_bal
         
         reconciled_rows.append({
             'date': d,

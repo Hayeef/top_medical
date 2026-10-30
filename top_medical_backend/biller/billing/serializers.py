@@ -1,3 +1,4 @@
+from datetime import date
 from rest_framework import serializers
 from django.db import transaction
 from decimal import Decimal
@@ -404,6 +405,13 @@ class InvoiceSerializer(serializers.ModelSerializer):
             if customer:
                 customer.credit_balance += (invoice.grand_total - invoice.amount_paid)
                 customer.save()
+
+        # Auto-sync daily finance if a record exists for this day
+        try:
+            target_date = invoice.created_at.date() if invoice.created_at else date.today()
+            DailyFinanceRecord.sync_date(target_date)
+        except Exception:
+            pass
 
         return invoice
 

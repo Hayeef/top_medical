@@ -347,10 +347,21 @@ class DailyFinanceRecord(models.Model):
         """
         Chains opening and closing balances across all DailyFinanceRecords chronologically.
         Ensures every day's opening_balance matches the previous day's closing_balance.
+        Synchronizes daily_sales, cash_earned, and upi_earned with live POS Invoices where available.
         """
         all_records = list(cls.objects.all().order_by('date'))
         if not all_records:
             return []
+
+        # Pre-aggregate all live non-cancelled POS invoices by date
+        inv_aggregates = {
+            item['created_at__date']: item
+            for item in Invoice.objects.exclude(payment_status__in=['CANCELLED', 'REFUNDED']).values('created_at__date').annotate(
+                sales=models.Sum('grand_total'),
+                cash=models.Sum('cash_amount'),
+                upi=models.Sum('upi_amount')
+            )
+        }
             
         running_bal = Decimal('0.00')
         updated_records = []
@@ -361,10 +372,17 @@ class DailyFinanceRecord(models.Model):
                 running_bal = rec.opening_balance
             else:
                 rec.opening_balance = running_bal
+
+            inv = inv_aggregates.get(rec.date)
+            if inv:
+                rec.daily_sales = Decimal(str(inv['sales'] or '0.00'))
+                rec.cash_earned = Decimal(str(inv['cash'] or '0.00'))
+                rec.upi_earned = Decimal(str(inv['upi'] or '0.00'))
+            else:
+                rec.daily_sales = Decimal(str(rec.daily_sales or '0.00'))
+                rec.cash_earned = Decimal(str(rec.cash_earned or '0.00'))
+                rec.upi_earned = Decimal(str(rec.upi_earned or '0.00'))
                 
-            rec.daily_sales = Decimal(str(rec.daily_sales or '0.00'))
-            rec.cash_earned = Decimal(str(rec.cash_earned or '0.00'))
-            rec.upi_earned = Decimal(str(rec.upi_earned or '0.00'))
             rec.capital_investment = Decimal(str(rec.capital_investment or '0.00'))
             rec.total_earned = rec.cash_earned + rec.upi_earned + rec.capital_investment
             rec.total_paid = Decimal(str(rec.total_paid or '0.00'))
@@ -374,8 +392,39 @@ class DailyFinanceRecord(models.Model):
             running_bal = rec.closing_balance
             updated_records.append(rec)
             
-        cls.objects.bulk_update(updated_records, ['opening_balance', 'net_day_change', 'closing_balance', 'total_earned'])
+        cls.objects.bulk_update(
+            updated_records,
+            ['daily_sales', 'cash_earned', 'upi_earned', 'capital_investment', 'opening_balance', 'net_day_change', 'closing_balance', 'total_earned']
+        )
         return updated_records
+
+    @classmethod
+    def sync_date(cls, target_date):
+        """
+        Syncs a DailyFinanceRecord for a specific date with live POS Invoices,
+        and re-chains balances across records.
+        """
+        rec = cls.objects.filter(date=target_date).first()
+        if not rec:
+            return None
+
+        inv = Invoice.objects.filter(
+            created_at__date=target_date
+        ).exclude(payment_status__in=['CANCELLED', 'REFUNDED']).aggregate(
+            sales=models.Sum('grand_total'),
+            cash=models.Sum('cash_amount'),
+            upi=models.Sum('upi_amount')
+        )
+
+        rec.daily_sales = Decimal(str(inv['sales'] or '0.00'))
+        rec.cash_earned = Decimal(str(inv['cash'] or '0.00'))
+        rec.upi_earned = Decimal(str(inv['upi'] or '0.00'))
+        rec.total_earned = rec.cash_earned + rec.upi_earned + Decimal(str(rec.capital_investment or '0.00'))
+        rec.net_day_change = rec.total_earned - Decimal(str(rec.total_paid or '0.00'))
+        rec.save()
+
+        cls.recalculate_chain()
+        return rec
 
 
 class VendorBill(models.Model):

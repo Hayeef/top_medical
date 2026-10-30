@@ -429,6 +429,12 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         invoice.payment_status = 'CANCELLED'
         invoice.save()
 
+        # Re-sync daily finance record for this day
+        try:
+            DailyFinanceRecord.sync_date(invoice.created_at.date())
+        except Exception:
+            pass
+
         return Response({"message": f"Invoice {invoice.invoice_number} cancelled and stock successfully restored."})
 
     @transaction.atomic
@@ -461,8 +467,16 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         # Delete any associated StockMovements for this invoice
         StockMovement.objects.filter(reference_id=inv_number).delete()
 
+        inv_date = invoice.created_at.date() if invoice.created_at else None
+
         # Delete the invoice (cascade deletes InvoiceItem)
         invoice.delete()
+
+        if inv_date:
+            try:
+                DailyFinanceRecord.sync_date(inv_date)
+            except Exception:
+                pass
 
         return Response(
             {"message": f"Bill #{inv_number} permanently deleted from database."},
@@ -581,6 +595,13 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 invoice.customer.save()
 
         invoice.save()
+
+        # Re-sync daily finance record for this day
+        try:
+            DailyFinanceRecord.sync_date(invoice.created_at.date())
+        except Exception:
+            pass
+
         serializer = self.get_serializer(invoice)
         return Response({
             "success": True,

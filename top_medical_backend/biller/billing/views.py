@@ -497,7 +497,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             return Response({"error": "Discount value cannot be negative."}, status=status.HTTP_400_BAD_REQUEST)
 
         items = list(invoice.items.all())
-        raw_gross = sum((item.unit_selling_price * Decimal(item.quantity)) for item in items)
+        raw_gross = sum(((item.unit_mrp if item.unit_mrp > Decimal('0.00') else item.unit_selling_price) * Decimal(item.quantity)) for item in items)
         subtotal = raw_gross if raw_gross > Decimal('0.00') else invoice.subtotal
         if subtotal <= Decimal('0.00'):
             subtotal = invoice.grand_total
@@ -511,22 +511,21 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 return Response({"error": f"Discount amount (₹{discount_value}) cannot exceed subtotal (₹{subtotal})."}, status=status.HTTP_400_BAD_REQUEST)
             discount_amount = round(discount_value, 2)
 
-        # Proportionally adjust items and their GST
-        effective_disc_pct = (discount_amount / subtotal * Decimal('100.0')) if subtotal > Decimal('0.00') else Decimal('0.00')
+        # Proportionally adjust statutory GST tax without changing item gross MRP total
         discount_ratio = (Decimal('1.0') - (discount_amount / subtotal)) if subtotal > Decimal('0.00') else Decimal('1.0')
 
         total_tax = Decimal('0.00')
         for item in items:
-            item_gross = item.unit_selling_price * Decimal(item.quantity)
+            item_gross = (item.unit_mrp if item.unit_mrp > Decimal('0.00') else item.unit_selling_price) * Decimal(item.quantity)
             item_net = round(item_gross * discount_ratio, 2)
             item_gst_rate = resolve_canonical_gst_rate(item.medicine, item.gst_rate)
             item_taxable = round(item_net / (Decimal('1.0') + (item_gst_rate / Decimal('100.0'))), 2)
             item_tax = round(item_net - item_taxable, 2)
 
             item.gst_rate = item_gst_rate
-            item.discount_percent = round(effective_disc_pct, 2)
             item.tax_amount = item_tax
-            item.total_amount = item_net
+            # Item total remains full MRP gross amount (do not reduce to discounted price)
+            item.total_amount = round(item_gross, 2)
             item.save()
 
             total_tax += item_tax

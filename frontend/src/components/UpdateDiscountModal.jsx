@@ -19,7 +19,9 @@ export default function UpdateDiscountModal({ invoice, profile, isOpen, onClose,
   if (!isOpen || !invoice) return null;
 
   const currency = profile?.currency_symbol || '₹';
-  const rawSubtotal = parseFloat(invoice.subtotal) > 0 ? parseFloat(invoice.subtotal) : parseFloat(invoice.grand_total || 0);
+  const rawSubtotal = parseFloat(invoice.subtotal) > 0 
+    ? parseFloat(invoice.subtotal) 
+    : (invoice.items || []).reduce((sum, it) => sum + ((parseFloat(it.unit_mrp) || parseFloat(it.unit_selling_price) || 0) * (it.quantity || 1)), 0) || parseFloat(invoice.grand_total || 0);
 
   const [discountType, setDiscountType] = useState(invoice.discount_type || 'PERCENT'); // 'PERCENT' | 'FIXED'
   const [discountValue, setDiscountValue] = useState(parseFloat(invoice.discount_value || 0).toString());

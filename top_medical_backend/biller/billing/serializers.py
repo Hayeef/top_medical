@@ -352,17 +352,17 @@ class InvoiceSerializer(serializers.ModelSerializer):
             )
 
             # Calculate item line totals (MRP / Selling price is inclusive of GST)
-            gross = unit_sp * Decimal(qty)
+            gross = (unit_mrp if unit_mrp > Decimal('0.00') else unit_sp) * Decimal(qty)
             disc_amt = (gross * disc_pct) / Decimal('100.0')
             line_net_before_bill_disc = gross - disc_amt
 
-            if bill_disc_ratio < Decimal('1.0'):
-                item_total = round(line_net_before_bill_disc * bill_disc_ratio, 2)
-            else:
-                item_total = round(line_net_before_bill_disc, 2)
+            # Total line amount is the item's gross MRP amount (NOT reduced by bill-level discount)
+            item_total = round(line_net_before_bill_disc, 2)
 
-            taxable_base = round(item_total / (Decimal('1.0') + (gst_rate / Decimal('100.0'))), 2)
-            tax_amt = round(item_total - taxable_base, 2)
+            # Statutory GST is apportioned based on effective transaction value after bill-level discount
+            item_net_after_bill_disc = round(line_net_before_bill_disc * bill_disc_ratio, 2)
+            taxable_base = round(item_net_after_bill_disc / (Decimal('1.0') + (gst_rate / Decimal('100.0'))), 2)
+            tax_amt = round(item_net_after_bill_disc - taxable_base, 2)
 
             InvoiceItem.objects.create(
                 invoice=invoice,

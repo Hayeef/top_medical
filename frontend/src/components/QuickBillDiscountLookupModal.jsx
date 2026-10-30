@@ -79,7 +79,9 @@ export default function QuickBillDiscountLookupModal({
   };
 
   const rawSubtotal = selectedInvoice 
-    ? (parseFloat(selectedInvoice.subtotal) > 0 ? parseFloat(selectedInvoice.subtotal) : parseFloat(selectedInvoice.grand_total || 0))
+    ? (parseFloat(selectedInvoice.subtotal) > 0 
+        ? parseFloat(selectedInvoice.subtotal) 
+        : (selectedInvoice.items || []).reduce((sum, it) => sum + ((parseFloat(it.unit_mrp) || parseFloat(it.unit_selling_price) || 0) * (it.quantity || 1)), 0) || parseFloat(selectedInvoice.grand_total || 0))
     : 0;
 
   const numericValue = parseFloat(discountValue) || 0;

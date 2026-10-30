@@ -836,15 +836,16 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
                                     <th style={{ padding: '4px 6px', textAlign: 'right' }}>Unit MRP (Incl. GST)</th>
                                     <th style={{ padding: '4px 6px', textAlign: 'center' }}>GST %</th>
                                     <th style={{ padding: '4px 6px', textAlign: 'right' }}>Tax (GST)</th>
-                                    <th style={{ padding: '4px 6px', textAlign: 'right' }}>Total</th>
+                                    <th style={{ padding: '4px 6px', textAlign: 'right' }}>Total MRP</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {inv.items?.map((item, idx) => {
                                     const unitMrp = parseFloat(item.unit_mrp ?? item.unit_price ?? 0);
-                                    const totalAmt = parseFloat(item.total_amount ?? item.total_price ?? 0);
+                                    const qty = parseFloat(item.quantity ?? 1);
+                                    const itemGrossMrp = unitMrp > 0 ? (unitMrp * qty) : parseFloat(item.total_amount ?? item.total_price ?? 0);
                                     const gstRate = parseFloat(item.gst_rate ?? 5);
-                                    const taxAmt = parseFloat(item.tax_amount ?? (totalAmt - (totalAmt / (1 + gstRate / 100))));
+                                    const taxAmt = parseFloat(item.tax_amount ?? (itemGrossMrp - (itemGrossMrp / (1 + gstRate / 100))));
                                     return (
                                       <tr key={idx} style={{ borderBottom: '1px dotted #e2e8f0' }}>
                                         <td style={{ padding: '6px', fontWeight: 700 }}>
@@ -875,13 +876,44 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
                                           {currency}{taxAmt.toFixed(2)}
                                         </td>
                                         <td style={{ padding: '6px', textAlign: 'right', fontWeight: 800, color: '#059669' }} className="mono">
-                                          {currency}{totalAmt.toFixed(2)}
+                                          {currency}{itemGrossMrp.toFixed(2)}
                                         </td>
                                       </tr>
                                     );
                                   })}
                                 </tbody>
                               </table>
+
+                              {/* Bill Totals Summary Bar */}
+                              <div style={{
+                                display: 'flex',
+                                justifyContent: 'flex-end',
+                                gap: '16px',
+                                padding: '8px 12px',
+                                background: '#f1f5f9',
+                                borderTop: '1px solid #cbd5e1',
+                                fontSize: '11.5px',
+                                flexWrap: 'wrap'
+                              }}>
+                                <div>
+                                  <span style={{ color: '#64748b' }}>Total MRP: </span>
+                                  <strong className="mono">{currency}{parseFloat(inv.subtotal || 0).toFixed(2)}</strong>
+                                </div>
+                                {parseFloat(inv.discount_amount || 0) > 0 && (
+                                  <div style={{ color: '#e11d48', fontWeight: 700 }}>
+                                    <span>Discount {inv.discount_type === 'PERCENT' ? `(${inv.discount_value}%)` : ''}: </span>
+                                    <span className="mono">-{currency}{parseFloat(inv.discount_amount).toFixed(2)}</span>
+                                  </div>
+                                )}
+                                <div>
+                                  <span style={{ color: '#64748b' }}>GST Tax: </span>
+                                  <strong className="mono">{currency}{parseFloat(inv.tax_amount || 0).toFixed(2)}</strong>
+                                </div>
+                                <div style={{ color: '#0369a1', fontWeight: 800 }}>
+                                  <span>Net Total: </span>
+                                  <strong className="mono" style={{ fontSize: '12.5px' }}>{currency}{parseFloat(inv.grand_total || 0).toFixed(2)}</strong>
+                                </div>
+                              </div>
                             </div>
                           </td>
                         </tr>
@@ -1007,9 +1039,11 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
                   {isExpanded && (
                     <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '8px', border: '1px solid #e2e8f0' }}>
                       {inv.items?.map((item, idx) => {
-                        const totalAmt = parseFloat(item.total_amount ?? item.total_price ?? 0);
+                        const unitMrp = parseFloat(item.unit_mrp ?? item.unit_price ?? 0);
+                        const qty = parseFloat(item.quantity ?? 1);
+                        const itemGrossMrp = unitMrp > 0 ? (unitMrp * qty) : parseFloat(item.total_amount ?? item.total_price ?? 0);
                         const gstRate = parseFloat(item.gst_rate ?? 5);
-                        const taxAmt = parseFloat(item.tax_amount ?? (totalAmt - (totalAmt / (1 + gstRate / 100))));
+                        const taxAmt = parseFloat(item.tax_amount ?? (itemGrossMrp - (itemGrossMrp / (1 + gstRate / 100))));
                         return (
                           <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', padding: '4px 0', borderBottom: '1px dotted #e2e8f0' }}>
                             <div>
@@ -1021,15 +1055,21 @@ export default function InvoicesPage({ profile, user, staffList: propStaffList =
                                 }}>
                                   {gstRate}% GST
                                 </span>
-                                {' · '}Tax: {currency}{taxAmt.toFixed(2)}
+                                {' · '}MRP: {currency}{unitMrp.toFixed(2)}
                               </div>
                             </div>
                             <span className="mono" style={{ fontWeight: 700, color: '#059669' }}>
-                              {currency}{totalAmt.toFixed(2)}
+                              {currency}{itemGrossMrp.toFixed(2)}
                             </span>
                           </div>
                         );
                       })}
+                      {parseFloat(inv.discount_amount || 0) > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#e11d48', fontWeight: 700, paddingTop: '6px' }}>
+                          <span>Discount {inv.discount_type === 'PERCENT' ? `(${inv.discount_value}%)` : ''}:</span>
+                          <span>-{currency}{parseFloat(inv.discount_amount).toFixed(2)}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -232,7 +232,11 @@ def get_reconciled_finance_ledger(month=None, year=None, start_date=None, end_da
             details = []
             notes = ''
 
-        open_bal = running_balance
+        if df and getattr(df, 'is_balance_baseline', False):
+            open_bal = Decimal(str(df.opening_balance or '0.00'))
+            running_balance = open_bal
+        else:
+            open_bal = running_balance
         net_change = earned - paid
         closing_bal = open_bal + net_change
         running_balance = closing_bal

@@ -238,6 +238,7 @@ class DailyFinanceRecord(models.Model):
     opening_balance = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Firm starting balance at opening of day")
     net_day_change = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Net day change: total_earned - total_paid")
     closing_balance = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), help_text="Closing balance in the firm: opening_balance + total_earned - total_paid")
+    is_balance_baseline = models.BooleanField(default=False, help_text="Designates this date as an anchored balance baseline, preserving opening_balance from historical overwrites")
     
     # Itemized Breakdown
     payment_details = models.JSONField(default=list, blank=True, help_text="Itemized list of payments (vendors, staff with charge codes, vehicle, shop)")
@@ -367,7 +368,7 @@ class DailyFinanceRecord(models.Model):
         updated_records = []
         
         for idx, rec in enumerate(all_records):
-            if idx == 0:
+            if idx == 0 or getattr(rec, 'is_balance_baseline', False):
                 rec.opening_balance = Decimal(str(rec.opening_balance or '0.00'))
                 running_bal = rec.opening_balance
             else:
@@ -394,7 +395,7 @@ class DailyFinanceRecord(models.Model):
             
         cls.objects.bulk_update(
             updated_records,
-            ['daily_sales', 'cash_earned', 'upi_earned', 'capital_investment', 'opening_balance', 'net_day_change', 'closing_balance', 'total_earned']
+            ['daily_sales', 'cash_earned', 'upi_earned', 'capital_investment', 'opening_balance', 'net_day_change', 'closing_balance', 'total_earned', 'is_balance_baseline']
         )
         return updated_records
 

@@ -424,7 +424,7 @@ class DailyFinanceRecordSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'date', 'daily_sales', 'cash_earned', 'upi_earned', 'capital_investment', 'total_earned',
             'total_paid', 'supplier_payments', 'staff_expenses', 'vehicle_expenses', 'expenses', 'other_outflow',
-            'opening_balance', 'net_day_change', 'closing_balance',
+            'opening_balance', 'net_day_change', 'closing_balance', 'is_balance_baseline',
             'payment_details', 'capital_details', 'notes', 'created_by', 'created_by_name',
             'created_at', 'updated_at'
         ]

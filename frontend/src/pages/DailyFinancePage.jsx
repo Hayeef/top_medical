@@ -239,6 +239,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
     other_outflow: '',
     total_paid: '',
     opening_balance: '',
+    is_balance_baseline: false,
     notes: '',
     // Spreadsheet-like itemized expenses
     payment_details: [
@@ -637,6 +638,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
       other_outflow: (record.other_outflow !== undefined && record.other_outflow !== null) ? record.other_outflow.toString() : '',
       total_paid: (record.total_paid !== undefined && record.total_paid !== null) ? record.total_paid.toString() : '',
       opening_balance: (record.opening_balance !== undefined && record.opening_balance !== null) ? record.opening_balance.toString() : '',
+      is_balance_baseline: Boolean(record.is_balance_baseline),
       notes: record.notes || '',
       payment_details: details
     });
@@ -766,6 +768,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             other_outflow: (rec.other_outflow !== undefined && rec.other_outflow !== null) ? rec.other_outflow.toString() : '',
             total_paid: (rec.total_paid !== undefined && rec.total_paid !== null) ? rec.total_paid.toString() : '',
             opening_balance: openingVal,
+            is_balance_baseline: Boolean(rec.is_balance_baseline),
             notes: rec.notes || '',
             payment_details: details
           });
@@ -794,6 +797,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             other_outflow: '',
             total_paid: '',
             opening_balance: (data.suggested_opening_balance !== undefined ? data.suggested_opening_balance : 0).toString(),
+            is_balance_baseline: false,
             notes: '',
             payment_details: [{
               id: Date.now(),
@@ -1257,6 +1261,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
         other_outflow: formOtherOutflow,
         total_paid: formTotalPaid,
         opening_balance: formOpeningBalance,
+        is_balance_baseline: true,
         notes: formData.notes,
         payment_details: validDetails
       };
@@ -3466,10 +3471,10 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
               <div className="df-math-equalizer" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', alignItems: 'center' }}>
 
                 {/* 1. Morning Opening Balance */}
-                <div style={{ padding: '14px', background: '#ffffff', borderRadius: '12px', border: '1.5px solid #bae6fd' }}>
+                <div style={{ padding: '14px', background: '#f0f9ff', borderRadius: '12px', border: '1.5px solid #bae6fd' }}>
                   <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#0369a1', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <Wallet size={15} color="#0284c7" />
-                    <span>1. Starting Morning ({currency})</span>
+                    <ClipboardList size={15} color="#0284c7" />
+                    <span>1. STARTING MORNING ({currency})</span>
                   </div>
                   <div style={{ position: 'relative', marginTop: '6px' }}>
                     <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '15px', fontWeight: 900, color: '#0284c7' }}>
@@ -3490,11 +3495,12 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                         color: '#0369a1',
                         borderRadius: '8px',
                         border: '1.5px solid #7dd3fc',
+                        background: '#ffffff',
                         outline: 'none'
                       }}
                     />
                   </div>
-                  <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '4px' }}>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', fontWeight: 600 }}>
                     Previous night's closing cash
                   </div>
                 </div>
@@ -3502,20 +3508,20 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                 {/* 2. Today's Inflow (+) */}
                 <div style={{ padding: '14px', background: '#ecfdf5', borderRadius: '12px', border: '1.5px solid #86efac' }}>
                   <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#065f46', textTransform: 'uppercase' }}>
-                    ➕ 2. Today Received (Inflow)
+                    ➕ 2. TODAY RECEIVED (INFLOW)
                   </div>
                   <div className="mono" style={{ fontSize: '20px', fontWeight: 900, color: '#059669', marginTop: '6px' }}>
                     +{currency}{formTotalEarned.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </div>
                   <div style={{ fontSize: '10.5px', color: '#059669', marginTop: '4px', fontWeight: 700 }}>
-                    Cash ({currency}{formCashEarned}) + UPI ({currency}{formUpiEarned})
+                    Cash ({currency}{formCashEarned.toLocaleString('en-IN')}) + UPI ({currency}{formUpiEarned.toLocaleString('en-IN')})
                   </div>
                 </div>
 
                 {/* 3. Today's Outflow (-) */}
                 <div style={{ padding: '14px', background: '#fff1f2', borderRadius: '12px', border: '1.5px solid #fecdd3' }}>
                   <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#be123c', textTransform: 'uppercase' }}>
-                    ➖ 3. Today Paid Out (Outflow)
+                    ➖ 3. TODAY PAID OUT (OUTFLOW)
                   </div>
                   <div className="mono" style={{ fontSize: '20px', fontWeight: 900, color: '#e11d48', marginTop: '6px' }}>
                     -{currency}{formTotalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -3534,7 +3540,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                   boxShadow: '0 6px 20px rgba(2, 132, 199, 0.3)'
                 }}>
                   <div style={{ fontSize: '11.5px', fontWeight: 900, opacity: 0.95, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    🟰 4. Closing Firm Balance
+                    🟰 4. CLOSING FIRM BALANCE
                   </div>
                   <div className="mono" style={{ fontSize: '24px', fontWeight: 900, marginTop: '2px' }}>
                     {currency}{formClosingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -3546,35 +3552,13 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
 
               </div>
 
-              {/* Wholesale Credit Note Callout */}
-              {formTotalCredit > 0 && (
-                <div style={{
-                  marginTop: '14px',
-                  padding: '10px 14px',
-                  background: '#fffbeb',
-                  borderRadius: '10px',
-                  border: '1.5px solid #fde68a',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  fontSize: '12px',
-                  color: '#92400e',
-                  fontWeight: 700
-                }}>
-                  <Clock size={18} color="#d97706" style={{ flexShrink: 0 }} />
-                  <div>
-                    <strong>Supplier Credit Note:</strong> {currency}{formTotalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })} in wholesale bills are on credit (yet to pay). These do not reduce today's physical counter cash drawer balance and are automatically scheduled in the <strong>🏢 Vendor Bills & Credit Tracker</strong> tab.
-                  </div>
-                </div>
-              )}
-
             </div>
 
             {/* =========================================================================
                 SECTION 4: NOTES & REMARKS (OPTIONAL)
                 ========================================================================= */}
-            <div className="glass-panel" style={{ padding: '16px 20px', background: '#ffffff', borderRadius: '14px', border: '1px solid #cbd5e1' }}>
-              <label style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text-main)', display: 'block', marginBottom: '6px' }}>
+            <div className="glass-panel" style={{ padding: '16px 20px', background: '#ffffff', borderRadius: '14px', border: '1.5px solid #e2e8f0', marginTop: '16px' }}>
+              <label style={{ fontSize: '12.5px', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '8px' }}>
                 📝 Daily Notes & Remarks (Optional)
               </label>
               <textarea
@@ -3585,8 +3569,8 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                 style={{
                   width: '100%',
                   padding: '10px 14px',
-                  borderRadius: '10px',
-                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  border: '1.5px solid #cbd5e1',
                   fontSize: '13px',
                   fontFamily: 'inherit',
                   outline: 'none'
@@ -3595,7 +3579,7 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
             </div>
 
             {/* =========================================================================
-                SECTION 5: BIG SAVE & SUBMIT ACTION BAR
+                SECTION 5: SAVE & SUBMIT ACTION BAR
                 ========================================================================= */}
             <div className="df-save-bar" style={{
               display: 'flex',
@@ -3603,50 +3587,62 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
               alignItems: 'center',
               flexWrap: 'wrap',
               gap: '14px',
-              padding: '16px 20px',
+              marginTop: '16px',
+              padding: '14px 20px',
               background: '#ffffff',
               borderRadius: '16px',
-              border: '2px solid #bae6fd',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.05)'
+              border: '1.5px solid #e2e8f0',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.03)'
             }}>
-              <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#475569' }}>
-                {editingRecord ? `✏️ Updating accounts for ${formData.date}` : `Ready to save accounts for ${formData.date}`}
+              <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                ✏️ {editingRecord ? `Updating accounts for ${formData.date}` : `Ready to save accounts for ${formData.date}`}
               </div>
 
               <div className="df-save-btn-group" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                 <button
                   type="button"
                   onClick={() => handleOpenNewEntry()}
-                  className="btn btn-secondary"
-                  style={{ padding: '12px 18px', fontWeight: 800, borderRadius: '10px', fontSize: '13.5px' }}
+                  style={{
+                    padding: '8px 16px',
+                    fontWeight: 800,
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    border: '1.5px solid #bae6fd',
+                    background: '#ffffff',
+                    color: '#0369a1',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
                   disabled={isSaving}
                 >
-                  🔄 Reset Form
+                  <FileSpreadsheet size={15} color="#0284c7" />
+                  <span>Reset Form</span>
                 </button>
 
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="df-save-btn"
                   style={{
-                    background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                    background: '#059669',
                     color: '#ffffff',
                     border: 'none',
-                    borderRadius: '12px',
-                    padding: '14px 30px',
-                    fontSize: '16px',
+                    borderRadius: '10px',
+                    padding: '10px 22px',
+                    fontSize: '14px',
                     fontWeight: 900,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '10px',
-                    boxShadow: '0 6px 22px rgba(5, 150, 105, 0.35)',
+                    gap: '8px',
+                    boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)',
                     transition: 'all 0.2s',
-                    letterSpacing: '0.01em'
+                    letterSpacing: '0.02em'
                   }}
                 >
-                  <Save size={20} />
-                  <span>{isSaving ? 'Saving Accounts...' : (editingRecord ? '💾 UPDATE TODAY’S ACCOUNTS' : '💾 SAVE TODAY’S ACCOUNTS')}</span>
+                  <Save size={16} />
+                  <span>{isSaving ? 'Saving Accounts...' : (editingRecord ? "UPDATE TODAY'S ACCOUNTS" : "SAVE TODAY'S ACCOUNTS")}</span>
                 </button>
               </div>
             </div>
@@ -3829,6 +3825,11 @@ export default function DailyFinancePage({ profile, user, suppliers = [], staffL
                             {isSelectedDate && (
                               <span className="badge badge-cyan" style={{ fontSize: '9.5px', marginTop: '3px', padding: '1px 5px', fontWeight: 800 }}>
                                 {editingRecord ? '✏️ Loaded in Form' : 'Active Date'}
+                              </span>
+                            )}
+                            {r.is_balance_baseline && (
+                              <span className="badge badge-purple" style={{ fontSize: '9px', marginTop: '2px', padding: '1px 5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                📌 Baseline
                               </span>
                             )}
                           </td>
